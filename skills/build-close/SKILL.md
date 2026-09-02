@@ -29,7 +29,8 @@ the user to merge. The driver never merges to main.
        git worktree add --detach <run>/judge/branch/W <base>
        git -C <run>/judge/branch/W apply --index <(git diff <base>..HEAD -- . ':!.agents')
 
-   Findings become fix briefs to Codex under `<run>/briefs/`; re-run the touched
+   Findings become fix briefs committed at `.agents/build/plans/<slug>/close-N.md`
+   and dispatched as a fresh `resolver` step; re-run the touched
    tests after every fix.
 4. Stop when a review round warrants no edits.
 5. Archive and journal:

@@ -5,8 +5,8 @@
 # bernstein.yaml, NOT here. From the 2026-08-31 evals (Codex 18 certain defects over seven
 # cases, Opus 5 two): give seam and interface steps -- a contract, a schema, anything a
 # later phase builds against, and every judge step -- a role that resolves to claude
-# (`backend2`, `reviewer`); give bulk steps inside one already-decided package a role that
-# resolves to codex (`backend`).
+# (`analyst`, `adversary`); give bulk steps inside one already-decided package a role that
+# resolves to codex (`resolver`).
 defaults:
   # The integration branch, not a sha: a step's diff, its allowlist check and its archive
   # are all `git diff <base>`, and after an earlier step merges, a fixed sha shows that

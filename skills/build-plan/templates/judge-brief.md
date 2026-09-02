@@ -3,8 +3,11 @@
 You are a fresh reviewer in a git worktree of your own, on your own `agent/...`
 branch, checked out from the integration branch AFTER <phase> merged into it.
 
-Your role has `Bash`, `Read`, `Grep` and `Glob` only: no Write and no Edit tool.
-Write every file through Bash (`cat > .agents/blind-review.md <<'EOF' ... EOF`).
+Your role is `adversary`, which is NOT in Bernstein's role tool allowlist, so you
+have the full tool set including Write and Edit. Nothing mechanical stops you
+editing code and nothing would catch it: a judge step runs the verdict gate, not
+the scorer's allowlist check. YOU MUST NOT EDIT ANY FILE except
+`.agents/blind-review.md` and `.agents/scorecard.md`. You review, you do not fix.
 
 ## The diff under review
 

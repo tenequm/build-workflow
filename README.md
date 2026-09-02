@@ -21,12 +21,44 @@ cp .agents/skills/build-run/templates/bernstein.yaml bernstein.yaml
 sed -i "" "s|base_ref: .*|base_ref: build/<slug>|" bernstein.yaml
 git add bernstein.yaml && git commit -m "chore: bernstein seed"   # must be committed
 test -L CLAUDE.md -o -L AGENTS.md && echo "make it a real file first"
-cp .agents/skills/build-ready/templates/claude-settings.local.json .claude/settings.local.json
+mkdir -p .claude && cp .agents/skills/build-ready/templates/claude-settings.local.json .claude/settings.local.json
 ```
 
 Then, from a Claude Code session started in that root, with `docs/spec.md`
 tracked: `/build-design`, `/build-plan .agents/build/runs/<slug>`, then
 `/build-ready`, `/build-run`, `/build-close` on the same run directory.
+
+## What runs where
+
+| Piece | Process | Where it runs | Model |
+|---|---|---|---|
+| driver | your Claude Code session | the repo root, on `build/<slug>` | whatever you drive with; it never edits application code |
+| readiness, run config | `bernstein-herdr ready` / `run-config` | the repo root, before the run | none |
+| orchestrator | `bernstein run --port N` | the repo root, backgrounded | none |
+| executor step, role `resolver` | `codex exec` spawned by Bernstein | `.sdd/worktrees/resolver-<id>/`, branch `agent/resolver-<id>` | `gpt-5.6-sol`, effort from `~/.codex/config.toml` |
+| executor step, role `analyst` | `claude -p` spawned by Bernstein | its own worktree and `agent/...` branch | `claude-opus-5`, `--effort high` |
+| judge step, role `adversary` | `claude -p` spawned by Bernstein | a worktree branched from the integration branch after the phase merged | `claude-opus-5`, `--effort high` |
+| shadow, role `visionary` | `agy` spawned by Bernstein | its own worktree, out of the chain | `gemini-3.7-flash-high` |
+| the gate | `bernstein-herdr gate` | inside the step's worktree, once per task, BEFORE the merge | none |
+| readiness / plan critics | Opus subagents of the driver | the driver session, read-only | opus |
+
+Roles, not `cli:`, are the dispatch key, and the four names are chosen to dodge
+Bernstein's catalog personas; see `bernstein.yaml`'s comment and
+`docs/2609-02-persona-prefix.md`. Bernstein's own generic role prompt (1-3 KB
+from its shipped skill pack) still prefixes every prompt; the 10.7 KB catalog
+persona no longer does.
+
+## Two constraints
+
+1. **One plan per repo root at a time.** Bernstein's state (`.sdd/`), the task
+   server port, the run config and the frozen base ref
+   (`refs/build/base/<slug>`) are all per root, and `run-config` refuses to
+   write while another `bernstein` still owns the root. A second concurrent
+   plan means a second checkout.
+2. **`CLAUDE.md` (or `AGENTS.md`) at the root must be a real file, not a
+   symlink.** Bernstein writes a task-specific `CLAUDE.md` over it per spawn
+   and restores it before the gates; through a symlink it writes into the link
+   target instead. Readiness fails the run on a symlink.
 
 Three parts:
 

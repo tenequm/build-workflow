@@ -59,26 +59,50 @@ its worktree before the merge. All commands run from the repo root.
    `bernstein` process still names this root (`pgrep -fl bernstein`). Ignore the
    `Elapsed: 0s` in that block; it is wrong. Kill any orphan the run leaves
    behind, or the next `run-config` refuses.
-5. A BLOCKED GATE IS TERMINAL. `bernstein-herdr gate` exiting 1 is not a retry
-   and not a quarantine: the merge is refused, the agent's branch is moved to
-   `salvage/<agent>`, a row lands in `.sdd/runtime/refused_merges.jsonl`, and the
-   run ends unhealthy. What it looks like:
+5. A BLOCKED GATE IS TERMINAL, and this is the path you will actually walk.
+   `bernstein-herdr gate` exiting 1 is not a retry and not a quarantine: the
+   merge is refused, the agent's branch is moved to `salvage/<agent>` (a
+   graveyard branch, its work intact), a row lands in
+   `.sdd/runtime/refused_merges.jsonl`, and the run ends UNHEALTHY. It is
+   terminal only because the template sets `gate_repair_enabled: false`; on
+   Bernstein's default `true` you instead get one `[GATE-REPAIR] <title>` task
+   on the same branch and worktree, and the block becomes terminal on the second
+   failure. What the driver sees, in the order it appears:
 
-       rg -n "Refusing to merge" <run>/bernstein-run.log .sdd/runtime/spawner.log
+       tail -1 <run>/runs.jsonl     # the gate's own row FIRST: blocked=true and why
        cat .sdd/runtime/refused_merges.jsonl
+       rg -n "Refusing to merge" <run>/bernstein-run.log .sdd/runtime/spawner.log
        git branch --list 'salvage/*'
-       tail -1 <run>/runs.jsonl     # the gate's own row: blocked=true, why
+       git log --oneline <base>..salvage/<agent>   # what the step actually did
 
-   The gate archives the diff and writes its row on that path too, so the
-   evidence is complete before you look. `bernstein quarantine list` is EMPTY
-   after a block -- do not wait for a retry that never comes. THE DRIVER DECIDES
-   what happens next: re-brief and re-run the step, take the salvage branch
-   apart by hand, or accept the block and change the plan. Nothing is automatic.
-6. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
+   The gate archives the diff and writes its row on the blocking path too, so
+   the evidence is complete before you look. `bernstein quarantine list` is
+   EMPTY after a block -- do not wait for a retry that never comes. The most
+   common cause is an ALLOWLIST VIOLATION: the row's `allowlist_violations`
+   names files the step had to touch and the brief did not grant. THE DRIVER
+   DECIDES: widen the allowlist in the plan `files:` and the brief, commit,
+   `/build-ready`, re-run the step; or cherry-pick the good half out of
+   `salvage/<agent>` into a fresh briefed step; or accept the block and change
+   the plan. Nothing is automatic, and the driver still does not edit the code
+   itself.
+6. THE ROOT CHECKOUT CAN MOVE UNDER YOU. Bernstein pre-creates warm-pool slots
+   with an empty `worktree_path` (core/tasks/task_lifecycle.py:288-297), and a
+   spawn that claims one resolves it to `Path("")` = the repo ROOT
+   (spawner_core.py:4471-4479): it writes a task CLAUDE.md over yours and
+   switches the root to `agent/<role>-<id>`. No seed key disables the pool. The
+   gate refuses to score at the repo root, so the step blocks instead of merging
+   garbage, but the root is left on the agent branch. Check it whenever a step
+   blocks, and put it back:
+
+       git symbolic-ref --short HEAD        # must be the integration branch
+       git status --short                   # a stray CLAUDE.md is the tell
+       git checkout <integration branch> && git checkout -- CLAUDE.md
+
+7. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
    the user as one line with the ledger excerpt and the row; the answer becomes a
    brief edit, a rerun of `/build-ready`, and a re-dispatch.
-7. Never edit `bernstein_herdr` while a run is live. The gate imports it fresh in
+8. Never edit `bernstein_herdr` while a run is live. The gate imports it fresh in
    every worktree, so a mid-run edit changes the gate under a running step.
-8. The driver never edits code. Fixes go to a fresh executor with a brief, a
+9. The driver never edits code. Fixes go to a fresh executor with a brief, a
    file allowlist and a per-item report.
-9. On run end, offer `/build-close <run>`.
+10. On run end, offer `/build-close <run>`.

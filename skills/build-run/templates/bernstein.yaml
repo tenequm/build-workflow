@@ -11,10 +11,33 @@ cli: codex
 max_agents: 4
 
 # THE dispatch table. Bernstein spawns its own adapters (claude, codex, agy) and resolves
-# cli/model/effort by ROLE: `resolution for role='backend': match=exact` (measured). A
+# cli/model/effort by ROLE: `resolution for role='resolver': match=exact` (measured). A
 # per-step `cli:` in the plan is not in Bernstein's schema, won the first spawn and was
 # LOST on the retry, so the role is the only durable key -- every `role:` used in the plan
 # must appear here, and readiness fails the run when one does not.
+#
+# THE ROLE NAMES ARE ODD ON PURPOSE. Bernstein prefixes every prompt with a catalog
+# persona whenever the role matches a catalog agent: `backend` drew a 10,691-byte "AI Data
+# Remediation Engineer" system prompt and `reviewer` a "UI Finish-Gate Reviewer", both
+# irrelevant, and there is NO switch (docs/2609-02-persona-prefix.md). The persona is
+# selected by role: `CatalogRegistry.match()` returns None when no catalog agent carries
+# the role AND `_ROLE_AFFINITY` has no entry for it (agents/catalog.py:790-800). The 154
+# agents loaded from ~/.bernstein/catalogs/agency cover only architect, backend, devops,
+# docs, finance, frontend, gis, healthcare, manager, ml-engineer, qa, research, reviewer,
+# security. Roles must still come from the plan schema's enum (KNOWN_ROLES,
+# planning/plan_schema.py:22-41) or `bernstein plan validate` fails, so the four below are
+# the persona-free names from that enum:
+#
+#   resolver   = the codex executor  (was `backend`)   bulk and fix steps
+#   analyst    = the claude executor (was `backend2`)  seam and interface steps
+#   adversary  = the blind judge     (was `reviewer`)
+#   visionary  = the shadow observer, out of the chain (was `shadow`)
+#
+# Side effect of dropping `reviewer`: the judge no longer gets Bernstein's role tool
+# allowlist (`_ROLE_ALLOWED_TOOLS`, adapters/claude.py:311-316 gives `reviewer` only
+# Bash/Read/Grep/Glob), so the judge now has Write and Edit. Its brief must forbid editing
+# anything but its review file; nothing else enforces it, because a judge step runs the
+# verdict path and not the scorer's allowlist check.
 #
 # `codex exec` takes no effort flag: it reads `model_reasoning_effort` from
 # ~/.codex/config.toml, so `effort: high` below is documentation and the real lock is that
@@ -22,12 +45,37 @@ max_agents: 4
 #
 # Parallel siblings that share a role AND a cli AND a model get batched into ONE session
 # (`_groups_can_merge`, tick_pipeline.py:113-127), so give siblings different roles:
-# `backend` and `backend2` differ by cli, which also keeps them apart.
+# `resolver` and `analyst` differ by cli, which also keeps them apart.
 role_model_policy:
-  backend:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
-  backend2: { cli: claude, model: claude-opus-5,        effort: high }
-  reviewer: { cli: claude, model: claude-opus-5,        effort: high }
-  shadow:   { cli: agy,    model: gemini-3.7-flash-high }
+  resolver:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
+  analyst:   { cli: claude, model: claude-opus-5,        effort: high }
+  adversary: { cli: claude, model: claude-opus-5,        effort: high }
+  visionary: { cli: agy,    model: gemini-3.7-flash-high }
+
+# Seed hygiene. Both keys are real seed keys (core/config/seed_parser.py:2517-2518,
+# defaults True); both defaults cost a build run something.
+#
+# evolution_enabled: Bernstein otherwise self-spawns "Upgrade: Improve task success rate"
+# tasks mid-run that write into the repo outside every brief allowlist (observed
+# 2026-09-02). A plan run is a closed set of steps; nothing may add to it.
+evolution_enabled: false
+# gate_repair_enabled: on a blocked gate Bernstein otherwise posts ONE
+# `[GATE-REPAIR] <title>` task on the same branch and worktree, with the failing gate's
+# output as its description (core/tasks/task_lifecycle.py:3210-3260). It is off here
+# because a judge step's block is a VERDICT, not a repairable failure: repair re-spawns
+# the judge against the same diff and buys one more Opus run for the same answer. This
+# workflow already has the briefed `fix-N` step for that, fed by the review. With it off,
+# a blocked gate is terminal on the first block, which is what build-run/SKILL.md
+# documents. Turn it on only for a plan with no judge steps.
+gate_repair_enabled: false
+# No key disables the warm pool. `warm_pool` is accepted as a top-level seed key
+# (seed_parser.py:2322) and NOTHING reads it; the pool is constructed unconditionally at
+# orchestrator.py:7067-7072. Speculative slots are created with `worktree_path=""`
+# (core/tasks/task_lifecycle.py:288-297), so a claiming spawn gets `Path("")` = the repo
+# ROOT (spawner_core.py:4471-4479) and switches the root checkout to that agent branch.
+# Our gate refuses to score at the repo root, so the step blocks rather than merging
+# garbage; the driver's recovery is `git checkout <integration branch>` at the root.
+# See build-run/SKILL.md step 5.
 
 quality_gates:
   enabled: true

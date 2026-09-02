@@ -56,6 +56,40 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         elif f.exists():
             lines.append(f"PASS {name} is a regular file")
 
+    # The root checkout is the merge target: every merge-back lands on whatever branch
+    # the root has out. A warm-pool spawn runs an agent AT THE ROOT and leaves it on that
+    # agent branch, so a second run silently merges everything onto the leftover branch.
+    root_branch = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=plan.root,
+                                 capture_output=True, text=True, check=False).stdout.strip()
+    seed_path = plan.root / "bernstein.yaml"
+    seed = (yaml.safe_load(seed_path.read_text()) or {}) if seed_path.exists() else {}
+    declared_base = (seed.get("quality_gates") or {}).get("base_ref")
+    if not root_branch or root_branch in ("main", "master") or root_branch.split("/", 1)[0] in ("agent", "salvage", "spec"):
+        fail(f"the repo root is on {root_branch or 'a detached HEAD'}, not an integration branch (a warm-pool "
+             f"spawn leaves it on `agent/*`); every merge would land there -- "
+             f"`git -C {plan.root} checkout {declared_base or '<integration branch>'}`")
+    else:
+        lines.append(f"PASS repo root is checked out on the integration branch {root_branch}")
+
+    # `git diff --name-only <base_ref>..HEAD` in the worktree is the gate's changed-file
+    # set. Left at the default `main` it carries every commit the integration branch is
+    # ahead by, so the gate judges the branch, not the step (measured: run_config blocked
+    # a merge over a file the agent never touched).
+    if declared_base == root_branch:
+        lines.append(f"PASS bernstein.yaml quality_gates.base_ref = {declared_base} = the checked-out branch")
+    else:
+        fail(f"bernstein.yaml quality_gates.base_ref is {declared_base!r}, not the checked-out {root_branch!r}; "
+             f"the gates would diff the whole branch -- set base_ref to {root_branch!r} and COMMIT bernstein.yaml")
+
+    # `defaults.base` in the sidecar is what every step's diff, allowlist and archive are
+    # taken against; a base other than the integration branch shows an earlier step's
+    # merged files as this step's changes.
+    if base == root_branch:
+        lines.append(f"PASS sidecar defaults.base = {base} = the checked-out branch")
+    else:
+        fail(f"sidecar defaults.base is {base!r}, not the checked-out {root_branch!r}; each step's diff and "
+             f"allowlist would be taken against the wrong ref -- set `defaults: {{base: {root_branch}}}` in the .steps.yaml")
+
     # Codex takes no reasoning-effort flag: `codex exec` reads `model_reasoning_effort`
     # from ~/.codex/config.toml (adapters/codex.py:105-125, argv measured 2026-09-02), so
     # the effort lock lives in a per-machine file OUTSIDE the repo and another machine
@@ -72,8 +106,7 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     # and was measured losing to the role policy on the first retry, while the role policy
     # resolved correctly on every spawn. A role with no policy entry falls back to the
     # seed's top-level `cli:` and whatever model that adapter defaults to.
-    seed_path = plan.root / "bernstein.yaml"
-    policy = (yaml.safe_load(seed_path.read_text()) or {}).get("role_model_policy") or {} if seed_path.exists() else {}
+    policy = seed.get("role_model_policy") or {}
     roles = {s.get("role") for s in plan.steps() if s.get("role")}
     for role in sorted(roles):
         if role in policy:
@@ -82,7 +115,8 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
             fail(f"plan uses role {role!r} with no role_model_policy entry in bernstein.yaml; "
                  f"its cli, model and effort would fall back to the seed default")
     if not roles:
-        fail("no step in the plan declares a `role:`; dispatch has nothing to resolve")
+        fail("no step in the plan declares a `role:`; dispatch has nothing to resolve -- "
+             "add `role: backend` (or backend2/reviewer) to every step and the matching role_model_policy entry")
 
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
@@ -94,30 +128,48 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         for raw in stage.get("steps", []):
             step = plan.step(raw["title"])
             if not step.brief.exists():
-                fail(f"{step.slug}: brief missing at {step.brief}")
+                fail(f"{step.slug}: brief missing at {step.brief}; write it, and note that a `brief:` under "
+                     f".agents/ must be TRACKED -- an untracked brief does not exist inside the agent's worktree")
                 continue
             text = step.brief.read_text()
+            lines.append(f"PASS {step.slug}: brief {step.brief.relative_to(plan.root)} ({len(text)} chars, under the 16k cap)"
+                         if len(text) <= 16000 else f"NOTE {step.slug}: brief over cap, see below")
+            # An executor step with no `files:` has no allowlist, so the scorer cannot tell
+            # its work from a stray edit and the merge cannot be scoped. Judge steps own
+            # nothing by design (they only write their review).
+            if step.judges:
+                lines.append(f"PASS {step.slug}: judge step, no allowlist expected (judges {step.judges!r})")
+            elif not step.files:
+                fail(f"{step.slug}: no `files:` allowlist in the plan step; the scorer has nothing to check a "
+                     f"changed file against -- list every path the step may touch under `files:`")
+            else:
+                lines.append(f"PASS {step.slug}: allowlist {step.files}")
             for g in step.files:
                 if not any(True for _ in plan.root.glob(g)) and not re.search(r"[*?\[]", g) and not (plan.root / g).exists():
                     lines.append(f"NOTE {step.slug}: allowlisted path does not exist yet (new file?): {g}")
             for g in step.files:
                 for other_title, other_g in owned.items():
                     if g == other_g or fnmatch.fnmatch(g, other_g) or fnmatch.fnmatch(other_g, g):
-                        fail(f"{step.slug}: owns {g} which sibling step {other_title!r} also owns ({other_g})")
+                        fail(f"{step.slug}: owns {g} which sibling step {other_title!r} also owns ({other_g}); "
+                             f"siblings merge in an arbitrary order -- split the files so each path has one owner")
                 owned[step.title] = g
             for sec in SECTION_CITE.findall(text):
                 if sections and sec not in sections and sec.split(".")[0] not in sections:
-                    fail(f"{step.slug}: cites spec section {sec} which does not exist")
+                    fail(f"{step.slug}: cites spec section {sec} which does not exist in docs/spec.md; "
+                         f"fix the citation or add the section (sections present: {sorted(sections)[:8]})")
             if not re.search(r"^##\s*Report", text, re.M) or "Deviations" not in text:
-                fail(f"{step.slug}: brief lacks a Report section with a Deviations rule")
+                fail(f"{step.slug}: brief lacks a `## Report` section with a Deviations rule; add one naming the "
+                     f"report path {step.report_rel} and requiring deviations to be listed")
             if not re.search(r"^##\s*Items", text, re.M):
-                fail(f"{step.slug}: brief lacks an Items section")
+                fail(f"{step.slug}: brief lacks an `## Items` section; add the numbered work items the executor must do")
             if len(text) > 16000:
-                fail(f"{step.slug}: brief is {len(text)} chars; over the 16k cap (length hurts resolve rate)")
+                fail(f"{step.slug}: brief is {len(text)} chars, over the 16k cap (length hurts resolve rate); "
+                     f"cut it or split the step")
             if run_validation:
                 m = re.search(r"##\s*Validation.*?```\n(.*?)```", text, re.S)
                 if not m:
-                    fail(f"{step.slug}: brief has no Validation code block")
+                    fail(f"{step.slug}: brief has no `## Validation` fenced code block; add the exact commands "
+                         f"the executor must run, one per line, so they can be replayed on the base")
                 else:
                     with tempfile.TemporaryDirectory() as tmp:
                         wt = Path(tmp) / "base"
@@ -129,7 +181,8 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                         finally:
                             subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=plan.root, capture_output=True, check=False)
             if step.judges and step.judges not in {s["title"] for s in plan.steps()}:
-                fail(f"{step.slug}: judges {step.judges!r} which is not a step")
+                fail(f"{step.slug}: judges {step.judges!r} which is not a step title in the plan; "
+                     f"copy the reviewed step's `title:` verbatim into the sidecar `judges:`")
     # Bernstein content-addresses plan-level `context_files` against the worker's
     # WORKTREE at spawn, before the adapter writes anything into it -- measured
     # 2026-09-02: a brief listed here came back `{"reason_code": "missing"}` in the run

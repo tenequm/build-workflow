@@ -101,10 +101,23 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
     import socket
     import subprocess
 
+    seed = (root / "bernstein.yaml").read_text() if (root / "bernstein.yaml").exists() else ""
+    declared = yaml.safe_load(seed).get("quality_gates", {}).get("base_ref") if seed else None
     branch = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=root,
                             capture_output=True, text=True, check=False).stdout.strip()
     if not branch or branch in ("main", "master"):
         print(f"refusing: repo root is on {branch or 'a detached HEAD'}; check out the integration branch")
+        return 1
+    # A warm-pool spawn runs an agent AT THE ROOT and leaves the root checkout on that
+    # agent's branch (measured 2026-09-02). Nothing puts it back, and the next run's
+    # merges would land on the leftover branch instead of the integration branch, so the
+    # work silently never reaches it. Refuse before the run, with the recovery command.
+    if branch.split("/", 1)[0] in ("agent", "salvage", "spec"):
+        target = declared or "<integration branch>"
+        print(f"refusing: the repo root is checked out on {branch!r}, a branch a warm-pool spawn left behind; "
+              f"every merge of the next run would land there instead of the integration branch. Recover with:\n"
+              f"  git -C {root} checkout {target}\n"
+              f"then rerun. (Check `git -C {root} log {target}..{branch}` first if that branch may hold work.)")
         return 1
     port_file = root / ".sdd" / "runtime" / "server.port"
     recorded = int(port_file.read_text().strip()) if port_file.exists() else 0
@@ -123,8 +136,6 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
               f"directories.\n{listing}\nkill them yourself, then rerun:\n  kill {' '.join(str(p) for p, _ in stale)}")
         return 1
     port = free_port(recorded or 8052)
-    seed = (root / "bernstein.yaml").read_text() if (root / "bernstein.yaml").exists() else ""
-    declared = yaml.safe_load(seed).get("quality_gates", {}).get("base_ref") if seed else None
     if declared != branch:
         print(f"refusing: bernstein.yaml quality_gates.base_ref is {declared!r}, not the checked-out {branch!r}; fix and commit it")
         return 1
@@ -213,6 +224,7 @@ def gate(argv: list[str]) -> int:
     """
     import json
     import shutil
+    import subprocess
 
     from bernstein_herdr import judge, ledger
     from bernstein_herdr.gates.scorer import score
@@ -229,7 +241,7 @@ def gate(argv: list[str]) -> int:
             # 2026-09-02: `Warm pool: claimed slot spec-<task>` then `Wrote task-specific
             # CLAUDE.md to CLAUDE.md`). Blocking here fails that task; the retry gets a
             # real worktree. The root branch must be put back by hand.
-            branch = __import__("subprocess").run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=wt,
+            branch = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=wt,
                                                   capture_output=True, text=True, check=False).stdout.strip()
             print(f"gate: BLOCKING -- this step is running at the REPO ROOT {root}, not in a worktree "
                   f"(warm-pool spawn). The root is now on branch {branch!r}; put it back on the integration "
@@ -241,10 +253,29 @@ def gate(argv: list[str]) -> int:
     except Exception as exc:
         print(f"gate: cannot identify the step for worktree {wt} -- blocking: {exc}")
         return 1
+    # Bernstein invokes the pipeline TWICE per task, about a second apart, so without a
+    # memo every row, archive and ledger line is doubled and the wall_s of the second
+    # copy is wrong. The memo is keyed on (task id, worktree HEAD): the same task at the
+    # same commit is the same verdict, and a genuine re-gate after a repair commit has a
+    # different HEAD and is scored afresh.
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=wt, capture_output=True, text=True, check=False).stdout.strip()
+    memo = plan.run_dir / "gate-memo" / f"{task['id']}-{head[:12]}.json"
+    if memo.exists():
+        rec = json.loads(memo.read_text())
+        print(f"gate: replaying the recorded result for task {task['id']} at {head[:12]} "
+              f"(gate already ran at {rec['ts']}); no new row, no new archive")
+        print(json.dumps(rec["row"], separators=(",", ":")))
+        return int(rec["rc"])
+
+    def remember(row: dict, rc: int) -> int:
+        memo.parent.mkdir(parents=True, exist_ok=True)
+        memo.write_text(json.dumps({"ts": ledger.now(), "head": head, "rc": rc, "row": row}, separators=(",", ":")))
+        return rc
+
     wall, wall_src = wall_seconds(task, wt, step.base)
     common = {"run_id": f"{plan.slug}-{step.slug}", "step": step.slug, "task_id": task["id"],
               "agent": wt.name, "wall_s": wall, "wall_src": wall_src, "evidence": "verified"}
-    print(f"gate: step={step.slug} title={task['title']!r} task={task['id']} worktree={wt} wall_s={wall} ({wall_src})")
+    print(f"gate: step={step.slug} title={task['title']!r} task={task['id']} worktree={wt} head={head[:12]} wall_s={wall} ({wall_src})")
 
     if step.judges:
         verdict = judge.record_verdict(plan, step, wt)
@@ -253,7 +284,7 @@ def gate(argv: list[str]) -> int:
         ledger.row(plan.run_dir, row)
         ledger.note(plan.run_dir, f"gate {step.slug} judge blocked={blocked} review_present={verdict['review_present']}")
         print(json.dumps(row, separators=(",", ":")))
-        return 1 if blocked else 0
+        return remember(row, 1 if blocked else 0)
 
     blocked, f = score(wt, task["title"])
     dest = plan.run_dir / "reports" / step.slug
@@ -268,7 +299,7 @@ def gate(argv: list[str]) -> int:
     print(json.dumps({k: v for k, v in f.items() if k != "gate"}, separators=(",", ":")))
     print(f"gate_rc={f['gate']['rc']} tail:\n{f['gate']['tail'][-600:]}")
     print(json.dumps(row, separators=(",", ":")))
-    return 1 if blocked else 0
+    return remember(row, 1 if blocked else 0)
 
 
 def main() -> int:

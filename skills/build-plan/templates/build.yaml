@@ -7,10 +7,17 @@
 # from it.
 #
 # ROLE, NOT cli. Bernstein spawns its own adapters and resolves cli/model/effort by role
-# through `role_model_policy` in bernstein.yaml (measured: `resolution for role='backend':
+# through `role_model_policy` in bernstein.yaml (measured: `resolution for role='resolver':
 # match=exact`). A per-step `cli:` is not in Bernstein's plan schema; it won the first
 # spawn and was LOST on the retry, so it is not a dispatch key and is omitted below.
 # Readiness fails any role with no policy entry.
+#
+# The four roles -- `resolver` (codex), `analyst` (claude), `adversary` (the judge),
+# `visionary` (the shadow) -- are the persona-free names of Bernstein's role enum. The
+# obvious names (`backend`, `reviewer`) each drag a 10 KB irrelevant catalog persona onto
+# the front of the prompt and there is no switch; see bernstein.yaml's comment and
+# docs/2609-02-persona-prefix.md. Do not rename them back, and do not invent new ones:
+# anything outside `KNOWN_ROLES` (planning/plan_schema.py:22-41) fails `plan validate`.
 #
 # ONE STEP PER STAGE, and the stage name IS the step name; `depends_on` carries the whole
 # DAG. Nothing disables Bernstein's task batching: `OrchestratorConfig.max_tasks_per_agent`
@@ -19,7 +26,7 @@
 # session with one spawn. Batching groups CONCURRENTLY OPEN tasks BY ROLE, so one step per
 # stage is necessary and not sufficient: `_groups_can_merge` (tick_pipeline.py:113-127)
 # refuses to merge tasks whose cli or model differ, so parallel siblings must be given
-# DIFFERENT ROLES that resolve to different clis (`backend` = codex, `backend2` = claude).
+# DIFFERENT ROLES that resolve to different clis (`resolver` = codex, `analyst` = claude).
 #
 # `description:` IS THE PROMPT. It is the only field of a step that reaches the agent
 # (plan_loader.py:457); the sidecar is invisible to Bernstein and the run directory is
@@ -37,7 +44,7 @@
 #             into siblings phase-Na, phase-Nb with disjoint file ownership once one step
 #             would own more than ~8 files; siblings must not share a file (readiness fails
 #             an overlapping allowlist) and must not share a role.
-#   judge-N   depends on EVERY phase-N sibling stage, role reviewer; reviews the merged
+#   judge-N   depends on EVERY phase-N sibling stage, role adversary; reviews the merged
 #             diff. Mark it by giving the step a `judges:` entry in the sidecar -- that
 #             field, not the title, is what selects the verdict gate over the scorer.
 #   phase-N+1 depends on the phase-N sibling stages ONLY, so it starts while judge-N runs
@@ -65,7 +72,7 @@ stages:
   - name: phase-1a
     steps:
       - title: "phase-1a: <what>"
-        role: backend
+        role: resolver
         description: |
           Read .agents/build/plans/<slug>/phase-1a.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -75,7 +82,7 @@ stages:
   - name: phase-1b
     steps:
       - title: "phase-1b: <what else>"
-        role: backend2
+        role: analyst
         description: |
           Read .agents/build/plans/<slug>/phase-1b.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -86,7 +93,7 @@ stages:
     depends_on: [phase-1a, phase-1b]
     steps:
       - title: "judge-1: blind review of phase-1"
-        role: reviewer
+        role: adversary
         description: |
           Read .agents/build/plans/<slug>/judge-1.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -96,7 +103,7 @@ stages:
     depends_on: [phase-1a, phase-1b]
     steps:
       - title: "phase-2: <what>"
-        role: backend
+        role: resolver
         description: |
           Read .agents/build/plans/<slug>/phase-2.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -106,7 +113,7 @@ stages:
     depends_on: [judge-1]
     steps:
       - title: "fix-1: judge findings on phase-1"
-        role: backend
+        role: resolver
         description: |
           Read .agents/build/plans/<slug>/fix-1.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -117,7 +124,7 @@ stages:
     depends_on: [judge-1]
     steps:
       - title: "polish-1: cleanliness and docs on phase-1 files"
-        role: backend
+        role: resolver
         priority: 4
         description: |
           Read .agents/build/plans/<slug>/polish-1.md in this worktree and execute it

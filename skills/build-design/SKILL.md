@@ -37,8 +37,9 @@ later stage is invoked as `/build-<stage> .agents/build/runs/<slug>`.
 
        git add docs/spec.md && git commit -m "docs(spec): <what changed>"
        mkdir -p .agents/build/runs/<slug>
-       printf -- "- %s design: spec.md sha256=%s sections <n, n.m>\n" \
+       printf -- "- %s design: spec.md sha256=%s sections %s\n" \
          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(shasum -a 256 docs/spec.md | cut -d' ' -f1)" \
+         "<the section numbers this round changed, e.g. 1,3>" \
          >> .agents/build/runs/<slug>/ledger.md
 
    Then offer `/build-plan .agents/build/runs/<slug>`.
