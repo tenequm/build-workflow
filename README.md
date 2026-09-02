@@ -3,7 +3,9 @@
 A build pipeline for multi-phase software work driven by one Claude Code session
 (the driver) with coding-agent executors (Claude Code, Codex, Antigravity CLI)
 dispatched by [Bernstein](https://github.com/sipyourdrink-ltd/bernstein) into
-git worktrees, each visible as a [herdr](https://herdr.dev) pane.
+git worktrees. Bernstein spawns its own adapters; this repo adds the readiness
+gate, the scripted scorer, the blind-judge verdict, the run ledger, and the
+templates and skills the driver works from.
 
 ## Quickstart
 
@@ -12,6 +14,8 @@ npx -y skills add git@github.com:tenequm/build-workflow.git -y \
   --skill build-design --skill build-plan --skill build-ready --skill build-run --skill build-close
 git clone git@github.com:tenequm/build-workflow.git ~/pj/build-workflow   # skip if present
 uv tool install bernstein --with ~/pj/build-workflow/bernstein_herdr
+grep -q 'model_reasoning_effort = "high"' ~/.codex/config.toml \
+  || echo 'model_reasoning_effort = "high"' >> ~/.codex/config.toml   # codex exec has no effort flag
 git checkout -b build/<slug>                        # integration branch, never main
 cp .agents/skills/build-run/templates/bernstein.yaml bernstein.yaml
 sed -i "" "s|base_ref: .*|base_ref: build/<slug>|" bernstein.yaml
@@ -31,10 +35,13 @@ Three parts:
   git@github.com:tenequm/build-workflow.git --skill <name>`.
 - `bernstein_herdr/` - a Python package installed once, INTO Bernstein's own
   environment (`uv tool install bernstein --with ./bernstein_herdr`); installed
-  anywhere else its entry points are invisible to Bernstein. Registers the herdr executor adapters
-  (`herdr-claude`, `herdr-codex`, `herdr-agy`, and `herdr-fake` -- a shell
-  script in the pane, for testing the chain without a model) and the two gates
-  (`scorer`, `blind_judge`) through Bernstein's entry-point groups. No fork of Bernstein.
+  anywhere else its entry points are invisible to Bernstein. It provides the
+  `bernstein-herdr` command: readiness, `run-config`, and `gate` -- the single
+  quality gate Bernstein runs in each agent worktree before the merge, wired
+  through `quality_gates.pipeline` with `command_override`. Executors are
+  Bernstein's OWN adapters (`codex`, `claude`, `agy`), chosen per step by the
+  step's `role:` and `role_model_policy` in `bernstein.yaml`. No fork of
+  Bernstein, and no adapter of ours in the loop.
 - `templates/` - the plan and its sidecar, `bernstein.yaml`, executor, judge and
   fix briefs, the judge prompt and the readiness checklist. The real files live
   in `skills/<stage>/templates/` so that `npx skills add` ships them; the
@@ -66,9 +73,20 @@ are unaffected.
 The `bernstein-herdr` command the plan's completion signals call:
 
 ```
-bernstein-herdr ready [--plan <yaml>]          readiness checks and source pins
-bernstein-herdr run-config                      run_config.json, run port, stale-server/stale-orchestrator and base_ref refusals
-bernstein-herdr scorer --step "<title>"         scripted gate, run in the worktree
-bernstein-herdr judge-verdict --step "<title>"  completion signal of a judge step
+bernstein-herdr ready [--plan <yaml>]          readiness checks, codex effort, role policy, source pins
+bernstein-herdr run-config                      run_config.json, run port, base_ref refusals, frozen base_sha
+bernstein-herdr gate                            THE gate: Bernstein runs it in the agent worktree, pre-merge
+bernstein-herdr scorer --step "<title>"         the scorer alone, by hand, in a worktree
+bernstein-herdr judge-verdict --step "<title>"  the verdict alone, by hand, in a judge worktree
 bernstein-herdr agy-session <db>                Antigravity session decoder
 ```
+
+`gate` identifies its step from the worktree directory name (the agent_id) through
+`.sdd/runtime/team.json` and `tasks.jsonl` -- the per-task CLAUDE.md that carries the
+title is deleted before the gates run. Exit 1 is TERMINAL: no retry, no quarantine, the
+branch goes to `salvage/<agent>` and a row lands in `.sdd/runtime/refused_merges.jsonl`.
+
+`run-config` freezes the integration branch's sha at run start into
+`<run>/bernstein.json` and the git ref `refs/build/base/<slug>`. The judge diffs that
+ref, never the branch name: every merge advances the branch, so a judge that diffs the
+branch after its dependency merged sees an empty diff and reviews nothing.

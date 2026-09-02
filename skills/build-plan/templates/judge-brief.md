@@ -1,18 +1,34 @@
 # Brief: judge-N - blind review of <phase>
 
-You are a fresh reviewer in a worktree at <phase>'s base with <phase>'s diff
-applied and STAGED: HEAD is the base commit, so the change under review is
-`git diff --cached -- . ':!.agents'`, and there is exactly one diff. The brief
-the executor received is pasted under "Original brief" below. Follow the judge
-prompt below exactly; write `.agents/scorecard.md` and `.agents/blind-review.md`
-in this worktree, then complete the task. Leave no source file changed: restore
-every probing edit before you write the review.
+You are a fresh reviewer in a git worktree of your own, on your own `agent/...`
+branch, checked out from the integration branch AFTER <phase> merged into it.
+
+Your role has `Bash`, `Read`, `Grep` and `Glob` only: no Write and no Edit tool.
+Write every file through Bash (`cat > .agents/blind-review.md <<'EOF' ... EOF`).
+
+## The diff under review
+
+The integration branch moves with every merge, so its NAME is useless as a base:
+after <phase> merged, `git diff <integration branch>..HEAD` is empty (measured
+2026-09-02, and it produced a confident "do not merge" for the wrong reason).
+The run's base is the sha the integration branch had at run start.
+`bernstein-herdr run-config` froze it as a git ref and recorded it in
+`<run>/bernstein.json` as `base_sha`. From this worktree:
+
+```
+BASE=$(git rev-parse refs/build/base/<slug>)
+git diff $BASE..HEAD -- . ':!.agents'
+```
+
+That diff must be non-empty. If it is empty, stop and say so in the review
+instead of reviewing nothing.
 
 ## Items
 
 1. Every numbered section of the judge prompt answered with measured evidence.
-2. `.agents/blind-review.md` written, ending in a `Verdict:` line that is
-   exactly one of `merge as-is` / `merge after listed fixes` / `do not merge`.
+2. `.agents/blind-review.md` written and COMMITTED on your branch, ending in a
+   `Verdict:` line that is exactly one of `merge as-is` /
+   `merge after listed fixes` / `do not merge`.
 
 ## Original brief
 
@@ -20,9 +36,21 @@ every probing edit before you write the review.
 
 ## Judge prompt
 
-<paste of templates/judge-prompt.md with <judge dir> = the parent of this worktree>
+<paste of judge-prompt.md>
 
 ## Report
 
-`.agents/blind-review.md` is this step's report. Deviations: record under a
-`## Deviations` heading in the scorecard anything you could not measure and why.
+`.agents/blind-review.md` is this step's report; the gate reads it from that
+exact path in this worktree and nowhere else. Also write `.agents/scorecard.md`
+(numbers only). Record under a `## Deviations` heading in the scorecard anything
+you could not measure and why.
+
+When both files exist:
+
+```
+git add .agents/blind-review.md .agents/scorecard.md
+git commit -m "review: blind review of <phase>"
+```
+
+Commit nothing else. Restore every probing edit first; `git status` must be
+clean of your probes.

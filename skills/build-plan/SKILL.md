@@ -23,16 +23,14 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
 2. One step per stage, stage name = step name, `depends_on` carries the DAG.
    Bernstein batches concurrently-open same-role tasks into ONE session
    (`max_tasks_per_agent` defaults to 2 and no seed key, `tuning:` section or run
-   flag changes it), and a batched session spawns once, so only the first step's
-   sidecar `cli` is ever read. What keeps two open siblings apart is a differing
-   `cli:` or `model:` **in the plan** (`_groups_can_merge`,
-   tick_pipeline.py:113-127); the sidecar `cli` is invisible to Bernstein. So
-   declare `cli:` on every step in the plan too, and give two parallel siblings
-   different roles if they would otherwise share role, cli and model.
-   **The two files spell it differently: the plan takes the adapter name
-   (`herdr-claude`, `herdr-codex`, `herdr-agy`, `herdr-fake`), the sidecar takes
-   the bare kind (`claude`, `codex`, `agy`, `fake`).** `bernstein plan validate`
-   warns "unknown key 'cli'" on every step and exits 0; that warning is expected.
+   flag changes it), and a batched session spawns once. What keeps two open
+   siblings apart is a differing cli or model (`_groups_can_merge`,
+   tick_pipeline.py:113-127), and both are resolved from the step's `role:`
+   through `role_model_policy` in `bernstein.yaml`. **Do not write a per-step
+   `cli:`**: it is not in Bernstein's plan schema, it won the first spawn and was
+   LOST on the retry (measured 2026-09-02). Give two parallel siblings different
+   ROLES that resolve to different clis -- `backend` (codex) and `backend2`
+   (claude). Readiness fails any role with no policy entry.
 3. Split a phase into parallel sibling steps by disjoint file ownership:
    whenever one step would own more than about 8 files, or two independent
    packages, cut it into `phase-Na`, `phase-Nb`, ... in stages of their own with
@@ -41,9 +39,12 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
    both would touch (`go.mod`, a registry, a shared type) belongs to exactly one
    sibling or to a small preceding step that lands it first. `judge-N` depends on
    every sibling stage, so it reviews the whole phase.
-4. Assign executors by shape: seam and investigation steps -> herdr-claude /
-   claude-opus-5; transfer, exact-line and fix steps -> herdr-codex; Flash only
-   as the shadow lane (`shadow: agy`). `herdr-fake` is a plumbing test only.
+4. Assign executors by shape, through the role: seam and investigation steps ->
+   `backend2` or `reviewer` (claude, claude-opus-5); transfer, exact-line and fix
+   steps -> `backend` (codex, gpt-5.6-sol); Flash only as the `shadow` role, out
+   of the chain. Every judge step is `reviewer`, whose tools are Bash, Read, Grep
+   and Glob only -- no Write, no Edit -- so its brief must say to write and
+   commit through Bash.
 5. Judge nodes: `judge-N` depends on every `phase-N` sibling stage; `fix-N`
    depends on `judge-N` with condition failed, retry 2; dependents depend on
    `phase-N` only. `polish-N` optional, non-blocking, files restricted to

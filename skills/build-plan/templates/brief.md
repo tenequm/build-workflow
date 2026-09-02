@@ -2,9 +2,10 @@
 
 You are an executor in a git worktree of your own, on your own `agent/...`
 branch. Read this whole file, then `docs/spec.md` sections <n, n.m>, then the plan
-`.agents/build/plans/<slug>.yaml` (this step). Do the work, then write the
-report. Do not ask questions; where something is ambiguous, build the smallest
-faithful shape and record it under "Deviations".
+`.agents/build/plans/<slug>.yaml` (this step). Do the work, write the report,
+then COMMIT on your branch: the commit is how the work reaches the gate and the
+merge, and nothing runs after you exit. Do not ask questions; where something is
+ambiguous, build the smallest faithful shape and record it under "Deviations".
 
 ## Context
 
@@ -38,12 +39,18 @@ Report each command, its exit code and the last 30 lines of output.
 
 ## Report
 
-Write `.agents/<report>.md` in the worktree root: per item DONE / DEVIATED /
-SKIPPED with file:line; Validation (per command); Deviations (with the
-alternative rejected and why); Open (walls hit, out-of-allowlist needs).
-Then complete the task through the completion contract below. A refusal
-(`scope_exceeded`, `underspecified`, `blocked_on_dependency`,
-`awaiting_operator`) is the right answer when the spec does not determine the
-work; do not improvise.
+Write `<report path>` in the worktree root: per item DONE / DEVIATED / SKIPPED
+with file:line; Validation (per command); Deviations (with the alternative
+rejected and why); Open (walls hit, out-of-allowlist needs). The gate archives
+this file to `<run>/reports/<step>/report.md` and scores its claims against the
+measured gate, so a claim you did not measure is a block.
 
-<completion contract block appended by the adapter>
+Then commit and exit:
+
+```
+git add -A && git commit -m "<type>(<scope>): <what>"
+```
+
+A refusal (`scope_exceeded`, `underspecified`, `blocked_on_dependency`,
+`awaiting_operator`) stated in the report is the right answer when the spec does
+not determine the work; do not improvise.

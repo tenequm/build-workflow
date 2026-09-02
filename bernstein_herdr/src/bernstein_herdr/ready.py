@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import yaml
+
 from bernstein_herdr import ledger
 from bernstein_herdr.plan import Plan, load_plan, pinned_hashes
 
@@ -53,6 +55,34 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                  f"or copy the content and drop the link) and commit.")
         elif f.exists():
             lines.append(f"PASS {name} is a regular file")
+
+    # Codex takes no reasoning-effort flag: `codex exec` reads `model_reasoning_effort`
+    # from ~/.codex/config.toml (adapters/codex.py:105-125, argv measured 2026-09-02), so
+    # the effort lock lives in a per-machine file OUTSIDE the repo and another machine
+    # silently runs the whole plan at `medium`.
+    codex_cfg = Path.home() / ".codex" / "config.toml"
+    codex_text = codex_cfg.read_text() if codex_cfg.exists() else ""
+    if re.search(r'^\s*model_reasoning_effort\s*=\s*"high"', codex_text, re.M):
+        lines.append(f"PASS {codex_cfg}: model_reasoning_effort = \"high\"")
+    else:
+        fail(f'{codex_cfg} does not set model_reasoning_effort = "high"; codex exec takes no effort flag and '
+             f"every codex step in this plan would run at the default effort. Add the line and rerun.")
+
+    # Role is the durable dispatch key: a per-step `cli:` is not in Bernstein's plan schema
+    # and was measured losing to the role policy on the first retry, while the role policy
+    # resolved correctly on every spawn. A role with no policy entry falls back to the
+    # seed's top-level `cli:` and whatever model that adapter defaults to.
+    seed_path = plan.root / "bernstein.yaml"
+    policy = (yaml.safe_load(seed_path.read_text()) or {}).get("role_model_policy") or {} if seed_path.exists() else {}
+    roles = {s.get("role") for s in plan.steps() if s.get("role")}
+    for role in sorted(roles):
+        if role in policy:
+            lines.append(f"PASS role_model_policy[{role}] = {policy[role]}")
+        else:
+            fail(f"plan uses role {role!r} with no role_model_policy entry in bernstein.yaml; "
+                 f"its cli, model and effort would fall back to the seed default")
+    if not roles:
+        fail("no step in the plan declares a `role:`; dispatch has nothing to resolve")
 
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")

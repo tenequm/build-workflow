@@ -1,7 +1,8 @@
 """`bernstein-herdr` CLI.
 
   bernstein-herdr ready [--plan <yaml>] [--no-validate]   readiness checks + pins -> <run>/readiness/
-  bernstein-herdr run-config [--plan <yaml>]                run_config.json, run port, base_ref check
+  bernstein-herdr run-config [--plan <yaml>]                run_config.json, run port, base_ref + base_sha
+  bernstein-herdr gate                                     THE quality gate: run by Bernstein from the agent worktree
   bernstein-herdr scorer --step "<title>"                  scorer gate in the current worktree; exit 0/1
   bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the review blocks
   bernstein-herdr agy-session <db> [name] [--steps]        timing and tokens from an Antigravity conversation DB
@@ -133,11 +134,141 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
     port_file.write_text(f"{port}\n")
     from bernstein_herdr.plan import load_plan
 
-    run_dir = load_plan(plan_path, root=root).run_dir
+    plan = load_plan(plan_path, root=root)
+    run_dir = plan.run_dir
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "bernstein.json").write_text(json.dumps({"port": port, "base_ref": branch}))
-    print(f"{out}: {json.dumps(RUN_CONFIG)}\nbase_ref={branch}\nrun with: --port {port}")
+    # The integration branch at run start. Every merge advances that branch, so a judge
+    # that diffs `<integration branch>..HEAD` after its dependency merged sees NOTHING
+    # (measured 2026-09-02: "The diff is empty: build/smoke and HEAD both resolve to
+    # da72e9e", a correct do-not-merge for the wrong reason). The frozen sha is the only
+    # ref that still names where this run began. It is also written as a git ref so a
+    # judge inside a worktree can name it without reaching outside its tree for a file.
+    base_sha = subprocess.run(["git", "rev-parse", branch], cwd=root, capture_output=True, text=True, check=False).stdout.strip()
+    ref = f"refs/build/base/{plan.slug}"
+    subprocess.run(["git", "update-ref", ref, base_sha], cwd=root, capture_output=True, check=False)
+    (run_dir / "bernstein.json").write_text(json.dumps({"port": port, "base_ref": branch, "base_sha": base_sha, "base_ref_name": ref}))
+    print(f"{out}: {json.dumps(RUN_CONFIG)}\nbase_ref={branch}\nbase_sha={base_sha} ({ref})\nrun with: --port {port}")
     return 0
+
+
+def task_for_worktree(root: Path, agent_id: str) -> dict:
+    """The Bernstein task record this worktree belongs to, from `.sdd/runtime` state.
+
+    The per-task CLAUDE.md that carries the title is deleted before the gates run
+    (`quality_gates.py:1105` calls `restore_claude_md` on purpose), so the surviving
+    channel is the worktree directory NAME: it is the agent_id, `team.json` maps that to
+    task ids and `tasks.jsonl` maps those to a title. tasks.jsonl is append-only with one
+    record per version, so the last record for an id is its current state. Batching can
+    hand one agent two tasks; the last one claimed is the one being gated, and the row
+    records every id so a mis-pick is visible.
+    """
+    import json
+
+    rt = root / ".sdd" / "runtime"
+    team = json.loads((rt / "team.json").read_text())
+    member = next((m for m in team.get("members", []) if m.get("agent_id") == agent_id), None)
+    if member is None:
+        raise RuntimeError(f"no team.json member for agent {agent_id!r} (worktree {agent_id})")
+    ids = list(member.get("task_ids") or [])
+    latest: dict[str, dict] = {}
+    for line in (rt / "tasks.jsonl").read_text().splitlines():
+        if line.strip():
+            rec = json.loads(line)
+            latest[rec["id"]] = rec
+    records = [latest[i] for i in ids if i in latest]
+    if not records:
+        raise RuntimeError(f"no tasks.jsonl record for task_ids {ids} of agent {agent_id!r}")
+    records.sort(key=lambda r: r.get("claimed_at") or 0)
+    return records[-1]
+
+
+def wall_seconds(task: dict, wt: Path, base: str) -> tuple[int, str]:
+    """Seconds since the executor started, and which clock said so."""
+    import subprocess
+    import time
+
+    claimed = task.get("claimed_at") or 0
+    if claimed:
+        return int(time.time() - claimed), "tasks.jsonl claimed_at"
+    log = subprocess.run(["git", "log", "--format=%ct", f"{base}..HEAD"], cwd=wt,
+                         capture_output=True, text=True, check=False).stdout.split()
+    if log:
+        return int(time.time() - int(log[-1])), "first commit in the worktree"
+    return 0, "unknown (no claimed_at, no commit)"
+
+
+def gate(argv: list[str]) -> int:
+    """The quality gate, run by Bernstein in the agent worktree before the merge.
+
+    Wired as `quality_gates.pipeline: [{name: tests, required: true, condition: always,
+    command_override: bernstein-herdr gate}]`. `command_override` is what makes it run
+    verbatim: without it the built-in tests gate composes its own command and returns None
+    (skipping the gate entirely) when no Python file changed, whatever `condition` says
+    (`gate_runner.py:1613-1634`).
+
+    Exit 1 blocks the merge and is TERMINAL: no retry, no escalation, no quarantine -- the
+    branch goes to `salvage/<agent>` and a row lands in `.sdd/runtime/refused_merges.jsonl`
+    (measured). So the failing path archives and writes its ledger row too; nothing runs
+    after it.
+    """
+    import json
+    import shutil
+
+    from bernstein_herdr import judge, ledger
+    from bernstein_herdr.gates.scorer import score
+    from bernstein_herdr.plan import load_plan, repo_root
+
+    wt = Path.cwd()
+    try:
+        root = repo_root(wt)
+        if wt == root:
+            # A warm-pool spawn gets no worktree: Bernstein claims a pre-created slot,
+            # writes the task-specific CLAUDE.md to the ROOT and runs the agent there on
+            # an `agent/<session>` branch, so the root checkout leaves the integration
+            # branch and every later merge lands on that agent branch instead (measured
+            # 2026-09-02: `Warm pool: claimed slot spec-<task>` then `Wrote task-specific
+            # CLAUDE.md to CLAUDE.md`). Blocking here fails that task; the retry gets a
+            # real worktree. The root branch must be put back by hand.
+            branch = __import__("subprocess").run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=wt,
+                                                  capture_output=True, text=True, check=False).stdout.strip()
+            print(f"gate: BLOCKING -- this step is running at the REPO ROOT {root}, not in a worktree "
+                  f"(warm-pool spawn). The root is now on branch {branch!r}; put it back on the integration "
+                  f"branch with `git checkout <integration branch>` or later merges land on the agent branch.")
+            return 1
+        task = task_for_worktree(root, wt.name)
+        plan = load_plan(root=root)
+        step = plan.step(task["title"])
+    except Exception as exc:
+        print(f"gate: cannot identify the step for worktree {wt} -- blocking: {exc}")
+        return 1
+    wall, wall_src = wall_seconds(task, wt, step.base)
+    common = {"run_id": f"{plan.slug}-{step.slug}", "step": step.slug, "task_id": task["id"],
+              "agent": wt.name, "wall_s": wall, "wall_src": wall_src, "evidence": "verified"}
+    print(f"gate: step={step.slug} title={task['title']!r} task={task['id']} worktree={wt} wall_s={wall} ({wall_src})")
+
+    if step.judges:
+        verdict = judge.record_verdict(plan, step, wt)
+        blocked = bool(verdict["block"]) or bool(verdict.get("certain_mentions"))
+        row = {**common, "gate": "judge", "blocked": blocked, **verdict}
+        ledger.row(plan.run_dir, row)
+        ledger.note(plan.run_dir, f"gate {step.slug} judge blocked={blocked} review_present={verdict['review_present']}")
+        print(json.dumps(row, separators=(",", ":")))
+        return 1 if blocked else 0
+
+    blocked, f = score(wt, task["title"])
+    dest = plan.run_dir / "reports" / step.slug
+    stats = ledger.archive(wt, step.base, dest)
+    report = wt / step.report_rel
+    if report.exists():
+        shutil.copy(report, dest / "report.md")
+    row = {**common, "gate": "scorer", "blocked": blocked, **stats, "gate_rc": f["gate"]["rc"],
+           "allowlist_violations": f["allowlist_violations"], "report_present": report.exists()}
+    ledger.row(plan.run_dir, row)
+    ledger.note(plan.run_dir, f"gate {step.slug} scorer blocked={blocked} rc={f['gate']['rc']} files={stats['files']}")
+    print(json.dumps({k: v for k, v in f.items() if k != "gate"}, separators=(",", ":")))
+    print(f"gate_rc={f['gate']['rc']} tail:\n{f['gate']['tail'][-600:]}")
+    print(json.dumps(row, separators=(",", ":")))
+    return 1 if blocked else 0
 
 
 def main() -> int:
@@ -146,6 +277,8 @@ def main() -> int:
         print(__doc__)
         return 2
     cmd, rest = argv[0], argv[1:]
+    if cmd == "gate":
+        return gate(rest)
     if cmd == "run-config":
         from bernstein_herdr.plan import repo_root
         plan = _arg(rest, "--plan")

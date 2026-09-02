@@ -95,6 +95,17 @@ class Plan:
     def steps(self) -> list[dict]:
         return [s for st in self.data.get("stages", []) for s in st.get("steps", [])]
 
+    def _brief_path(self, rel: str) -> Path:
+        """Run-dir relative by default; repo-root relative when it starts with `.agents/`.
+
+        A brief the executor must read has to be TRACKED, because the only tree the agent
+        can see is its worktree and the run directory is untracked and lives at the root.
+        Tracked briefs sit at `.agents/build/plans/<slug>/<step>.md`, so a sidecar value
+        that already starts at `.agents/` is resolved against the repo root; anything else
+        keeps the old run-dir meaning.
+        """
+        return (self.root / rel) if rel.startswith(".agents/") else (self.run_dir / rel)
+
     def step(self, title: str) -> Step:
         raw = next((s for s in self.steps() if s.get("title") == title), None)
         if raw is None:
@@ -104,7 +115,7 @@ class Plan:
         slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:48]
         return Step(
             title=title, slug=slug, files=list(raw.get("files") or []),
-            brief=self.run_dir / s.get("brief", f"briefs/{slug}.md"),
+            brief=self._brief_path(s.get("brief", f"briefs/{slug}.md")),
             report_rel=s.get("report", f".agents/{slug}.md"),
             base=s.get("base", d.get("base", "HEAD~1")),
             cli=s.get("cli", d.get("cli")),

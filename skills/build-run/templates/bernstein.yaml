@@ -4,31 +4,47 @@
 # change that touches run configuration, so an uncommitted bernstein.yaml shows up in
 # the agent's changed-file set and blocks the merge of work that never touched it.
 goal: "<run through plans; this goal is unused when running --from-plan>"
-cli: herdr-claude
+cli: codex
 # Chain width. 4 concurrent executors is what one Claude Max subscription and one
 # working set sustain: more crowds the subscription's rate limit and pushes siblings
 # into sharing files, which readiness refuses and the merge would serialise anyway.
 max_agents: 4
 
-# Each adapter locks its own model and effort (adapter.py), so these must agree with
-# the lock or the adapter overrides them. Naming them here keeps Bernstein's routing
-# decisions and the manifest honest about what actually ran.
+# THE dispatch table. Bernstein spawns its own adapters (claude, codex, agy) and resolves
+# cli/model/effort by ROLE: `resolution for role='backend': match=exact` (measured). A
+# per-step `cli:` in the plan is not in Bernstein's schema, won the first spawn and was
+# LOST on the retry, so the role is the only durable key -- every `role:` used in the plan
+# must appear here, and readiness fails the run when one does not.
+#
+# `codex exec` takes no effort flag: it reads `model_reasoning_effort` from
+# ~/.codex/config.toml, so `effort: high` below is documentation and the real lock is that
+# per-machine file. Readiness checks it.
+#
+# Parallel siblings that share a role AND a cli AND a model get batched into ONE session
+# (`_groups_can_merge`, tick_pipeline.py:113-127), so give siblings different roles:
+# `backend` and `backend2` differ by cli, which also keeps them apart.
 role_model_policy:
-  backend:  { cli: herdr-claude, model: claude-opus-5, effort: high }
-  reviewer: { cli: herdr-claude, model: claude-opus-5, effort: high }
-  qa:       { cli: herdr-codex, model: gpt-5.6-sol, effort: high }
-  docs:     { cli: herdr-codex, model: gpt-5.6-sol, effort: high }
+  backend:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
+  backend2: { cli: claude, model: claude-opus-5,        effort: high }
+  reviewer: { cli: claude, model: claude-opus-5,        effort: high }
+  shadow:   { cli: agy,    model: gemini-3.7-flash-high }
 
 quality_gates:
   enabled: true
   cache_enabled: false
-  # Bernstein's seed parser validates pipeline names against VALID_GATE_NAMES
-  # (core/config/seed_parser.py:1916) and never consults the bernstein.gates
-  # entry-point registry, so `scorer` and `blind_judge` are rejected here even
-  # though gate_runner would run them. Both are driven from the plan instead:
-  # the scorer as each step's completion_signal, the judge as a judge-N step.
+  # `command_override` is what makes our gate run VERBATIM. Without it the built-in tests
+  # gate composes its own command from the changed files and returns None -- gate
+  # "skipped" -- whenever no Python file changed, whatever `condition: always` says
+  # (gate_runner.py:1613-1634; measured "status": "skipped" on an empty changed set).
+  # `test_command` is therefore not the lever and is deliberately absent.
+  #
+  # The gate runs in the agent's worktree, once per task, BEFORE the merge. Exit 1 is
+  # TERMINAL: no retry, no escalation, no quarantine. The branch is moved to
+  # `salvage/<agent>`, a row lands in .sdd/runtime/refused_merges.jsonl and the run ends
+  # unhealthy. `bernstein-herdr gate` archives and writes its ledger row on that path too.
   pipeline:
-    - { name: "run_config",  required: true, condition: "always" }
+    - { name: "tests", required: true, condition: "always", command_override: "bernstein-herdr gate" }
+    - { name: "run_config", required: true, condition: "always" }
   # Gate changed-files are `git diff --name-only <base_ref>..HEAD` in the agent's
   # worktree. The default "main" carries every commit the integration branch is ahead
   # by, so gates judge the branch rather than the step. Set it to the branch this run
@@ -38,6 +54,12 @@ quality_gates:
     enabled: false          # our judge replaces the 12k-char cheap-model review
   intent_verification:
     enabled: false
+
+# merge_strategy: direct  -- NOT a seed key. `merge_strategy` reaches the orchestrator only
+# through .sdd/runtime/run_config.json (orchestrator.py:7123-7133); there is no top-level
+# seed key of that name, and writing one here only earns an unknown-key warning. The value
+# is set by `bernstein-herdr run-config`, which writes {"merge_strategy": "direct"}. On the
+# default "pr" the approval gate pushes to origin and skips the merge-back entirely.
 
 tuning:
   orchestrator:
