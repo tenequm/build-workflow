@@ -1,0 +1,120 @@
+# Bernstein plan template. Copy to .agents/build/plans/<slug>.yaml (tracked) with its
+# sidecar <slug>.steps.yaml. Stages run in order unless depends_on says otherwise;
+# steps in a stage run in parallel. Bernstein's plan schema is strict, so
+# build-workflow options (brief, report, base, shadow, judge) live in the sidecar.
+#
+# The plan spells a cli as the ADAPTER name (herdr-claude, herdr-codex, herdr-agy,
+# herdr-fake); the sidecar spells the same choice as the bare KIND (claude, codex,
+# agy, fake). `name:` below MUST equal the run-directory slug: the tool derives
+# .agents/build/runs/<name> from it.
+#
+# ONE STEP PER STAGE, and the stage name IS the step name; `depends_on` carries the whole
+# DAG. Nothing disables Bernstein's task batching: `OrchestratorConfig.max_tasks_per_agent`
+# defaults to 2 (core/tasks/models.py:1635) and no seed key, `tuning:` section,
+# run_config.json field or `bernstein run` flag ever sets it -- the seed's `batch:` block
+# is the provider Batch API, and the role templates' `max_tasks_per_session` is read by
+# nothing. Two tasks that batch become ONE session with one spawn, so only the first
+# step's sidecar `cli` is ever read (measured: a two-step stage spawned once).
+# Batching groups CONCURRENTLY OPEN tasks by role, not by stage, so one step per stage is
+# necessary and not sufficient. What actually keeps two parallel siblings apart is
+# `_groups_can_merge` (tick_pipeline.py:113-127): it refuses to merge tasks whose `cli:`
+# or `model:` differ. So every step below declares its own `cli:` IN THE PLAN -- the
+# sidecar `cli` is invisible to Bernstein and cannot separate anything. Parallel siblings
+# that would share a role AND a cli AND a model must be given different roles instead.
+# (A per-step `cli:` is not in the plan JSON schema, so `bernstein plan validate` warns
+# about it and still exits 0; `plan_loader.py:420` reads it regardless.)
+#
+# No completion_signals here. Bernstein 3.19.0 validates them and then drops them when
+# it posts the task to its task server (core/planning/planner.py builds the POST body
+# without them), so they never run: they only read as if a gate were wired. The adapter's
+# watcher runs each step's gate itself on settle and calls `bernstein task complete`.
+# Re-adding them once upstream forwards them would run every gate twice.
+#
+# Shape per phase:
+#   phase-N   executor; the watcher runs the scorer on settle; merges on pass. Split it
+#             into siblings phase-Na, phase-Nb, ... by disjoint file ownership once one
+#             step would own more than ~8 files or two independent packages; siblings
+#             must not share a file (readiness fails an overlapping allowlist), so a
+#             shared file (go.mod, a registry) belongs to exactly one sibling.
+#   judge-N   depends on EVERY phase-N sibling stage; a fresh judge reviews the merged diff in a
+#             worktree of its own; the watcher parses its verdict. Mark it by giving the
+#             step a `judges:` entry in the sidecar -- that field, not the title, is what
+#             selects the verdict gate over the scorer.
+#   phase-N+1 depends on the phase-N sibling stages ONLY, so it starts while judge-N runs (speculation)
+#   fix-N     depends on judge-N; brief says: read <run>/judge/phase-N, fix certain defects, or complete with "no fix needed"
+#   polish-N  depends on judge-N, optional: cleanliness and docs on phase-N's files only, runs beside phase-N+1
+name: <slug>
+description: <one line>
+cli: herdr-claude
+max_agents: 4
+# Reference files every worker on this plan reads. Bernstein stamps them onto each
+# task's metadata, lists them in the worker's per-task CLAUDE.md, and content-addresses
+# each one as (path, order, sha256) into the run journal's `context.files_attached`.
+# TRACKED PATHS ONLY: resolution is against the worker's worktree at spawn, before the
+# adapter writes the brief into it, so a run-dir brief listed here is recorded
+# `{"reason_code": "missing"}` and reaches nobody (measured 2026-09-02). The brief
+# arrives through the adapter, not through this list. Readiness fails an entry that is
+# not in the step base.
+context_files:
+  - docs/spec.md
+constraints:
+  - "docs/spec.md is driver-owned: never edit it. Ambiguity -> smallest faithful shape, recorded under Deviations."
+  - "Commit on your branch. Never push. Never touch main."
+
+stages:
+  # phase-1a and phase-1b are siblings: no dependency between them, so they run in
+  # parallel, and they own disjoint files. Different `cli:` values keep them out of one
+  # batched session; if both needed the same cli and model, give one a different role.
+  - name: phase-1a
+    steps:
+      - title: "phase-1a: <what>"
+        role: backend
+        cli: herdr-claude
+        model: claude-opus-5
+        effort: high
+        files:
+          - <allowlisted path or glob>
+
+  - name: phase-1b
+    steps:
+      - title: "phase-1b: <what else>"
+        role: backend
+        cli: herdr-codex
+        files:
+          - <a disjoint path or glob; no overlap with phase-1a>
+
+  - name: judge-1
+    depends_on: [phase-1a, phase-1b]
+    steps:
+      - title: "judge-1: blind review of phase-1"
+        role: reviewer
+        cli: herdr-claude
+        model: claude-opus-5
+        files: []
+
+  - name: phase-2
+    depends_on: [phase-1a, phase-1b]
+    steps:
+      - title: "phase-2: <what>"
+        role: backend
+        cli: herdr-codex
+        files: []
+
+  - name: fix-1
+    depends_on: [judge-1]
+    steps:
+      - title: "fix-1: judge findings on phase-1"
+        role: backend
+        cli: herdr-codex
+        files:
+          - <phase-1a and phase-1b allowlists together>
+
+  - name: polish-1
+    depends_on: [judge-1]
+    steps:
+      - title: "polish-1: cleanliness and docs on phase-1 files"
+        role: backend
+        cli: herdr-codex
+        priority: 4
+        files:
+          - <phase-1a and phase-1b allowlists together>

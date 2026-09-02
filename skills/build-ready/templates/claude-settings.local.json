@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(herdr:*)",
+      "Bash(bernstein:*)",
+      "Bash(bernstein-herdr:*)",
+      "Bash(uv tool install:*)",
+      "Bash(lsof:*)",
+      "Bash(pgrep:*)",
+      "Bash(kill:*)",
+      "Bash(rm -rf .sdd:*)",
+      "Bash(rm -rf .agents/build/runs/*)",
+      "Bash(git worktree:*)",
+      "Bash(git reset:*)"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "This repo root is a build-pipeline root: commands that drive the pipeline (herdr, bernstein, bernstein-herdr, uv tool install of bernstein_herdr, killing bernstein or watcher processes, removing .sdd or .agents/build/runs, git worktree add/remove and git reset on this root or its .sdd worktrees, in-place edits of files under .agents/build) are routine"
+    ]
+  }
+}

@@ -5,12 +5,44 @@ description: "Stage 1 of the build workflow: turn an idea into docs/spec.md. Int
 
 # build-design
 
-Output: `docs/spec.md` (tracked; section numbers frozen once a plan cites them) and `.agents/build/runs/<run>/ledger.md` opened with the spec sha256.
+Output: `docs/spec.md` (tracked; section numbers frozen once a plan cites them)
+and `.agents/build/runs/<slug>/ledger.md` opened with the spec sha256.
 
-1. Orient: read the repo's AGENTS.md/CLAUDE.md, the existing `docs/spec.md` if any, and the last run's `handoff.md`.
-2. Interview: the questions that change the design, three to five, grill-me style. Decisions are recorded with the rejected alternative.
-3. Draft: fan out section drafts to parallel Opus subagents (`model: opus`), each given the decisions and the sections it owns. The driver decides; subagents write.
-4. Critic: one fresh Opus subagent, read-only, reads the whole spec and lists contradictions, undefined terms, invariants without a check. Blocking findings are edits; rerun until clean.
-5. Close: commit `docs/spec.md`, write the run dir and ledger, offer `/build-plan <run dir>`.
+Pick `<slug>` here, one lowercase word or two joined by `-`. It is the run
+directory name AND the plan's `name:` in stage 2 AND the plan file name: the
+tool derives the run dir from the plan's `name:`, so they cannot differ. Every
+later stage is invoked as `/build-<stage> .agents/build/runs/<slug>`.
+
+1. Orient:
+
+       cat CLAUDE.md AGENTS.md 2>/dev/null; cat docs/spec.md 2>/dev/null
+       ls .agents/build/runs/*/handoff.md 2>/dev/null
+
+2. Interview: the three to five questions that change the design, grill-me
+   style, one message. Record each answer as a decision with the alternative it
+   rejected; those lines are what the drafters are given.
+3. Draft: one Opus subagent per top-level spec section, at most four in
+   parallel, `model: opus`. Give each: the decisions verbatim with "do not
+   re-litigate", the one section it owns with its exact heading, the existing
+   spec's voice, "ASCII only, no em-dashes", a line cap, and "return ONLY the
+   finished markdown section as your final message; write no files". The driver
+   pastes the returned sections into `docs/spec.md`. Never let two subagents own
+   one section, and never let one write the file.
+4. Critic: one fresh Opus subagent, read-only, given the whole spec plus the
+   code it describes: "list contradictions, undefined terms, and invariants with
+   no check behind them; blocking findings only; write no files". Blocking
+   findings become driver edits; rerun until a round warrants no edits. One
+   round is normal for a small spec.
+5. Close:
+
+       git add docs/spec.md && git commit -m "docs(spec): <what changed>"
+       mkdir -p .agents/build/runs/<slug>
+       printf -- "- %s design: spec.md sha256=%s sections <n, n.m>\n" \
+         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(shasum -a 256 docs/spec.md | cut -d' ' -f1)" \
+         >> .agents/build/runs/<slug>/ledger.md
+
+   Then offer `/build-plan .agents/build/runs/<slug>`.
 
 Rules: ASCII only; the spec changes only through this skill; never mid-plan.
+Number sections `## <n>. <title>` -- readiness resolves brief citations against
+exactly that pattern.

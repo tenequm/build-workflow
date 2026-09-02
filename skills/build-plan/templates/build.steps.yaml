@@ -1,0 +1,52 @@
+# Sidecar for build.yaml: per-step build-workflow options keyed by step title.
+#
+# `cli` picks the executor and is authoritative: Bernstein's plan schema has no `cli`
+# key and only warns on one in the plan, so the adapter reads the choice here. Values:
+# codex, claude, agy, fake. The rule, from the 2026-08-31 evals (Codex 18 certain defects
+# over seven cases, Opus 5 two):
+#   claude  seam and interface steps - a contract, a schema, anything a later phase
+#           builds against, and every judge step
+#   codex   bulk steps inside one package where the shape is already decided
+#   agy     shadow lane only (`shadow: agy`), never in the chain
+#   fake    plumbing test only: a shell script in the pane, no model. Never in a real plan.
+defaults:
+  # The integration branch, not a sha: a step's diff, its allowlist check and the judge's
+  # patch are all `git diff <base>`, and after an earlier step merges, a fixed sha shows
+  # that step's files as this one's changes (measured: a scorer blocked on a sibling's
+  # file). The branch name always names this step's real starting point.
+  base: <integration branch>
+  gate_cmd: just check
+  cli: codex
+  shadow: null            # agy to run Gemini Flash beside every step; set per step for seam steps only
+  judge: optional         # required = pre-merge blind_judge gate; optional = judge-N step after merge; none
+  fake_touch: FAKE.md     # only read by the herdr-fake executor: the file its script appends to
+
+steps:
+  "phase-1a: <what>":
+    brief: briefs/phase-1a.md
+    report: .agents/phase-1a.md
+    cli: claude              # seam step
+    shadow: agy
+    judge: optional
+  "phase-1b: <what else>":
+    brief: briefs/phase-1b.md
+    report: .agents/phase-1b.md
+    judge: optional
+  "judge-1: blind review of phase-1":
+    brief: briefs/judge-1.md
+    report: .agents/blind-review.md   # MUST be exactly this: the verdict parser reads
+                                      # <worktree>/.agents/blind-review.md and nothing else
+    cli: claude
+    judges: "phase-1a: <what>"  # presence of `judges` marks this a judge step: its watcher
+                                # parses the verdict instead of running the scorer. It names
+                                # the sibling whose base and archived diff stage the judge
+                                # worktree; the brief points the judge at every sibling report.
+  "phase-2: <what>":
+    brief: briefs/phase-2.md
+    report: .agents/phase-2.md
+  "fix-1: judge findings on phase-1":
+    brief: briefs/fix-1.md
+    report: .agents/fix-1.md
+  "polish-1: cleanliness and docs on phase-1 files":
+    brief: briefs/polish-1.md
+    report: .agents/polish-1.md

@@ -1,0 +1,45 @@
+# bernstein.yaml template for a target repo. Copy to the repo root (tracked).
+#
+# COMMIT THIS FILE BEFORE THE FIRST RUN. The built-in `run_config` gate refuses any
+# change that touches run configuration, so an uncommitted bernstein.yaml shows up in
+# the agent's changed-file set and blocks the merge of work that never touched it.
+goal: "<run through plans; this goal is unused when running --from-plan>"
+cli: herdr-claude
+# Chain width. 4 concurrent executors is what one Claude Max subscription and one
+# working set sustain: more crowds the subscription's rate limit and pushes siblings
+# into sharing files, which readiness refuses and the merge would serialise anyway.
+max_agents: 4
+
+# Each adapter locks its own model and effort (adapter.py), so these must agree with
+# the lock or the adapter overrides them. Naming them here keeps Bernstein's routing
+# decisions and the manifest honest about what actually ran.
+role_model_policy:
+  backend:  { cli: herdr-claude, model: claude-opus-5, effort: high }
+  reviewer: { cli: herdr-claude, model: claude-opus-5, effort: high }
+  qa:       { cli: herdr-codex, model: gpt-5.6-sol, effort: high }
+  docs:     { cli: herdr-codex, model: gpt-5.6-sol, effort: high }
+
+quality_gates:
+  enabled: true
+  cache_enabled: false
+  # Bernstein's seed parser validates pipeline names against VALID_GATE_NAMES
+  # (core/config/seed_parser.py:1916) and never consults the bernstein.gates
+  # entry-point registry, so `scorer` and `blind_judge` are rejected here even
+  # though gate_runner would run them. Both are driven from the plan instead:
+  # the scorer as each step's completion_signal, the judge as a judge-N step.
+  pipeline:
+    - { name: "run_config",  required: true, condition: "always" }
+  # Gate changed-files are `git diff --name-only <base_ref>..HEAD` in the agent's
+  # worktree. The default "main" carries every commit the integration branch is ahead
+  # by, so gates judge the branch rather than the step. Set it to the branch this run
+  # merges into -- the same branch checked out at the repo root.
+  base_ref: <integration branch, e.g. build/<slug>>
+  cross_model:
+    enabled: false          # our judge replaces the 12k-char cheap-model review
+  intent_verification:
+    enabled: false
+
+tuning:
+  orchestrator:
+    max_agent_runtime_s: 3600
+    stalled_manager_threshold_s: 900
