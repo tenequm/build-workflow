@@ -21,7 +21,8 @@ failed. So the watcher waits until the completion is observed, which arrives eit
 `closed` on the task or as the SIGTERM Bernstein sends to reap it before merging.
 
 Exit 0 on a completed task, 2 on a blocked gate or blocked agent, 1 if the agent
-vanished without a report or the completion was never observed.
+vanished without a report or the completion was never observed. Every block also fails
+the task on the server, so the run advances instead of waiting for the reaper.
 """
 
 from __future__ import annotations
@@ -99,36 +100,83 @@ def complete_task(root: Path, task_id: str, summary: str) -> bool:
     return False
 
 
+def fail_task(root: Path, task_id: str, reason: str) -> bool:
+    """Mark the task failed so a block ends the step instead of stalling the run.
+
+    `bernstein task` has no `fail` verb (only complete/suspend/resume/list-suspended),
+    so this posts to the same task-server front door the CLI uses, `/tasks/<id>/fail`
+    (core/routes/task_crud.py:1673). Upstream that is not a dead end: the orchestrator's
+    tick loop offers a failed task to `maybe_retry_task`, which requeues it with effort
+    then model escalation up to the task's retry budget, and on exhaustion records the
+    title in the cross-run quarantine store (task_lifecycle.py:550-625) so later runs
+    skip it. Leaving the task open instead left the run waiting for the 30 min reaper.
+    """
+    data = _server(root, "post", f"/tasks/{task_id}/fail", {"reason": reason[:2000]})
+    print(f"{ledger.now()} task fail -> {data.get('status') if data else 'no response'}", flush=True)
+    return bool(data)
+
+
 def task_status(root: Path, task_id: str) -> str:
     """Task status straight from the run's own task server, via Bernstein's helper."""
+    data = _server(root, "get", f"/tasks/{task_id}")
+    return str(data.get("status", "")) if data else ""
+
+
+def _server(root: Path, verb: str, path: str, payload: dict | None = None) -> dict:
     import os
 
     cwd = os.getcwd()
     try:
         os.chdir(root)  # resolve_server_url()/auth_headers() read .sdd/runtime under the cwd
-        from bernstein.cli.helpers import server_get
+        from bernstein.cli.helpers import server_get, server_post
 
-        data = server_get(f"/tasks/{task_id}")
-        return str(data.get("status", "")) if data else ""
+        data = server_post(path, payload or {}) if verb == "post" else server_get(path)
+        return data or {}
     except Exception as exc:  # the server is gone, or never came up
-        print(f"{ledger.now()} status probe failed: {exc}", flush=True)
-        return ""
+        print(f"{ledger.now()} {verb} {path} failed: {exc}", flush=True)
+        return {}
     finally:
         os.chdir(cwd)
 
 
-#: Set once this watcher has posted its own completion, so a reap can be told apart
-#: from a kill that arrived before the gate ever ran.
+#: Set once this watcher has resolved its own task (completed or failed), so a reap can
+#: be told apart from a kill that arrived before the gate ever ran.
 _completed = False
 
 
 def _reaped(_signum: int, _frame: object) -> None:
     """Bernstein terminates the spawned process as the first step of merging the work
-    (spawner_merge.py:1107 reap_subprocess), so a reap AFTER this watcher completed the
+    (spawner_merge.py:1107 reap_subprocess), so a reap AFTER this watcher resolved the
     task is the success case, not a kill. A reap BEFORE it is the opposite: the task was
     resolved without this step's gate, and saying nothing would hide that."""
-    print(f"{ledger.now()} reaped by the orchestrator; completed_by_watcher={_completed}", flush=True)
+    print(f"{ledger.now()} reaped by the orchestrator; resolved_by_watcher={_completed}", flush=True)
     sys.exit(0 if _completed else 1)
+
+
+def block(root: Path, run_dir: Path, task_id: str, step: str, lane: str, reason: str) -> int:
+    """Record the block, fail the task so the run moves on, exit 2.
+
+    A block used to be a bare `return 2`: the task stayed open with no live agent and
+    nothing reopened it, so the run sat until the 30 min reaper. Failing it hands the
+    step back to Bernstein's own retry-then-quarantine path with the reasons attached.
+    After the retry budget the title is quarantined across runs; `bernstein quarantine
+    list` shows it and `bernstein quarantine clear --task "<title>"` releases it, so a
+    re-run needs neither a new run directory nor `rm -rf .sdd`.
+    """
+    global _completed
+    ledger.note(run_dir, f"blocked step={step} lane={lane} {reason}")
+    if task_id:
+        _completed = fail_task(root, task_id, f"{step}: {reason}")
+    return 2
+
+
+def _reasons(detail: dict) -> str:
+    """The blocking findings, short enough for a task fail reason and a ledger line."""
+    keep = ("gate_rc", "allowlist_violations", "new_nolint_without_reason", "deleted_test_files",
+            "report_mismatch", "do_not_merge", "merge_as_is", "review_present", "reason")
+    named = {k: v for k, v in detail.items() if k in keep and v not in (None, [], 0, False)}
+    tail = (detail.get("gate") or {}).get("tail", "")
+    return ", ".join(f"{k}={v}" for k, v in named.items()) + (f"; tail: {tail[-400:]}" if tail else "")
 
 
 def main() -> int:
@@ -146,10 +194,9 @@ def main() -> int:
         print(f"{ledger.now()} {st} report={'yes' if report.exists() else 'no'}", flush=True)
         if st == "blocked":
             blocks += 1
-            ledger.note(run_dir, f"blocked step={a.step} lane={a.lane} agent={a.agent}")
-            return 2
+            return block(root, run_dir, a.task_id, a.step, a.lane, f"agent {a.agent} is blocked")
         if st == "gone" and not report.exists():
-            ledger.note(run_dir, f"agent gone without report step={a.step} lane={a.lane}")
+            block(root, run_dir, a.task_id, a.step, a.lane, f"agent {a.agent} gone without a report")
             return 1
         idle = idle + 1 if (report.exists() and st in IDLE) else 0
         if idle >= 2:
@@ -171,8 +218,7 @@ def main() -> int:
 
     blocked, detail = run_gate(root, wt, a.title)
     if blocked:
-        ledger.note(run_dir, f"gate blocked step={a.step} lane={a.lane} detail={detail}")
-        return 2
+        return block(root, run_dir, a.task_id, a.step, a.lane, f"gate blocked: {_reasons(detail)}")
     if not a.task_id:
         ledger.note(run_dir, f"gate passed step={a.step} lane={a.lane} but no task id in the prompt; not completing")
         return 0

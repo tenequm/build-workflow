@@ -12,6 +12,7 @@ bernstein-herdr = "bernstein_herdr.cli:main"
 herdr-claude = "bernstein_herdr.adapter:HerdrClaudeAdapter"
 herdr-codex = "bernstein_herdr.adapter:HerdrCodexAdapter"
 herdr-agy = "bernstein_herdr.adapter:HerdrAgyAdapter"
+herdr-fake = "bernstein_herdr.fake:HerdrFakeAdapter"
 
 [project.entry-points."bernstein.gates"]
 scorer = "bernstein_herdr.gates.scorer:ScorerGate"

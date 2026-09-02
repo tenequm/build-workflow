@@ -30,11 +30,29 @@ def _spec_sections(spec: Path) -> set[str]:
 def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     lines: list[str] = []
     ok = True
+    base = plan.sidecar.get("defaults", {}).get("base", "HEAD")
 
     def fail(msg: str) -> None:
         nonlocal ok
         ok = False
         lines.append(f"FAIL {msg}")
+
+    # A symlinked agent-instruction file at the root makes Bernstein's
+    # `validate_worktree_isolation` refuse the repo ("points into parent repo mutable
+    # state") even when the target is inside the same worktree. The refusal is silent:
+    # `spawner_core.py:4489` falls back to running EVERY executor at the ROOT on an
+    # `agent/<session>` branch, where the merge target is that same branch and nothing
+    # ever lands on the integration branch (measured, gopost 1a replay). The adapter
+    # refuses that spawn per step; this catches the whole run before a token is spent.
+    for name in ("CLAUDE.md", "AGENTS.md"):
+        f = plan.root / name
+        if f.is_symlink():
+            fail(f"{name} at the repo root is a symlink -> {f.readlink()}; Bernstein refuses worktree "
+                 f"isolation for it and silently runs every executor at the root on an agent branch, "
+                 f"with no merge back. Make it a real file (`cp --remove-destination` the target over it, "
+                 f"or copy the content and drop the link) and commit.")
+        elif f.exists():
+            lines.append(f"PASS {name} is a regular file")
 
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
@@ -82,6 +100,17 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                             subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=plan.root, capture_output=True, check=False)
             if step.judges and step.judges not in {s["title"] for s in plan.steps()}:
                 fail(f"{step.slug}: judges {step.judges!r} which is not a step")
+    # Bernstein content-addresses plan-level `context_files` against the worker's
+    # WORKTREE at spawn, before the adapter writes anything into it -- measured
+    # 2026-09-02: a brief listed here came back `{"reason_code": "missing"}` in the run
+    # journal's context.files_attached for both workers. Only a path in the base tree
+    # reaches a worker, so anything else is a silent no-op and fails here.
+    for c in plan.data.get("context_files") or []:
+        in_base = subprocess.run(["git", "cat-file", "-e", f"{base}:{c}"], cwd=plan.root, capture_output=True, check=False).returncode == 0
+        if in_base:
+            lines.append(f"PASS context_files: {c}")
+        else:
+            fail(f"context_files: {c} is not in base {base}; every worker records it `missing` (run-dir briefs included)")
     for s in plan.steps():
         if plan.step(s["title"]).judge == "required" and not s.get("completion_signals"):
             lines.append(f"NOTE {s['title']}: judge required but no completion_signals (the judge gate runs from bernstein.yaml pipeline)")

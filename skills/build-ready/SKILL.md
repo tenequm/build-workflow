@@ -10,6 +10,7 @@ Input: run dir. Output: `<run>/readiness/ledger.md` and `<run>/readiness/critic-
 1. Mechanical pass: `bernstein-herdr ready --plan .agents/build/plans/<slug>.yaml` runs `templates/readiness.md` as commands (plan validate, briefs present, disjoint ownership across siblings, spec citations resolve, Items/Report/Deviations sections, length cap, every Validation command executed on the base in a temporary worktree) and writes `<run>/readiness/ledger.md` plus `pins.json` (spec, plan, brief hashes). The adapter refuses to start any step whose pins changed. A RED validation command on the base is a brief error unless the brief names that red window.
 2. Critic per brief: fresh Opus subagent, read-only, tries the first item in its head, reports underspecified points, spec contradictions, unvalidatable items, overlaps between briefs.
 3. Edit briefs for blocking findings; rerun the critic; stop when a round warrants no edits. Two rounds is normal.
-4. Record the spec sha256, plan hash and brief hashes; offer `/build-run <run dir>`.
+4. Permissions for the run: copy `templates/claude-settings.local.json` to `<root>/.claude/settings.local.json` if absent (merge the allow lists if present). It scopes the pipeline's allow rules and the auto-mode note to this build root only; nothing goes into user-global settings. The driver session must be started in the build root for it to apply, and subagents inherit it.
+5. Record the spec sha256, plan hash and brief hashes; offer `/build-run <run dir>`.
 
 Never start executors from this skill.

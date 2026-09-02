@@ -25,9 +25,32 @@ def row(run_dir: Path, data: dict) -> None:
         f.write(json.dumps({"ts": now(), **data}, separators=(",", ":")) + "\n")
 
 
+#: Bernstein drops a per-task CLAUDE.md into the tree it hands the agent, and where the
+#: repo keeps CLAUDE.md as a symlink (gopost: `CLAUDE.md -> AGENTS.md`) that write lands
+#: on the target -- a tracked file the executor never opened. Both are orchestrator
+#: writes, so they stay out of the diff the row, the archive and the judge are built from.
+ORCHESTRATOR_FILES = ("CLAUDE.md",)
+
+
+def orchestrator_files(wt: Path) -> tuple[str, ...]:
+    link = wt / "CLAUDE.md"
+    target = link.readlink().name if link.is_symlink() else ""
+    return ORCHESTRATOR_FILES + ((target,) if target else ())
+
+
+#: State directories the orchestrator and this package write. `.agents` holds the brief
+#: and report; `.sdd` and `.claude` are Bernstein's own runtime, invisible inside an
+#: isolated worktree but untracked and diffable when a step runs at the repo root.
+ORCHESTRATOR_PATHS = (".agents", ".sdd", ".claude")
+
+
+def pathspec(wt: Path) -> list[str]:
+    return ["--", ".", *(f":!{p}" for p in ORCHESTRATOR_PATHS), *(f":!{f}" for f in orchestrator_files(wt))]
+
+
 def diff_stats(wt: Path, base: str) -> dict:
     subprocess.run(["git", "add", "-A", "-N", "."], cwd=wt, capture_output=True, check=False)
-    numstat = subprocess.run(["git", "diff", base, "--numstat", "--", ".", ":!.agents"], cwd=wt, capture_output=True, text=True, check=False).stdout
+    numstat = subprocess.run(["git", "diff", base, "--numstat", *pathspec(wt)], cwd=wt, capture_output=True, text=True, check=False).stdout
     subprocess.run(["git", "reset", "-q"], cwd=wt, capture_output=True, check=False)
     ca = cd = ta = td = n = 0
     for line in numstat.splitlines():
@@ -46,8 +69,8 @@ def archive(wt: Path, base: str, dest: Path) -> dict:
     dest.mkdir(parents=True, exist_ok=True)
     run = lambda *a: subprocess.run(a, cwd=wt, capture_output=True, text=True, check=False).stdout
     run("git", "add", "-A", "-N", ".")
-    (dest / "diff.patch").write_text(run("git", "diff", base, "--", ".", ":!.agents"))
-    (dest / "numstat.txt").write_text(run("git", "diff", base, "--numstat", "--", ".", ":!.agents"))
+    (dest / "diff.patch").write_text(run("git", "diff", base, *pathspec(wt)))
+    (dest / "numstat.txt").write_text(run("git", "diff", base, "--numstat", *pathspec(wt)))
     (dest / "status.txt").write_text(run("git", "status", "--porcelain"))
     run("git", "reset", "-q")
     return diff_stats(wt, base)

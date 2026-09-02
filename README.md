@@ -12,8 +12,9 @@ Three parts:
   git@github.com:tenequm/build-workflow.git --skill <name>`.
 - `bernstein_herdr/` - a Python package installed once (`uv tool install
   ./bernstein_herdr` or `pipx`). Registers the herdr executor adapters
-  (`herdr-claude`, `herdr-codex`, `herdr-agy`) and the two gates (`scorer`,
-  `blind_judge`) through Bernstein's entry-point groups. No fork of Bernstein.
+  (`herdr-claude`, `herdr-codex`, `herdr-agy`, and `herdr-fake` -- a shell
+  script in the pane, for testing the chain without a model) and the two gates
+  (`scorer`, `blind_judge`) through Bernstein's entry-point groups. No fork of Bernstein.
 - `templates/` - plan and its sidecar, `bernstein.yaml`, executor, judge and fix
   briefs, the judge prompt and the readiness checklist the skills instantiate
   into a repo's `.agents/build/`.
@@ -32,10 +33,18 @@ docs/spec.md                      the design contract, tracked, changes only via
 
 Design record and the evidence behind it: `docs/2609-02-design.md`.
 
+Replaying a past phase to score an executor: clone the base branch out of
+history, never `git worktree` it. A worktree shares the parent's object store,
+so the merged answer stays reachable and the executor can reproduce it verbatim
+(measured 2026-09-02). Use `git clone --single-branch --no-tags --branch
+<base-branch> <src> <replay-root>` and `git remote remove origin`. Real builds
+are unaffected.
+
 The `bernstein-herdr` command the plan's completion signals call:
 
 ```
 bernstein-herdr ready [--plan <yaml>]          readiness checks and source pins
+bernstein-herdr run-config                      run_config.json, run port, stale-server/stale-orchestrator and base_ref refusals
 bernstein-herdr scorer --step "<title>"         scripted gate, run in the worktree
 bernstein-herdr judge-verdict --step "<title>"  completion signal of a judge step
 bernstein-herdr agy-session <db>                Antigravity session decoder

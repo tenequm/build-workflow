@@ -5,6 +5,9 @@
 # the agent's changed-file set and blocks the merge of work that never touched it.
 goal: "<run through plans; this goal is unused when running --from-plan>"
 cli: herdr-claude
+# Chain width. 4 concurrent executors is what one Claude Max subscription and one
+# working set sustain: more crowds the subscription's rate limit and pushes siblings
+# into sharing files, which readiness refuses and the merge would serialise anyway.
 max_agents: 4
 
 # Each adapter locks its own model and effort (adapter.py), so these must agree with

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -31,16 +32,29 @@ TEST_FILE = re.compile(r"_test\.go$|\.test\.ts$|\.spec\.ts$")
 # Written into the tree by the orchestrator or by this adapter, never by the executor:
 # Bernstein's per-task CLAUDE.md and .sdd state, and our own brief/report under .agents.
 ORCHESTRATOR_PATHS = (".agents/", ".sdd/", ".claude/")
-ORCHESTRATOR_FILES = ("CLAUDE.md",)
 
 
-def _authored(path: str) -> bool:
-    return not path.startswith(ORCHESTRATOR_PATHS) and path not in ORCHESTRATOR_FILES
+def _authored(path: str, orchestrator_files: tuple[str, ...]) -> bool:
+    return not path.startswith(ORCHESTRATOR_PATHS) and path not in orchestrator_files
 
 
-def _sh(cmd: str, cwd: Path) -> tuple[int, str]:
-    p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, capture_output=True, text=True, check=False)
+def _sh(cmd: str, cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
+    p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, capture_output=True, text=True, check=False,
+                       env={**os.environ, **env} if env else None)
     return p.returncode, (p.stdout + p.stderr)[-6000:]
+
+
+def lint_env(worktree: Path) -> dict[str, str]:
+    """A lint cache private to this worktree.
+
+    golangci-lint's shared default cache is what let a report claim a clean run over
+    files that had issues, and two gates running at once would race on it. A cache under
+    the worktree is cold for a step's first gate, warm only for its own retry, and dies
+    with the worktree -- so `cache clean` before every gate is no longer needed.
+    """
+    cache = worktree / ".sdd" / "lintcache"
+    cache.mkdir(parents=True, exist_ok=True)
+    return {"GOLANGCI_LINT_CACHE": str(cache)}
 
 
 def score(worktree: Path, task_title: str, changed_files: list[str] | None = None) -> tuple[bool, dict]:
@@ -49,8 +63,7 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     gate_cmd = plan.sidecar.get("defaults", {}).get("gate_cmd", "just check")
     f: dict = {"step": step.slug, "gate_cmd": gate_cmd}
 
-    lint_clean = "if [ -f go.mod ] && command -v golangci-lint >/dev/null 2>&1; then golangci-lint cache clean >/dev/null 2>&1 || true; fi"
-    rc, out = _sh(f"{lint_clean}; {gate_cmd}", worktree)
+    rc, out = _sh(gate_cmd, worktree, lint_env(worktree))
     f["gate"] = {"rc": rc, "tail": out[-1200:]}
     lint_issues = re.findall(r"(\d+) issues?\.", out)
     f["lint_issues_measured"] = int(lint_issues[-1]) if lint_issues else None
@@ -59,8 +72,10 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
         tracked = _sh(f"git diff --name-only {step.base} -- . ':!.agents'", worktree)[1].splitlines()
         untracked = _sh("git ls-files --others --exclude-standard -- . ':!.agents'", worktree)[1].splitlines()
         changed_files = sorted({l for l in tracked + untracked if l})
+    orchestrator_files = ledger.orchestrator_files(worktree)
     f["allowlist_violations"] = [
-        c for c in changed_files if step.files and _authored(c) and not any(fnmatch.fnmatch(c, g) for g in step.files)
+        c for c in changed_files
+        if step.files and _authored(c, orchestrator_files) and not any(fnmatch.fnmatch(c, g) for g in step.files)
     ]
 
     _, diff = _sh(f"git diff {step.base} -- . ':!.agents'", worktree)

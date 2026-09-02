@@ -10,7 +10,11 @@ Sidecar shape:
     defaults: {base: <ref>, shadow: null, judge: required|optional|none}
     steps:
       "<step title>": {brief: briefs/<step>.md, report: .agents/<step>.md, base: <ref>,
-                       shadow: agy|null, judges: "<phase title>", judge: required|optional|none}
+                       cli: codex|claude|agy, shadow: agy|null, judges: "<phase title>",
+                       judge: required|optional|none}
+
+`cli` is the authoritative executor choice: Bernstein only warns on a per-step `cli:` in
+the plan (its schema has no such key), so the adapter reads it from here.
 """
 
 from __future__ import annotations
@@ -30,7 +34,26 @@ TASK_ID = re.compile(r"\(id=([^)]+)\)")
 
 
 def repo_root(start: Path | None = None) -> Path:
-    base = Path(start or Path.cwd())
+    """The root of the plan this path belongs to.
+
+    The nearest enclosing directory that holds `.agents/build/plans` wins, because the
+    design's unit is one plan per repo root and a second concurrent plan gets its own
+    TOP-LEVEL worktree. `--git-common-dir` cannot see that: from inside any linked
+    worktree it points at the main checkout, so a plan root that is itself a worktree
+    (and every Bernstein worktree it spawns) resolved to the wrong repository. The
+    common dir stays as the fallback for a path with no plan above it.
+
+    Candidates under a `.sdd` or `.agents` directory are skipped. The plan is tracked, so
+    an executor worktree at `<root>/.sdd/worktrees/<id>` carries its own committed copy;
+    without the skip a step resolved to that copy and, on an uncommitted plan edit, died
+    with "step not in plan".
+    """
+    base = Path(start or Path.cwd()).resolve()
+    for d in (base, *base.parents):
+        if {".sdd", ".agents"} & set(d.parts):
+            continue
+        if (d / ".agents" / "build" / "plans").is_dir():
+            return d
     out = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=base, capture_output=True, text=True, check=True).stdout.strip()
     git_dir = Path(out)
     return (git_dir if git_dir.is_absolute() else base / git_dir).resolve().parent
@@ -48,6 +71,7 @@ class Step:
     brief: Path
     report_rel: str
     base: str
+    cli: str | None
     shadow: str | None
     judges: str | None
     judge: str
@@ -83,6 +107,7 @@ class Plan:
             brief=self.run_dir / s.get("brief", f"briefs/{slug}.md"),
             report_rel=s.get("report", f".agents/{slug}.md"),
             base=s.get("base", d.get("base", "HEAD~1")),
+            cli=s.get("cli", d.get("cli")),
             shadow=s.get("shadow", d.get("shadow")),
             judges=s.get("judges"), judge=s.get("judge", d.get("judge", "optional")),
             run_dir=self.run_dir, plan_path=self.path, raw=raw,
