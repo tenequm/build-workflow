@@ -289,3 +289,68 @@ Whether `claude-agent-acp` runs on the Max subscription; Symphony's Elixir
 internals beyond the survey; Teamwork's role prompts (never published); the
 herdr socket API in practice (CLI used throughout); Bernstein's gate and merge
 paths end to end with our adapter (the first test in the design doc).
+
+## Addendum, 2026-09-02 (evening)
+
+Added after the herdr-adapter stages, the native spike and a full read of the
+Bernstein docs set. Sources: `spike-report.md`, `stage1-report.md` through
+`stage6-report.md`, `bernstein-docs-review.md`, `agy38-report.md` and
+`native-migration-plan.md` in the session scratchpad.
+It supersedes section 11's "herdr adapter only" line: executors and judges now
+run through Bernstein's native adapters (see "Why native adapters" in
+`docs/2609-02-design.md`).
+
+### Bernstein docs vs the code we measured (`bernstein-docs-review.md`)
+
+- **Documented, not wired for us: stream signals.** `docs/adapters/stream_signals.md`
+  defines a `BERNSTEIN:<KIND>` stdout grammar as the supported way a spawned process
+  reports completion. Nothing in our path emits or consumes it: native adapters
+  complete through the `git-diff` output mode (commit plus process exit), and
+  plan-level `completion_signals`, documented in `architecture/plans.md` with six
+  types, never reach the task server because the planner omits them from the task
+  POST (`stage1-report.md`).
+- **Documented, rejected by the seed parser: plugin gate names.**
+  `architecture/quality-pipeline.md` shows a custom gate named directly in
+  `quality_gates.pipeline` and registered through the `bernstein.gates` entry point,
+  and `gate_runner.py` would accept it, but `seed_parser.py` validates pipeline names
+  against a hardcoded `VALID_GATE_NAMES` that ignores the registry
+  (`stage1-report.md`). Our gate therefore rides the built-in `tests` step with
+  `command_override`.
+- **Documented and true:** per-step `cli`/`model`/`effort` in the plan
+  (`workflows/per-step-routing.md`; the route is auditable in
+  `.sdd/traces/<task_id>.jsonl`, not in our own argv), `--port N` with
+  `.sdd/runtime/server.port` for a second run on the same host,
+  `bernstein quarantine list|clear --task TITLE` in place of `rm -rf .sdd`, and
+  `quality_gates.base_ref` as the knob for the gate's changed-file set.
+- **Documented, true, and still not enough: `merge_strategy`.** The key is parsed
+  from `bernstein.yaml` and appears in `config_snapshot.json`, but the approval gate
+  is built from `.sdd/runtime/run_config.json` alone
+  (`orchestrator.py:817-832`, `:7126-7134`), and nothing in the tree writes that file
+  from the seed or from `--merge` (`stage2-report.md`, `stage3-report.md`). Our
+  `run-config` keeps writing it.
+
+### Contamination rule for replays
+
+A replay measures the executor only if the answer is unreachable from its checkout.
+`git worktree add` shares the parent object store, so the merged answer commit stays
+reachable: the gopost 1a replay reproduced it byte for byte and measured nothing
+(`stage2-report.md`). The rule, applied from the 3.8 round onward: build each replay
+root with `git clone --single-branch --no-tags --branch <base>`, then
+`git remote remove origin`, and verify by ancestor count and by
+`git cat-file -e <answer-sha>` failing. Single-branch plus no-tags cuts the
+descendant history; removing the remote stops a later fetch from bringing it back.
+
+### Gemini 3.8 Flash (high), five cases (`agy38-report.md`)
+
+Ranked 4th, 3rd, 3rd, 2nd and 4th in fields of four to six, 15 certain defects, never
+first. It fixes 3.7's two discipline failures (a skipped lint gate on 1b, inert tests
+on D) at about 1.3x 3.7's wall and 2x its fresh input tokens. The standing split is
+unchanged: Opus 5 on seam and design briefs, Codex on exact-line and transfer briefs,
+agy on neither.
+
+### Judge-family caveat on cross-round ranks
+
+Round 2 was Fable-judged and round 3 Opus-judged. On identical diffs the Opus judges
+counted more defects and ranked the Opus 5 executor first in 4 of 5 cases, where Fable
+ranked Codex first in 2 of 5. Ranks compare within a round only; any table that mixes
+rounds is comparing judges as much as executors.
