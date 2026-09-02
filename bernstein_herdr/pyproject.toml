@@ -1,0 +1,22 @@
+[project]
+name = "bernstein-herdr"
+version = "0.1.0"
+description = "herdr executor adapters and quality gates for Bernstein"
+requires-python = ">=3.12"
+dependencies = ["bernstein"]
+
+[project.scripts]
+bernstein-herdr = "bernstein_herdr.cli:main"
+
+[project.entry-points."bernstein.adapters"]
+herdr-claude = "bernstein_herdr.adapter:HerdrClaudeAdapter"
+herdr-codex = "bernstein_herdr.adapter:HerdrCodexAdapter"
+herdr-agy = "bernstein_herdr.adapter:HerdrAgyAdapter"
+
+[project.entry-points."bernstein.gates"]
+scorer = "bernstein_herdr.gates.scorer:ScorerGate"
+blind_judge = "bernstein_herdr.gates.blind_judge:BlindJudgeGate"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
