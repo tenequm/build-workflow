@@ -13,7 +13,10 @@ templates and skills the driver works from.
 npx -y skills add git@github.com:tenequm/build-workflow.git -y \
   --skill build-design --skill build-plan --skill build-ready --skill build-run --skill build-close
 git clone git@github.com:tenequm/build-workflow.git ~/pj/build-workflow   # skip if present
-uv tool install bernstein --with ~/pj/build-workflow/bernstein_herdr
+git clone git@github.com:tenequm/bernstein.git ~/pjv/sipyourdrink-ltd/bernstein \
+  && git -C ~/pjv/sipyourdrink-ltd/bernstein checkout fix/warm-pool-empty-worktree   # patched engine, see docs
+uv cache clean bernstein && uv tool install ~/pjv/sipyourdrink-ltd/bernstein \
+  --with ~/pj/build-workflow/bernstein_herdr --force --reinstall   # NEVER from PyPI: 3.19.0 runs agents at the repo root
 grep -q 'model_reasoning_effort = "high"' ~/.codex/config.toml \
   || echo 'model_reasoning_effort = "high"' >> ~/.codex/config.toml   # codex exec has no effort flag
 git checkout -b build/<slug>                        # integration branch, never main
@@ -66,7 +69,7 @@ Three parts:
   close. Installed per project with `npx skills add
   git@github.com:tenequm/build-workflow.git --skill <name>`.
 - `bernstein_herdr/` - a Python package installed once, INTO Bernstein's own
-  environment (`uv tool install bernstein --with ./bernstein_herdr`); installed
+  environment (`uv tool install <patched clone> --with ./bernstein_herdr`); installed
   anywhere else its entry points are invisible to Bernstein. It provides the
   `bernstein-herdr` command: readiness, `run-config`, and `gate` -- the single
   quality gate Bernstein runs in each agent worktree before the merge, wired
