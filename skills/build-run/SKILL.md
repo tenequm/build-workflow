@@ -75,6 +75,10 @@ its worktree before the merge. All commands run from the repo root.
        git branch --list 'salvage/*'
        git log --oneline <base>..salvage/<agent>   # what the step actually did
 
+   A `salvage/<agent>` branch alone does NOT mean a block: Bernstein also
+   salvages untracked leftovers after a SUCCESSFUL merge. The block signals are
+   the gate's `blocked=true` row and `refused_merges.jsonl`; check those first.
+
    The gate archives the diff and writes its row on the blocking path too, so
    the evidence is complete before you look. `bernstein quarantine list` is
    EMPTY after a block -- do not wait for a retry that never comes. The most

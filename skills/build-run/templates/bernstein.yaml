@@ -113,3 +113,8 @@ tuning:
   orchestrator:
     max_agent_runtime_s: 3600
     stalled_manager_threshold_s: 900
+
+# internal_llm_provider: Bernstein otherwise preflights an openrouter_free provider for
+# its own internal LLM calls and warns on every run; we drive every model through the
+# adapters, so it needs none.
+internal_llm_provider: none
