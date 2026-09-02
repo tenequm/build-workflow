@@ -4,7 +4,7 @@
   bernstein-herdr run-config [--plan <yaml>]                run_config.json, run port, base_ref + base_sha
   bernstein-herdr gate                                     THE quality gate: run by Bernstein from the agent worktree
   bernstein-herdr scorer --step "<title>"                  scorer gate in the current worktree; exit 0/1
-  bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the review blocks
+  bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the verdict is `do not merge`
   bernstein-herdr agy-session <db> [name] [--steps]        timing and tokens from an Antigravity conversation DB
 """
 
@@ -84,8 +84,10 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
 
     - the run needs a port of its own; the chosen one is printed as the `--port` to pass
       and written to `.sdd/runtime/server.port`, which is where `resolve_server_url()`
-      (cli/helpers.py:152) and therefore the watcher's own status and fail probes read
-      it, so nothing else has to be told about it;
+      (cli/helpers.py:152) reads it for `bernstein status` at the root. Agents do NOT
+      see it: their prompt and the claude hook URL come from `BERNSTEIN_SERVER_URL`
+      (spawner_core._resolve_task_server_url, default 8052), so the run must be
+      launched with that variable set to the same port, as the printed line shows;
     - a task server answering on this repo's recorded port is a live run of the same
       plan, so this refuses rather than joining it;
     - and any other `bernstein` process whose argv or cwd names this root is an
@@ -220,7 +222,8 @@ def gate(argv: list[str]) -> int:
     Exit 1 blocks the merge and is TERMINAL: no retry, no escalation, no quarantine -- the
     branch goes to `salvage/<agent>` and a row lands in `.sdd/runtime/refused_merges.jsonl`
     (measured). So the failing path archives and writes its ledger row too; nothing runs
-    after it.
+    after it. That is why a judge step exits 1 on `do not merge` ONLY: every other verdict
+    is routing information for `fix-N`, and blocking on it would take `fix-N` with it.
     """
     import json
     import shutil
@@ -253,13 +256,37 @@ def gate(argv: list[str]) -> int:
     except Exception as exc:
         print(f"gate: cannot identify the step for worktree {wt} -- blocking: {exc}")
         return 1
-    # Bernstein invokes the pipeline TWICE per task, about a second apart, so without a
-    # memo every row, archive and ledger line is doubled and the wall_s of the second
-    # copy is wrong. The memo is keyed on (task id, worktree HEAD): the same task at the
-    # same commit is the same verdict, and a genuine re-gate after a repair commit has a
-    # different HEAD and is scored afresh.
+    # Bernstein invokes the pipeline TWICE per task, about a second apart, and RESUMES a
+    # task whose merge already landed, so without a memo every row, archive and ledger
+    # line is doubled and a merged step is re-scored at a HEAD it never merged from. The
+    # memo key is (task id, MERGED SHA or worktree HEAD): the same task at the same commit
+    # is the same verdict, and a task whose recorded pass is already on the integration
+    # branch is finished no matter what its worktree HEAD has become since.
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=wt, capture_output=True, text=True, check=False).stdout.strip()
-    memo = plan.run_dir / "gate-memo" / f"{task['id']}-{head[:12]}.json"
+    cfg_path = plan.run_dir / "bernstein.json"
+    cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {}
+    integration = cfg.get("base_ref") or ""
+
+    def merged(sha: str) -> bool:
+        """`sha` is already on the integration branch."""
+        return bool(integration) and sha != "" and subprocess.run(
+            ["git", "merge-base", "--is-ancestor", sha, integration],
+            cwd=wt, capture_output=True, check=False).returncode == 0
+
+    memo_dir = plan.run_dir / "gate-memo"
+    passed = memo_dir / f"{task['id']}-merged.json"
+    prior = json.loads(passed.read_text()) if passed.exists() else {}
+    already = head if merged(head) else (prior.get("head", "") if merged(prior.get("head", "")) else "")
+    if already:
+        # A resumed session commits again in the same worktree, so its HEAD is new and the
+        # per-head memo misses; without this the step is re-scored against a tree that has
+        # already merged, and the second row blocks a task that is done (measured
+        # 2026-09-02: `phase-1a` merged at 22:25:39, re-gated blocked=true at 22:33:56).
+        print(f"gate: already merged -- {already[:12]} for task {task['id']} is an ancestor of "
+              f"{integration}; nothing to re-score. No new row, no new archive.")
+        ledger.note(plan.run_dir, f"gate {step.slug} already merged at {already[:12]} on {integration}")
+        return 0
+    memo = memo_dir / f"{task['id']}-{head[:12]}.json"
     if memo.exists():
         rec = json.loads(memo.read_text())
         print(f"gate: replaying the recorded result for task {task['id']} at {head[:12]} "
@@ -269,7 +296,12 @@ def gate(argv: list[str]) -> int:
 
     def remember(row: dict, rc: int) -> int:
         memo.parent.mkdir(parents=True, exist_ok=True)
-        memo.write_text(json.dumps({"ts": ledger.now(), "head": head, "rc": rc, "row": row}, separators=(",", ":")))
+        rec = {"ts": ledger.now(), "head": head, "rc": rc, "row": row}
+        memo.write_text(json.dumps(rec, separators=(",", ":")))
+        if rc == 0:
+            # The sha this task passed on. Bernstein merges it moments later, which is what
+            # makes it the durable key for every gate call after the merge.
+            passed.write_text(json.dumps(rec, separators=(",", ":")))
         return rc
 
     wall, wall_src = wall_seconds(task, wt, step.base)
@@ -278,11 +310,16 @@ def gate(argv: list[str]) -> int:
     print(f"gate: step={step.slug} title={task['title']!r} task={task['id']} worktree={wt} head={head[:12]} wall_s={wall} ({wall_src})")
 
     if step.judges:
+        # A judge verdict ROUTES; it does not block. Only `do not merge` (and a missing
+        # review) exits 1. Findings are what the judge is for, and its own diff is the
+        # review file: blocking on findings fails the judge TASK, and `fix-N` -- which
+        # depends on it -- never spawns. See judge.parse_verdict.
         verdict = judge.record_verdict(plan, step, wt)
-        blocked = bool(verdict["block"]) or bool(verdict.get("certain_mentions"))
+        blocked = bool(verdict["block"])
         row = {**common, "gate": "judge", "blocked": blocked, **verdict}
         ledger.row(plan.run_dir, row)
-        ledger.note(plan.run_dir, f"gate {step.slug} judge blocked={blocked} review_present={verdict['review_present']}")
+        ledger.note(plan.run_dir, f"gate {step.slug} judge verdict={verdict['verdict']} certain={verdict['certain']} "
+                                  f"plausible={verdict['plausible']} blocked={blocked} review_present={verdict['review_present']}")
         print(json.dumps(row, separators=(",", ":")))
         return remember(row, 1 if blocked else 0)
 

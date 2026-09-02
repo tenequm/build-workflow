@@ -7,11 +7,11 @@ step title. Both files are tracked under `.agents/build/plans/`; the run directo
 worktree.
 
 Sidecar shape:
-    defaults: {base: <ref>, shadow: null, judge: required|optional|none}
+    defaults: {base: <ref>, gate_cmd: just check, shadow: null, judge: required|optional|none}
     steps:
       "<step title>": {brief: briefs/<step>.md, report: .agents/<step>.md, base: <ref>,
-                       cli: codex|claude|agy, shadow: agy|null, judges: "<phase title>",
-                       judge: required|optional|none}
+                       gate_cmd: <command>, cli: codex|claude|agy, shadow: agy|null,
+                       judges: "<phase title>", judge: required|optional|none}
 
 `cli` is the authoritative executor choice: Bernstein only warns on a per-step `cli:` in
 the plan (its schema has no such key), so the adapter reads it from here.
@@ -71,6 +71,7 @@ class Step:
     brief: Path
     report_rel: str
     base: str
+    gate_cmd: str
     cli: str | None
     shadow: str | None
     judges: str | None
@@ -118,6 +119,11 @@ class Plan:
             brief=self._brief_path(s.get("brief", f"briefs/{slug}.md")),
             report_rel=s.get("report", f".agents/{slug}.md"),
             base=s.get("base", d.get("base", "HEAD~1")),
+            # Per-step, falling back to the sidecar default. A plan whose later phase
+            # leaves a module red drags every earlier phase's gate down to the
+            # intersection of what all of them can pass when one command serves them all
+            # (measured 2026-09-02); a step whose own scope is green gets its own command.
+            gate_cmd=s.get("gate_cmd", d.get("gate_cmd", "just check")),
             cli=s.get("cli", d.get("cli")),
             shadow=s.get("shadow", d.get("shadow")),
             judges=s.get("judges"), judge=s.get("judge", d.get("judge", "optional")),

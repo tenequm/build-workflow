@@ -26,12 +26,30 @@ git diff $BASE..HEAD -- . ':!.agents'
 That diff must be non-empty. If it is empty, stop and say so in the review
 instead of reviewing nothing.
 
+## Your verdict routes; it does not block
+
+Findings are what you are for. The gate exits 0 on every verdict except
+`do not merge`, so a review that lists certain defects still merges -- it has to,
+because `fix-N` depends on this step and reads your review out of the run
+directory. Do not soften a verdict to get the work merged, and do not harden one
+to stop it: `do not merge` means the reviewed work should not be in the branch at
+all and is a decision for the driver, not a fix list.
+
 ## Items
 
 1. Every numbered section of the judge prompt answered with measured evidence.
-2. `.agents/blind-review.md` written and COMMITTED on your branch, ending in a
-   `Verdict:` line that is exactly one of `merge as-is` /
-   `merge after listed fixes` / `do not merge`.
+2. `.agents/blind-review.md` written and COMMITTED on your branch, ending with
+   these three lines, in this order, each on its own line and nothing else on it:
+
+   ```
+   Certain: <count>
+   Plausible: <count>
+   Verdict: <merge as-is | merge after listed fixes | do not merge>
+   ```
+
+   The counts are read by the gate and written into `<run>/judge/<phase>/verdict.json`;
+   `fix-N` routes on `Certain` alone (0 = it completes as a no-op). Count DEFECTS,
+   not the times you used the word. Both counts are required even when they are 0.
 
 ## Original brief
 

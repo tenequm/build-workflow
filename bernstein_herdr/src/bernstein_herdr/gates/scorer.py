@@ -1,7 +1,8 @@
 """Required gate: the scripted scorer. Never trusts the executor's report.
 
 From the task worktree, resolved through the plan sidecar by task title:
-1. the project gate command (sidecar `gate_cmd`, default `just check`) on a clean lint cache
+1. the project gate command (sidecar per-step `gate_cmd`, else `defaults.gate_cmd`,
+   else `just check`) on a clean lint cache
 2. allowlist: changed files vs the step's `files` globs
 3. new `nolint` directives without a reason line; non-ASCII in added authored lines
 4. test files: none deleted without replacement (count of test files non-decreasing)
@@ -60,10 +61,9 @@ def lint_env(worktree: Path) -> dict[str, str]:
 def score(worktree: Path, task_title: str, changed_files: list[str] | None = None) -> tuple[bool, dict]:
     plan = load_plan(root=repo_root(worktree))
     step = plan.step(task_title)
-    gate_cmd = plan.sidecar.get("defaults", {}).get("gate_cmd", "just check")
-    f: dict = {"step": step.slug, "gate_cmd": gate_cmd}
+    f: dict = {"step": step.slug, "gate_cmd": step.gate_cmd}
 
-    rc, out = _sh(gate_cmd, worktree, lint_env(worktree))
+    rc, out = _sh(step.gate_cmd, worktree, lint_env(worktree))
     f["gate"] = {"rc": rc, "tail": out[-1200:]}
     lint_issues = re.findall(r"(\d+) issues?\.", out)
     f["lint_issues_measured"] = int(lint_issues[-1]) if lint_issues else None

@@ -29,6 +29,9 @@ max_agents: 4
 # the persona-free names from that enum:
 #
 #   resolver   = the codex executor  (was `backend`)   bulk and fix steps
+#   ci-fixer   = the SECOND codex executor, for a codex step that runs concurrently with
+#                another codex step: two open tasks that share role+cli+model are batched
+#                into ONE spawn, so the DAG's parallel half needs two codex role names
 #   analyst    = the claude executor (was `backend2`)  seam and interface steps
 #   adversary  = the blind judge     (was `reviewer`)
 #   visionary  = the shadow observer, out of the chain (was `shadow`)
@@ -44,10 +47,14 @@ max_agents: 4
 # per-machine file. Readiness checks it.
 #
 # Parallel siblings that share a role AND a cli AND a model get batched into ONE session
-# (`_groups_can_merge`, tick_pipeline.py:113-127), so give siblings different roles:
-# `resolver` and `analyst` differ by cli, which also keeps them apart.
+# (`_groups_can_merge`, tick_pipeline.py:113-127, packed at :465-491), so give siblings
+# different roles. `resolver` and `analyst` differ by cli too; `resolver` and `ci-fixer`
+# differ only by role, which is enough. Readiness FAILS any two steps that share a role
+# with no dependency path between their stages -- "one step per stage" does not save you,
+# because batching groups every CONCURRENTLY OPEN task.
 role_model_policy:
   resolver:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
+  ci-fixer:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
   analyst:   { cli: claude, model: claude-opus-5,        effort: high }
   adversary: { cli: claude, model: claude-opus-5,        effort: high }
   visionary: { cli: agy,    model: gemini-3.7-flash-high }

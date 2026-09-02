@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from pathlib import Path
@@ -10,6 +11,15 @@ from bernstein_herdr import ledger
 from bernstein_herdr.plan import Plan, Step
 
 CERTAIN = re.compile(r"\bcertain\b", re.I)
+PLAUSIBLE = re.compile(r"\bplausible\b", re.I)
+#: The judge brief asks for these two lines verbatim, because counting the WORDS is
+#: unreliable in both directions: "No defect, `certain` or `plausible`, is attributable
+#: to this diff" contains both and means zero, and a review that discusses one defect
+#: over four paragraphs mentions `certain` four times. A declared count is the number;
+#: the word count is the fallback and is marked as such in the row.
+DECLARED = {label: re.compile(rf"^\s*{label}\s*[:=]\s*(\d+)\b", re.I | re.M) for label in ("certain", "plausible")}
+
+VERDICTS = ("do not merge", "merge after listed fixes", "merge as-is")
 
 
 def judged_step(plan: Plan, step: Step) -> Step:
@@ -23,6 +33,10 @@ def record_verdict(plan: Plan, step: Step, worktree: Path) -> dict:
     Shared by the judge step's watcher and the `judge-verdict` CLI, which name the
     step from opposite ends: the CLI is given the phase under review, the watcher the
     judge step that reviews it.
+
+    `verdict.json` beside the copied review is what `fix-N` reads: the fix brief needs
+    the counts and the verdict without re-parsing prose, and a `certain` of 0 is what
+    turns that step into a no-op.
     """
     judged = judged_step(plan, step)
     dest = plan.run_dir / "judge" / judged.slug
@@ -32,27 +46,43 @@ def record_verdict(plan: Plan, step: Step, worktree: Path) -> dict:
         src = worktree / ".agents" / name
         if src.exists():
             shutil.copy(src, dest / name)
+    (dest / "verdict.json").write_text(json.dumps({"ts": ledger.now(), "judge_step": step.slug, **verdict}, indent=2))
     ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{judged.slug}-judge", "step": judged.slug,
                               "gate": "judge_step", "evidence": "verified", **verdict})
     return verdict
 
 
-def parse_verdict(review: Path) -> dict:
-    """The judge's own three-way verdict decides; only `merge as-is` clears the gate.
+def _declared(text: str, label: str) -> int | None:
+    m = DECLARED[label].search(text)
+    return int(m.group(1)) if m else None
 
-    Counting the word "certain" across the whole review looked equivalent and is not:
-    a review whose defect section reads "No defect, `certain` or `plausible`, is
-    attributable to this diff" contains the word and means the opposite, and that
-    blocked a `merge as-is` verdict. The count stays as recorded evidence, scoped to
-    the verdict, but the verdict line is what decides -- and anything short of an
-    explicit `merge as-is` (including `merge after listed fixes`) still blocks.
+
+def parse_verdict(review: Path) -> dict:
+    """The judge's verdict ROUTES the run; only `do not merge` blocks the merge.
+
+    A judge that finds defects has done its job, and its own diff is a review file: it
+    must merge so that `fix-N`, which depends on the judge step, can run at all. Blocking
+    on `merge after listed fixes` or on a `certain` count made criteria "the judge finds
+    the defects" and "fix-N fixes them" jointly unsatisfiable -- a blocked required gate
+    fails the judge TASK (`task_lifecycle.py:3149`) and every dependent goes
+    `blocked_by_failed_dep` (measured 2026-09-02). The counts and the verdict are recorded
+    for the fix step to route on; they never decide the exit code.
+
+    `do not merge` is the one verdict that still blocks: it says the reviewed work should
+    not be in the branch, and a review that says so is a driver decision, not a fix item.
     """
     if not review.exists():
-        return {"review_present": False, "block": True, "reason": "no blind-review.md"}
+        return {"review_present": False, "block": True, "verdict": "missing",
+                "certain": 0, "plausible": 0, "counts_declared": False, "reason": "no blind-review.md"}
     text = review.read_text()
-    verdict = text.split("Verdict", 1)[-1] if "Verdict" in text else text
-    do_not_merge = "do not merge" in verdict.lower()
-    merge_as_is = "merge as-is" in verdict.lower()
-    return {"review_present": True, "certain_mentions": len(CERTAIN.findall(verdict)),
-            "do_not_merge": do_not_merge, "merge_as_is": merge_as_is,
-            "block": do_not_merge or not merge_as_is}
+    tail = text.split("Verdict", 1)[-1] if "Verdict" in text else text
+    low = tail.lower()
+    verdict = next((v for v in VERDICTS if v in low), "unclear")
+    certain, plausible = _declared(text, "certain"), _declared(text, "plausible")
+    declared = certain is not None and plausible is not None
+    return {"review_present": True, "verdict": verdict,
+            "certain": certain if certain is not None else len(CERTAIN.findall(tail)),
+            "plausible": plausible if plausible is not None else len(PLAUSIBLE.findall(tail)),
+            "counts_declared": declared,
+            "do_not_merge": verdict == "do not merge", "merge_as_is": verdict == "merge as-is",
+            "block": verdict == "do not merge"}

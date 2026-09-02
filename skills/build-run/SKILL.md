@@ -44,15 +44,31 @@ its worktree before the merge. All commands run from the repo root.
 3. Launch. `--wait` blocks, so background it and keep the driver free
    (`--from-plan` is a different, seed-driven path; do not use it):
 
+       BERNSTEIN_SERVER_URL=http://127.0.0.1:<N> \
        nohup bernstein run .agents/build/plans/<slug>.yaml --auto-approve --quiet \
          --fresh --wait 1500 --port <N> > <run>/bernstein-run.log 2>&1 &
+
+   `BERNSTEIN_SERVER_URL` is NOT optional. `--port` moves the server only; the
+   URL that Bernstein writes into every agent prompt (`bernstein task complete`,
+   the auth section) and into the claude adapter's hook commands comes from that
+   env var or defaults to 8052 (`spawner_core._resolve_task_server_url`). Without
+   it every executor's completion call goes to 8052: a stale server there answers
+   401, nothing there answers "connection refused", the agent prints either in
+   its final message, Bernstein's log scanner reads it as an auth/api failure and
+   FAILS THE TASK AFTER ITS MERGE LANDED (measured 2026-09-03: three retries and
+   a DLQ entry on a step that had merged at the first attempt).
 
 4. Watch these, in this order, every 30-60 s:
 
        tail -3 <run>/ledger.md                  # one line per gate
        tail -1 <run>/runs.jsonl                 # one row per gate
        tail -5 <run>/bernstein-run.log
-       bernstein status --port <N>              # tasks, agents
+       bernstein status                         # tasks, agents; NO --port option exists.
+                                                # Run it from the repo root: it resolves
+                                                # the server from .sdd/runtime/server.port,
+                                                # which run-config wrote. `--json` for a
+                                                # machine-readable dump, `--mode expert`
+                                                # for everything.
        tail -20 .sdd/runtime/spawner.log        # the argv of every spawn
 
    The run is over when the log prints its `Total tasks / Failed` block and no
@@ -79,6 +95,41 @@ its worktree before the merge. All commands run from the repo root.
    salvages untracked leftovers after a SUCCESSFUL merge. The block signals are
    the gate's `blocked=true` row and `refused_merges.jsonl`; check those first.
 
+   BUT A SALVAGE THAT IS A RENAME OF THE INTEGRATION BRANCH IS A BRANCH-LOSS
+   EVENT, and it is silent. Measured 2026-09-02: a resumed session salvaged AT
+   THE REPO ROOT, committed the whole `.sdd/` tree and renamed the integration
+   branch away --
+
+       git reflog show --all | rg 'renamed refs/heads/'
+       # Branch: renamed refs/heads/build/1a-clean to refs/heads/salvage/resolver-080be7c7
+
+   -- so for the rest of the run no integration branch existed and the next step
+   branched from a polluted HEAD. Check for it the moment any salvage branch
+   appears, and again before you trust a run's result:
+
+       git branch --list '<integration branch>'   # empty = it was renamed away
+       git log --oneline -5 salvage/<agent>       # inspect: is the tip the WIP salvage commit?
+
+   Recovery, after inspecting: drop the salvage commit if it is a `.sdd/` dump,
+   then rename the branch back --
+
+       git branch -m salvage/<agent> <integration branch>
+       git -C . checkout <integration branch>
+
+   -- and restart the run; anything merged after the rename landed on the wrong
+   branch. The engine-side patch in flight is meant to stop the rename happening
+   at all; until it lands, this check is the driver's.
+
+   A MERGED TASK IS NEVER RE-GATED. Bernstein resumes a task whose merge already
+   landed (measured: `phase-1a` merged at 22:25:39 and was re-gated `blocked=true`
+   at 22:33:56, blocking a step that was done). The gate now checks
+   `git merge-base --is-ancestor` of this worktree's HEAD -- and of the sha this
+   task passed on, recorded in `<run>/gate-memo/<task>-merged.json` -- against the
+   integration branch from `<run>/bernstein.json`, and on a hit prints
+   `gate: already merged` and exits 0 with no new row and no new archive. So
+   `runs.jsonl` has exactly one gate row per task; a second row for one task means
+   the check did not fire and is worth reading.
+
    The gate archives the diff and writes its row on the blocking path too, so
    the evidence is complete before you look. `bernstein quarantine list` is
    EMPTY after a block -- do not wait for a retry that never comes. The most
@@ -102,11 +153,20 @@ its worktree before the merge. All commands run from the repo root.
        git status --short                   # a stray CLAUDE.md is the tell
        git checkout <integration branch> && git checkout -- CLAUDE.md
 
-7. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
+7. A JUDGE STEP NEVER BLOCKS ON FINDINGS. `bernstein-herdr gate` on a step with a
+   sidecar `judges:` exits 1 only on the verdict `do not merge` (or a missing
+   `.agents/blind-review.md`); `merge after listed fixes` and any number of
+   certain defects exit 0, so the review merges and `fix-N` spawns. The gate row
+   and `<run>/judge/<phase>/verdict.json` carry `verdict`, `certain` and
+   `plausible`; `fix-N`'s brief routes on `certain` and completes as a no-op
+   (one report commit under `.agents/`, no source change) when it is 0. A
+   `do not merge` IS terminal and IS a decision for you: read the review, then
+   change the plan.
+8. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
    the user as one line with the ledger excerpt and the row; the answer becomes a
    brief edit, a rerun of `/build-ready`, and a re-dispatch.
-8. Never edit `bernstein_herdr` while a run is live. The gate imports it fresh in
+9. Never edit `bernstein_herdr` while a run is live. The gate imports it fresh in
    every worktree, so a mid-run edit changes the gate under a running step.
-9. The driver never edits code. Fixes go to a fresh executor with a brief, a
+10. The driver never edits code. Fixes go to a fresh executor with a brief, a
    file allowlist and a per-item report.
-10. On run end, offer `/build-close <run>`.
+11. On run end, offer `/build-close <run>`.

@@ -15,6 +15,11 @@ defaults:
   # `bernstein-herdr run-config` writes to <run>/bernstein.json and to the git ref
   # refs/build/base/<slug>. See judge-brief.md.
   base: <integration branch>
+  # The default gate command. ANY step may override it with its own `gate_cmd:` below.
+  # Use the override whenever a later phase leaves a module red on purpose: with one
+  # command for the whole plan, every earlier phase's gate is dragged down to the
+  # intersection of what all of them can pass, and a step that is green in its own scope
+  # blocks on a sibling's unfinished module (failure D, 2026-09-02).
   gate_cmd: just check
   judge: optional         # optional = judge-N step after merge; none = no judge
 
@@ -31,6 +36,9 @@ steps:
     brief: .agents/build/plans/<slug>/phase-1b.md
     report: .agents/phase-1b.md
     judge: optional
+    # Scoped to this step's own package, because the rest of the tree is still red until
+    # phase-2 lands. Readiness prints the command each step will run.
+    gate_cmd: just check-<this step's package>
   "judge-1: blind review of phase-1":
     brief: .agents/build/plans/<slug>/judge-1.md
     report: .agents/blind-review.md   # MUST be exactly this: the verdict parser reads
@@ -42,6 +50,9 @@ steps:
   "phase-2: <what>":
     brief: .agents/build/plans/<slug>/phase-2.md
     report: .agents/phase-2.md
+  # fix-1 always runs: the judge's verdict routes and does not block, so this step exists
+  # whatever the review said and completes as a no-op (a report commit and nothing else)
+  # when the review declares `Certain: 0`. See fix-brief.md.
   "fix-1: judge findings on phase-1":
     brief: .agents/build/plans/<slug>/fix-1.md
     report: .agents/fix-1.md

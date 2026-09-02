@@ -22,6 +22,18 @@ from bernstein_herdr.plan import Plan, load_plan, pinned_hashes
 SECTION_CITE = re.compile(r"\b(?:DESIGN|spec)\s+(\d+(?:\.\d+)*)\b")
 CODE_BLOCK = re.compile(r"```\n(.*?)```", re.S)
 
+#: Bernstein's L0 fast-path rules, copied verbatim from `core/quality/fast_path.py:108-125`
+#: (bernstein 3.19.0). `classify_task` matches them against `f"{title} {description}".lower()`
+#: (:162) and a hit NEVER reaches an executor: the task is handed to `ruff` instead, which
+#: on a non-Python repo dies as `Failed to spawn: ruff` and takes every dependent down with
+#: it (measured 2026-09-02: a `phase-1a: lint-fix ...` title lost a whole run in 25 s).
+FAST_PATH = [
+    (re.compile(r"\b(format|formatting|auto-?format|black|prettier)\b"), "formatting -> ruff format"),
+    (re.compile(r"\b(lint|linting|ruff fix|fix lint|autofix)\b"), "lint-fix -> ruff check --fix"),
+    (re.compile(r"\b(sort imports?|isort|import order|organiz\w+ imports?)\b"), "import-sort"),
+    (re.compile(r"\brename\s+['\"]?\w+['\"]?\s+(?:to|->|=>)\s+['\"]?\w+['\"]?"), "rename-symbol"),
+]
+
 
 def _spec_sections(spec: Path) -> set[str]:
     if not spec.exists():
@@ -118,6 +130,50 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         fail("no step in the plan declares a `role:`; dispatch has nothing to resolve -- "
              "add `role: backend` (or backend2/reviewer) to every step and the matching role_model_policy entry")
 
+    # A step whose title (or description -- Bernstein matches both) hits an L0 rule is
+    # never spawned at all; the fast path runs `ruff` in its place.
+    for raw in plan.steps():
+        text = f"{raw.get('title', '')} {raw.get('description', '')}".lower()
+        hit = next(((pat, rule) for pat, rule in FAST_PATH if pat.search(text)), None)
+        if hit:
+            fail(f"{raw.get('title')!r} matches Bernstein's L0 fast path ({hit[1]}, regex {hit[0].pattern} in "
+                 f"core/quality/fast_path.py). The task is routed to ruff instead of an executor and dies "
+                 f"`Failed to spawn: ruff`, taking every dependent with it. Reword the title and description "
+                 f"(no 'lint', 'format', 'autofix', 'sort imports', 'rename X to Y').")
+        else:
+            lines.append(f"PASS {raw.get('title')}: no fast-path rule matches title+description")
+
+    # Two open tasks with the same role are BATCHED into one session (`_groups_can_merge`,
+    # tick_pipeline.py:113-127, packed by `_pack_affinity_groups_into_batches`:465-491), so
+    # two independent steps that share a role never run as two spawns and the DAG's
+    # parallel half is a fiction. Steps in the same stage, or in stages with no dependency
+    # path between them, are concurrently open.
+    stages = plan.data.get("stages", [])
+    deps = {st.get("name"): set(st.get("depends_on") or []) for st in stages}
+    reach: dict[str, set[str]] = {}
+
+    def ancestors(name: str, seen: frozenset[str] = frozenset()) -> set[str]:
+        if name in reach:
+            return reach[name]
+        out: set[str] = set()
+        for d in deps.get(name, ()):
+            if d not in seen:
+                out |= {d} | ancestors(d, seen | {name})
+        reach[name] = out
+        return out
+
+    placed = [(st.get("name"), s) for st in stages for s in st.get("steps", [])]
+    for i, (stage_a, a) in enumerate(placed):
+        for stage_b, b in placed[i + 1:]:
+            if not a.get("role") or a.get("role") != b.get("role"):
+                continue
+            related = stage_a == stage_b or stage_b in ancestors(stage_a) or stage_a in ancestors(stage_b)
+            if stage_a == stage_b or not related:
+                fail(f"{a.get('title')!r} and {b.get('title')!r} both have role {a['role']!r} and no dependency "
+                     f"between their stages ({stage_a!r}, {stage_b!r}), so Bernstein batches them into ONE spawn "
+                     f"and one session -- give one of them a different role from KNOWN_ROLES (with its own "
+                     f"role_model_policy entry), or make one depend on the other")
+
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
     ok &= v.returncode == 0
@@ -157,9 +213,20 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                 if sections and sec not in sections and sec.split(".")[0] not in sections:
                     fail(f"{step.slug}: cites spec section {sec} which does not exist in docs/spec.md; "
                          f"fix the citation or add the section (sections present: {sorted(sections)[:8]})")
+            # A NOTE, never a fail. The report is evidence, not the work: Codex skips
+            # writing one on roughly half its steps whatever the brief says (measured
+            # 2026-09-02, `report_mismatch: ["no report file"]` on a step that otherwise
+            # held its allowlist and passed), and blocking readiness on the brief's wording
+            # buys nothing the scorer does not already record per run.
             if not re.search(r"^##\s*Report", text, re.M) or "Deviations" not in text:
-                fail(f"{step.slug}: brief lacks a `## Report` section with a Deviations rule; add one naming the "
-                     f"report path {step.report_rel} and requiring deviations to be listed")
+                lines.append(f"NOTE {step.slug}: brief does not require a report file with a Deviations rule; "
+                             f"the gate records `report_present` either way -- add a `## Report` section naming "
+                             f"{step.report_rel} if you want the evidence")
+            else:
+                lines.append(f"PASS {step.slug}: brief requires a report at {step.report_rel} with Deviations")
+            lines.append(f"PASS {step.slug}: judge step, gate is the verdict parser, no gate command"
+                         if step.judges else
+                         f"PASS {step.slug}: gate command `{step.gate_cmd}` (base {step.base})")
             if not re.search(r"^##\s*Items", text, re.M):
                 fail(f"{step.slug}: brief lacks an `## Items` section; add the numbered work items the executor must do")
             if len(text) > 16000:

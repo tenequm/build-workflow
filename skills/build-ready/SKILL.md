@@ -28,6 +28,25 @@ place, a line in `<run>/ledger.md`.
      `bernstein.yaml`. Role is the dispatch key: a per-step `cli:` is not in
      Bernstein's plan schema and was measured losing to the policy on the first
      retry, while a role with no entry falls back to the seed's top-level `cli:`.
+   - no step title or description may match Bernstein's L0 fast path
+     (`lint`, `format`/`formatting`/`black`/`prettier`, `autofix`, `sort imports`/
+     `isort`/`import order`, `rename X to Y` -- `core/quality/fast_path.py:108-125`,
+     matched against `f"{title} {description}".lower()`). A match is never spawned:
+     the task goes to `ruff`, which on a non-Python repo dies `Failed to spawn: ruff`
+     and takes every dependent with it. Reword the title.
+   - no two steps may share a `role:` with no dependency path between their stages.
+     Bernstein batches concurrently open tasks by role into ONE spawn
+     (`_groups_can_merge`, `tick_pipeline.py:113-127`), so a same-role parallel pair
+     is one session, not two, and the DAG's parallel half is a fiction. Give one of
+     them another `KNOWN_ROLES` name with its own policy entry (`ci-fixer` is the
+     second codex role in the template for exactly this).
+
+   Two things it now only WARNS about, printing `NOTE` and leaving the run READY:
+   a brief with no `## Report` section (Codex skips the report file on roughly half
+   its steps whatever the brief says; the gate records `report_present` per run
+   instead), and an allowlisted path that does not exist yet. It also prints, per
+   step, the gate command that step will run -- the sidecar's per-step `gate_cmd:`
+   where it has one, else `defaults.gate_cmd`, else `just check`.
 
    Ends `READY` (exit 0) or `NOT READY` (exit 1). `--no-validate` skips only the
    base-worktree command runs. There is no `--help`; a bare `bernstein-herdr`
