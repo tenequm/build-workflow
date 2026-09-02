@@ -14,7 +14,8 @@ steps:
   "judge-1: blind review of phase-1":
     brief: briefs/judge-1.md
     report: .agents/blind-review.md
-    judges: "phase-1: <what>"
+    judges: "phase-1: <what>"   # presence of `judges` marks this a judge step: its watcher
+                                # parses the verdict instead of running the scorer
   "phase-2: <what>":
     brief: briefs/phase-2.md
     report: .agents/phase-2.md

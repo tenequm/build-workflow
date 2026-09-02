@@ -34,21 +34,10 @@ def main() -> int:
         print(f)
         return 1 if blocked else 0
     if cmd == "judge-verdict":
-        from bernstein_herdr.judge import parse_verdict
+        from bernstein_herdr.judge import record_verdict
         from bernstein_herdr.plan import load_plan, repo_root
-        from bernstein_herdr import ledger
         plan = load_plan(root=repo_root(Path.cwd()))
-        step = plan.step(_arg(rest, "--step") or "")
-        review = Path.cwd() / ".agents" / "blind-review.md"
-        v = parse_verdict(review)
-        dest = plan.run_dir / "judge" / step.slug
-        dest.mkdir(parents=True, exist_ok=True)
-        if review.exists():
-            (dest / "blind-review.md").write_text(review.read_text())
-        sc = Path.cwd() / ".agents" / "scorecard.md"
-        if sc.exists():
-            (dest / "scorecard.md").write_text(sc.read_text())
-        ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-judge", "step": step.slug, "gate": "judge_step", "evidence": "verified", **v})
+        v = record_verdict(plan, plan.step(_arg(rest, "--step") or ""), Path.cwd())
         print(v)
         return 1 if v["block"] else 0
     print(__doc__)

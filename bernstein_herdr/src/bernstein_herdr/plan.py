@@ -24,11 +24,16 @@ from pathlib import Path
 import yaml
 
 TASK_LINE = re.compile(r"^### Task \d+: (.+?) \(id=", re.M)
+# Bernstein's own adapters read the task id out of the prompt the same way
+# (adapters/manager.py:51); it is the only channel that carries it to a spawn.
+TASK_ID = re.compile(r"\(id=([^)]+)\)")
 
 
 def repo_root(start: Path | None = None) -> Path:
-    out = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=start or Path.cwd(), capture_output=True, text=True, check=True).stdout.strip()
-    return Path(out).resolve().parent
+    base = Path(start or Path.cwd())
+    out = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=base, capture_output=True, text=True, check=True).stdout.strip()
+    git_dir = Path(out)
+    return (git_dir if git_dir.is_absolute() else base / git_dir).resolve().parent
 
 
 def sha256(path: Path) -> str:
@@ -82,6 +87,10 @@ class Plan:
             judges=s.get("judges"), judge=s.get("judge", d.get("judge", "optional")),
             run_dir=self.run_dir, plan_path=self.path, raw=raw,
         )
+
+    def task_id_from_prompt(self, prompt: str) -> str:
+        m = TASK_ID.search(prompt)
+        return m.group(1) if m else ""
 
     def step_from_prompt(self, prompt: str) -> Step:
         m = TASK_LINE.search(prompt)

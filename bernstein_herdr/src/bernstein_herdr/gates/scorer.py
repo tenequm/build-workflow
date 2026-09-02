@@ -24,9 +24,18 @@ from bernstein.core.quality.gate_runner import GateResult
 from bernstein_herdr import ledger
 from bernstein_herdr.plan import load_plan, repo_root
 
+LINT_RUN = re.compile(r"golangci|\bruff\b|eslint|clippy|\blint(ing|er)?\b", re.I)
 NOLINT = re.compile(r"^\+.*//\s*nolint\b(?!.*\s//\s*\S)", re.M)
 NON_ASCII = re.compile(r"^\+(?!\+\+).*[^\x00-\x7F]", re.M)
 TEST_FILE = re.compile(r"_test\.go$|\.test\.ts$|\.spec\.ts$")
+# Written into the tree by the orchestrator or by this adapter, never by the executor:
+# Bernstein's per-task CLAUDE.md and .sdd state, and our own brief/report under .agents.
+ORCHESTRATOR_PATHS = (".agents/", ".sdd/", ".claude/")
+ORCHESTRATOR_FILES = ("CLAUDE.md",)
+
+
+def _authored(path: str) -> bool:
+    return not path.startswith(ORCHESTRATOR_PATHS) and path not in ORCHESTRATOR_FILES
 
 
 def _sh(cmd: str, cwd: Path) -> tuple[int, str]:
@@ -40,14 +49,19 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     gate_cmd = plan.sidecar.get("defaults", {}).get("gate_cmd", "just check")
     f: dict = {"step": step.slug, "gate_cmd": gate_cmd}
 
-    rc, out = _sh(f"(go tool golangci-lint cache clean >/dev/null 2>&1 || true); {gate_cmd}", worktree)
+    lint_clean = "if [ -f go.mod ] && command -v golangci-lint >/dev/null 2>&1; then golangci-lint cache clean >/dev/null 2>&1 || true; fi"
+    rc, out = _sh(f"{lint_clean}; {gate_cmd}", worktree)
     f["gate"] = {"rc": rc, "tail": out[-1200:]}
     lint_issues = re.findall(r"(\d+) issues?\.", out)
     f["lint_issues_measured"] = int(lint_issues[-1]) if lint_issues else None
 
     if changed_files is None:
-        changed_files = [l for l in _sh(f"git diff --name-only {step.base}", worktree)[1].splitlines() if l]
-    f["allowlist_violations"] = [c for c in changed_files if step.files and not any(fnmatch.fnmatch(c, g) for g in step.files)]
+        tracked = _sh(f"git diff --name-only {step.base} -- . ':!.agents'", worktree)[1].splitlines()
+        untracked = _sh("git ls-files --others --exclude-standard -- . ':!.agents'", worktree)[1].splitlines()
+        changed_files = sorted({l for l in tracked + untracked if l})
+    f["allowlist_violations"] = [
+        c for c in changed_files if step.files and _authored(c) and not any(fnmatch.fnmatch(c, g) for g in step.files)
+    ]
 
     _, diff = _sh(f"git diff {step.base} -- . ':!.agents'", worktree)
     f["new_nolint_without_reason"] = len(NOLINT.findall(diff))
@@ -55,6 +69,7 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     deleted = [l for l in _sh(f"git diff --diff-filter=D --name-only {step.base}", worktree)[1].splitlines() if TEST_FILE.search(l)]
     f["deleted_test_files"] = deleted
 
+    f["lint_expected"] = (worktree / "go.mod").exists() or bool(LINT_RUN.search(out))
     claims = ledger.report_claims(worktree / step.report_rel)
     mismatch = []
     if claims.get("present"):
@@ -62,7 +77,9 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
             mismatch.append("report claims all commands exit 0; measured gate is red")
         if f["lint_issues_measured"] and claims.get("claimed_issue_counts") and all(c == 0 for c in claims["claimed_issue_counts"]):
             mismatch.append(f"report claims 0 issues; measured {f['lint_issues_measured']}")
-        if not claims.get("mentions_lint"):
+        # Only a repo that actually lints can have a missing lint result. Asking every
+        # report for one made "no lint result at all" fire on every non-Go project.
+        if f["lint_expected"] and not claims.get("mentions_lint"):
             mismatch.append("report has no lint result at all")
     else:
         mismatch.append("no report file")
