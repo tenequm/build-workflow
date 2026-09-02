@@ -1,20 +1,19 @@
 """Required gate: the scripted scorer. Never trusts the executor's report.
 
-Checks, in order, from the task worktree:
-1. project gate command (just check, or BUILD_GATE_CMD) on a clean lint cache
-2. allowlist: changed files vs the step's declared files (BUILD_ALLOWLIST, ':'-separated globs)
-3. test count non-decreasing vs the base
-4. revert-proof: every new test fails when the non-test hunks are reverted
-5. no new nolint directives without a reason line
-6. ASCII-only authored text in the diff
-Output: one JSON line in GateResult.details; exit code semantics 0 clean / 1 code / 2 env.
+From the task worktree, resolved through the plan sidecar by task title:
+1. the project gate command (sidecar `gate_cmd`, default `just check`) on a clean lint cache
+2. allowlist: changed files vs the step's `files` globs
+3. new `nolint` directives without a reason line; non-ASCII in added authored lines
+4. test files: none deleted without replacement (count of test files non-decreasing)
+5. report accuracy: the report's claimed exit codes and issue counts vs the measured gate;
+   a claim of clean with a red gate, or a missing lint mention, is `report_mismatch`
+Details are one JSON line; the same line is appended to <run>/runs.jsonl as a gate row.
 """
 
 from __future__ import annotations
 
 import fnmatch
 import json
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -22,13 +21,57 @@ from pathlib import Path
 from bernstein.core.quality.gate_plugins import GatePlugin
 from bernstein.core.quality.gate_runner import GateResult
 
-NOLINT = re.compile(r"^\+.*//\s*nolint\b(?!.*//\s*\S)", re.M)
-NON_ASCII = re.compile(r"^\+.*[^\x00-\x7F]", re.M)
+from bernstein_herdr import ledger
+from bernstein_herdr.plan import load_plan, repo_root
+
+NOLINT = re.compile(r"^\+.*//\s*nolint\b(?!.*\s//\s*\S)", re.M)
+NON_ASCII = re.compile(r"^\+(?!\+\+).*[^\x00-\x7F]", re.M)
+TEST_FILE = re.compile(r"_test\.go$|\.test\.ts$|\.spec\.ts$")
 
 
 def _sh(cmd: str, cwd: Path) -> tuple[int, str]:
     p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, capture_output=True, text=True, check=False)
-    return p.returncode, (p.stdout + p.stderr)[-4000:]
+    return p.returncode, (p.stdout + p.stderr)[-6000:]
+
+
+def score(worktree: Path, task_title: str, changed_files: list[str] | None = None) -> tuple[bool, dict]:
+    plan = load_plan(root=repo_root(worktree))
+    step = plan.step(task_title)
+    gate_cmd = plan.sidecar.get("defaults", {}).get("gate_cmd", "just check")
+    f: dict = {"step": step.slug, "gate_cmd": gate_cmd}
+
+    rc, out = _sh(f"(go tool golangci-lint cache clean >/dev/null 2>&1 || true); {gate_cmd}", worktree)
+    f["gate"] = {"rc": rc, "tail": out[-1200:]}
+    lint_issues = re.findall(r"(\d+) issues?\.", out)
+    f["lint_issues_measured"] = int(lint_issues[-1]) if lint_issues else None
+
+    if changed_files is None:
+        changed_files = [l for l in _sh(f"git diff --name-only {step.base}", worktree)[1].splitlines() if l]
+    f["allowlist_violations"] = [c for c in changed_files if step.files and not any(fnmatch.fnmatch(c, g) for g in step.files)]
+
+    _, diff = _sh(f"git diff {step.base} -- . ':!.agents'", worktree)
+    f["new_nolint_without_reason"] = len(NOLINT.findall(diff))
+    f["non_ascii_added_lines"] = len(NON_ASCII.findall(diff))
+    deleted = [l for l in _sh(f"git diff --diff-filter=D --name-only {step.base}", worktree)[1].splitlines() if TEST_FILE.search(l)]
+    f["deleted_test_files"] = deleted
+
+    claims = ledger.report_claims(worktree / step.report_rel)
+    mismatch = []
+    if claims.get("present"):
+        if rc != 0 and claims.get("claimed_exit_codes") and all(c == 0 for c in claims["claimed_exit_codes"]):
+            mismatch.append("report claims all commands exit 0; measured gate is red")
+        if f["lint_issues_measured"] and claims.get("claimed_issue_counts") and all(c == 0 for c in claims["claimed_issue_counts"]):
+            mismatch.append(f"report claims 0 issues; measured {f['lint_issues_measured']}")
+        if not claims.get("mentions_lint"):
+            mismatch.append("report has no lint result at all")
+    else:
+        mismatch.append("no report file")
+    f["report_mismatch"] = mismatch
+
+    blocked = rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0 or bool(deleted)
+    f["blocked"] = blocked
+    ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-scorer", "step": step.slug, "gate": "scorer", "evidence": "verified", **{k: v for k, v in f.items() if k != "gate"}, "gate_rc": rc})
+    return blocked, f
 
 
 class ScorerGate(GatePlugin):
@@ -45,22 +88,6 @@ class ScorerGate(GatePlugin):
         return "any_changed"
 
     def run(self, changed_files: list[str], run_dir: Path, task_title: str, task_description: str) -> GateResult:
-        findings: dict[str, object] = {}
-        gate_cmd = os.environ.get("BUILD_GATE_CMD", "just check")
-        rc, out = _sh(f"(go tool golangci-lint cache clean 2>/dev/null || true); {gate_cmd}", run_dir)
-        findings["gate"] = {"cmd": gate_cmd, "rc": rc, "tail": out[-800:]}
-
-        allow = [g for g in os.environ.get("BUILD_ALLOWLIST", "").split(":") if g]
-        outside = [f for f in changed_files if allow and not any(fnmatch.fnmatch(f, g) for g in allow)]
-        findings["allowlist_violations"] = outside
-
-        base = os.environ.get("BUILD_BASE_REF", "HEAD~1")
-        _, diff = _sh(f"git diff {base}", run_dir)
-        findings["new_nolint_without_reason"] = len(NOLINT.findall(diff))
-        findings["non_ascii_added_lines"] = len(NON_ASCII.findall(diff))
-
-        blocked = rc != 0 or bool(outside) or findings["new_nolint_without_reason"] > 0
-        return GateResult(
-            name=self.name, status="fail" if blocked else "pass", required=True, blocked=blocked,
-            cached=False, duration_ms=0, details=json.dumps(findings, separators=(",", ":")),
-        )
+        blocked, f = score(run_dir, task_title, changed_files)
+        return GateResult(name=self.name, status="fail" if blocked else "pass", required=True, blocked=blocked,
+                          cached=False, duration_ms=0, details=json.dumps(f, separators=(",", ":")))

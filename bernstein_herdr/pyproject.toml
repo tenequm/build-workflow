@@ -3,7 +3,7 @@ name = "bernstein-herdr"
 version = "0.1.0"
 description = "herdr executor adapters and quality gates for Bernstein"
 requires-python = ">=3.12"
-dependencies = ["bernstein"]
+dependencies = ["bernstein", "pyyaml"]
 
 [project.scripts]
 bernstein-herdr = "bernstein_herdr.cli:main"

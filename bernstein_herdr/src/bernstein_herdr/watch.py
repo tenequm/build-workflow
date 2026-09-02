@@ -1,54 +1,59 @@
-"""Settle watcher: exit 0 when the report file exists and the agent has been idle twice, 20 s apart.
+"""Settle watcher for one executor pane.
 
-Usage: python -m bernstein_herdr.watch <agent-name> <report-path> <log-path> [--archive <base-sha>]
-With --archive, also write diff.patch, numstat.txt and status.txt next to the report (shadow lane).
+Exit 0 once the report file exists and the agent has read idle twice, 20 s apart;
+exit 2 on a blocked agent; exit 1 if the agent vanished without a report.
+On settle: copy the report into <run>/reports/<step>.md (or <run>/shadow/<step>/),
+archive diff/numstat/status, append a runs.jsonl row, close the tab for shadow lanes.
 """
 
 from __future__ import annotations
 
-import subprocess
+import argparse
+import shutil
 import sys
 import time
 from pathlib import Path
 
-IDLE_STATES = {"idle", "done"}
+from bernstein_herdr import herdr, ledger
 
-
-def status(name: str) -> str:
-    out = subprocess.run(["herdr", "agent", "get", name], capture_output=True, text=True, check=False).stdout
-    for token in ("idle", "done", "working", "blocked", "unknown"):
-        if f'"agent_status":"{token}"' in out:
-            return token
-    return "gone"
+IDLE = {"idle", "done"}
 
 
 def main() -> int:
-    name, report, log = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
-    archive_base = sys.argv[sys.argv.index("--archive") + 1] if "--archive" in sys.argv else None
+    ap = argparse.ArgumentParser()
+    for k in ("agent", "worktree", "report", "run_dir", "step", "base", "kind", "model", "started", "lane"):
+        ap.add_argument(f"--{k.replace('_', '-')}", required=True)
+    a = ap.parse_args()
+    wt, run_dir = Path(a.worktree), Path(a.run_dir)
+    report = wt / a.report
     idle = 0
+    blocks = 0
     while True:
-        st = status(name)
-        log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text(f"{time.strftime('%FT%TZ', time.gmtime())} {st} report={'yes' if report.exists() else 'no'}\n")
+        st = herdr.status(a.agent)
+        print(f"{ledger.now()} {st} report={'yes' if report.exists() else 'no'}", flush=True)
         if st == "blocked":
+            blocks += 1
+            ledger.note(run_dir, f"blocked step={a.step} lane={a.lane} agent={a.agent}")
             return 2
         if st == "gone" and not report.exists():
+            ledger.note(run_dir, f"agent gone without report step={a.step} lane={a.lane}")
             return 1
-        if report.exists() and st in IDLE_STATES:
-            idle += 1
-            if idle >= 2:
-                break
-        else:
-            idle = 0
+        idle = idle + 1 if (report.exists() and st in IDLE) else 0
+        if idle >= 2:
+            break
         time.sleep(20)
-    if archive_base:
-        wt = report.parent.parent if report.parent.name == ".agents" else Path.cwd()
-        run = lambda *a: subprocess.run(a, cwd=wt, capture_output=True, text=True, check=False).stdout
-        run("git", "add", "-A", "-N", ".")
-        (wt / "diff.patch").write_text(run("git", "diff", archive_base, "--", ".", ":!.agents"))
-        (wt / "numstat.txt").write_text(run("git", "diff", archive_base, "--numstat", "--", ".", ":!.agents"))
-        (wt / "status.txt").write_text(run("git", "status", "--porcelain"))
-        run("git", "reset", "-q")
+    wall = int(time.time() - float(a.started))
+    dest = run_dir / ("shadow" if a.lane == "shadow" else "reports") / a.step
+    stats = ledger.archive(wt, a.base, dest)
+    if report.exists():
+        shutil.copy(report, dest / "report.md")
+    claims = ledger.report_claims(report)
+    ledger.row(run_dir, {
+        "run_id": f"{run_dir.name}-{a.step}-{a.lane}-{a.kind}", "step": a.step, "lane": a.lane, "base": a.base,
+        "arm": {"agent": a.kind, "model": a.model}, "wall_s": wall, "blocks": blocks, "diff": stats,
+        "report": claims, "worktree": str(wt), "evidence": "reported",
+    })
+    ledger.note(run_dir, f"settled step={a.step} lane={a.lane} wall_s={wall} files={stats['files']}")
     return 0
 
 

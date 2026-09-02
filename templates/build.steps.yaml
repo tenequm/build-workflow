@@ -1,0 +1,26 @@
+# Sidecar for build.yaml: per-step build-workflow options keyed by step title.
+defaults:
+  base: <integration branch or base sha>
+  gate_cmd: just check
+  shadow: null            # agy to run Gemini Flash beside every step; set per step for seam steps only
+  judge: optional         # required = pre-merge blind_judge gate; optional = judge-N step after merge; none
+
+steps:
+  "phase-1: <what>":
+    brief: briefs/phase-1.md
+    report: .agents/phase-1.md
+    shadow: agy
+    judge: optional
+  "judge-1: blind review of phase-1":
+    brief: briefs/judge-1.md
+    report: .agents/blind-review.md
+    judges: "phase-1: <what>"
+  "phase-2: <what>":
+    brief: briefs/phase-2.md
+    report: .agents/phase-2.md
+  "fix-1: judge findings on phase-1":
+    brief: briefs/fix-1.md
+    report: .agents/fix-1.md
+  "polish-1: cleanliness and docs on phase-1 files":
+    brief: briefs/polish-1.md
+    report: .agents/polish-1.md

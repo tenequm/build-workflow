@@ -1,7 +1,14 @@
-# Bernstein plan template. Copy to .agents/build/plans/<slug>.yaml.
-# Stages run in order unless depends_on says otherwise; steps in a stage run in parallel.
-# Per step: cli pins the executor (herdr-claude | herdr-codex | herdr-agy), files is the allowlist
-# (Bernstein turns it into ownership conflict detection), completion_signals is the scorer.
+# Bernstein plan template. Copy to .agents/build/plans/<slug>.yaml (tracked) with its
+# sidecar <slug>.steps.yaml. Stages run in order unless depends_on says otherwise;
+# steps in a stage run in parallel. Bernstein's plan schema is strict, so
+# build-workflow options (brief, report, base, shadow, judge) live in the sidecar.
+#
+# Shape per phase:
+#   phase-N   executor; scorer as its completion signal; merges on pass
+#   judge-N   depends on phase-N; a fresh judge reviews the merged diff; its verdict is the signal
+#   phase-N+1 depends on phase-N ONLY, so it starts while judge-N runs (speculation)
+#   fix-N     depends on judge-N; brief says: read <run>/judge/phase-N, fix certain defects, or complete with "no fix needed"
+#   polish-N  depends on judge-N, optional: cleanliness and docs on phase-N's files only, runs beside phase-N+1
 name: <slug>
 description: <one line>
 cli: herdr-claude
@@ -22,11 +29,9 @@ stages:
         effort: high
         files:
           - <allowlisted path or glob>
-        context_files:
-          - .agents/briefs/phase-1.md
         completion_signals:
           - type: test_passes
-            command: "bernstein-herdr scorer --step phase-1"
+            command: "bernstein-herdr scorer --step 'phase-1: <what>'"
 
   - name: judge-1
     depends_on: [phase-1]
@@ -35,11 +40,11 @@ stages:
         role: reviewer
         cli: herdr-claude
         model: claude-opus-5
+        files: []
         completion_signals:
           - type: test_passes
-            command: "bernstein-herdr blind-judge --step phase-1"
+            command: "bernstein-herdr judge-verdict --step 'phase-1: <what>'"
 
-  # phase-2 depends on phase-1 only: it starts while judge-1 runs (speculation behind the gate).
   - name: phase-2
     depends_on: [phase-1]
     steps:
@@ -49,4 +54,29 @@ stages:
         files: []
         completion_signals:
           - type: test_passes
-            command: "bernstein-herdr scorer --step phase-2"
+            command: "bernstein-herdr scorer --step 'phase-2: <what>'"
+
+  - name: fix-1
+    depends_on: [judge-1]
+    steps:
+      - title: "fix-1: judge findings on phase-1"
+        role: backend
+        cli: herdr-codex
+        files:
+          - <same allowlist as phase-1>
+        completion_signals:
+          - type: test_passes
+            command: "bernstein-herdr scorer --step 'fix-1: judge findings on phase-1'"
+
+  - name: polish-1
+    depends_on: [judge-1]
+    steps:
+      - title: "polish-1: cleanliness and docs on phase-1 files"
+        role: backend
+        cli: herdr-codex
+        priority: 4
+        files:
+          - <same allowlist as phase-1>
+        completion_signals:
+          - type: test_passes
+            command: "bernstein-herdr scorer --step 'polish-1: cleanliness and docs on phase-1 files'"

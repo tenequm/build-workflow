@@ -1,0 +1,27 @@
+# bernstein.yaml template for a target repo. Copy to the repo root (tracked).
+goal: "<run through plans; this goal is unused when running --from-plan>"
+cli: herdr-claude
+max_agents: 4
+
+role_model_policy:
+  backend:  { cli: herdr-claude, model: claude-opus-5, effort: high }
+  reviewer: { cli: herdr-claude, model: claude-opus-5, effort: high }
+  qa:       { cli: herdr-codex }
+  docs:     { cli: herdr-codex }
+
+quality_gates:
+  enabled: true
+  cache_enabled: false
+  pipeline:
+    - { name: "scorer",      required: true, condition: "any_changed" }
+    - { name: "blind_judge", required: true, condition: "any_changed" }   # no-op unless the step's sidecar says judge: required
+    - { name: "run_config",  required: true, condition: "always" }
+  cross_model:
+    enabled: false          # our judge replaces the 12k-char cheap-model review
+  intent_verification:
+    enabled: false
+
+tuning:
+  orchestrator:
+    max_agent_runtime_s: 3600
+    stalled_manager_threshold_s: 900

@@ -10,5 +10,5 @@ Input: a run dir with the spec sha256 in `ledger.md`. Output: `.agents/build/pla
 1. Decompose by dependency graph, not by file list: independent subtasks run in parallel stages; a seam split gets a driver-written interface contract first. Phase length target 15-30 min of executor wall; split longer ones.
 2. Assign executors by shape: seam and investigation steps -> herdr-claude / claude-opus-5; transfer, exact-line and fix steps -> herdr-codex; Flash only as the shadow lane (adapter flag).
 3. Judge nodes: `judge-N` depends on `phase-N`; `fix-N` depends on `judge-N` with condition failed, retry 2; dependents depend on `phase-N` only. `polish-N` optional, non-blocking, files restricted to phase-N's.
-4. Briefs from `templates/brief.md`: allowlist, items with done-criteria, exact validation commands, report format. Length cap; headers.
+4. Briefs from `templates/brief.md` into `<run>/briefs/<step>.md`: allowlist, items with done-criteria, exact validation commands, report format. Judge steps use `templates/judge-brief.md`, fix steps `templates/fix-brief.md`. Length cap 16k; headers. The sidecar `<slug>.steps.yaml` (from `templates/build.steps.yaml`) maps each step title to its brief, report path, base, shadow lane and judge mode.
 5. Write plan and briefs, record hashes in `ledger.md`, offer `/build-ready <run dir>`.
