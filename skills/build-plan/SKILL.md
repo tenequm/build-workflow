@@ -110,8 +110,10 @@ Point each plan `description:` at its tracked brief. A sidecar `brief:` starting
 with `.agents/` resolves from the repo root; other paths resolve from `<run>`.
 A brief edit is a commit.
 
-Copy templates from `.agents/skills/build-plan/templates` for a project install
-or `~/.agents/skills/build-plan/templates` for a global install. Write the
+Copy templates from this skill's own `templates/` directory (under the base
+directory the harness reports for this skill; for older installs,
+`.agents/skills/build-plan/templates` in the project or
+`~/.agents/skills/build-plan/templates`). Write the
 machine plan from `build.yaml`, the sidecar from `build.steps.yaml`, executor
 briefs from `brief.md`, judge briefs from `judge-brief.md` plus
 `judge-prompt.md`, and fixes from `fix-brief.md`. Replace every placeholder and
@@ -208,13 +210,14 @@ Use absolute paths in the real command. Copy ONLY the untracked run directory:
 
 Bootstrap: anything the repo tracks (skills, lock, symlinks) arrives via the
 branch. Copy into the workspace, never committing, only the gitignored local
-state the templates need: `.agents/skills/` and `skills-lock.json` when
+state the templates need. With user-scope skills nothing needs copying; for a
+project-scope install, copy `.agents/skills/` and `skills-lock.json` when
 untracked (template paths must resolve from the workspace root).
 
 Permissions live in the PRIMARY checkout, not the workspace: Claude Code reads
 `.claude/settings*.json` from the main checkout's root for every worktree of
 the repo, and a worktree's own settings file is ignored. Copy
-`.agents/skills/build-plan/templates/claude-settings.local.json` to
+this skill's `templates/claude-settings.local.json` to
 `<primary>/.claude/settings.local.json`, merging allow lists by hand if the
 file exists, and confirm the primary gitignores it. Config reloads on the
 worktree switch, so no session restart is needed.
