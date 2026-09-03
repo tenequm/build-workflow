@@ -44,8 +44,10 @@
 # Shape per phase:
 #   phase-N   executor; the gate runs the scorer in its worktree and merges on pass. Split
 #             into siblings phase-Na, phase-Nb with disjoint file ownership once one step
-#             would own more than ~8 files; siblings must not share a file (readiness fails
-#             an overlapping allowlist) and must not share a role.
+#             would own more than ~8 files; siblings must not share a file and must not
+#             share a role. The planner guarantees the first: readiness compares
+#             allowlists only WITHIN one stage, so with one step per stage nothing checks
+#             sibling overlap for you.
 #   judge-N   depends on EVERY phase-N sibling stage, role adversary; reviews the merged
 #             diff. Mark it by giving the step a `judges:` entry in the sidecar -- that
 #             field, not the title, is what selects the verdict gate over the scorer.

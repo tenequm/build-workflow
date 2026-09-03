@@ -1,6 +1,6 @@
 ---
 name: build-ready
-description: "Stage 3 of the build workflow: the readiness gate. Runs the mechanical checklist (plan validate, allowlists exist, disjoint ownership, validation commands green on the base, spec citations resolve, done-criteria present) and one fresh Opus critic per brief; edits briefs; converges when a critic round warrants no edits. Use on any plan before /build-run, including plans written by hand. Triggers: /build-ready, is the plan ready, check the briefs."
+description: "Stage 3 of the build workflow: the readiness gate. Runs the mechanical checklist (plan validate, allowlists exist, same-stage allowlist overlap, validation commands green on the base, spec citations resolve, done-criteria present) and one fresh Opus critic per brief; edits briefs; converges when a critic round warrants no edits. Use on any plan before /build-run, including plans written by hand. Triggers: /build-ready, is the plan ready, check the briefs."
 ---
 
 # build-ready
@@ -15,11 +15,19 @@ place, a line in `<run>/ledger.md`.
 
    Runs `.agents/skills/build-ready/templates/readiness.md` as commands: plan
    validate, root CLAUDE.md / AGENTS.md is a real file not a symlink, briefs
-   present, disjoint ownership across siblings, spec citations resolve, Items /
-   Validation / Report sections, 16k length cap, `context_files` present in the
-   step base, and every Validation command executed on the base in a temporary
-   worktree. Two dispatch checks it also makes, because both fail silently at
-   run time:
+   present, allowlist overlap between steps of the SAME stage, spec citations
+   resolve, Items / Validation / Report sections, 16k length cap,
+   `context_files` present in the step base, and every Validation command
+   executed on the base in a temporary worktree.
+
+   THE OVERLAP CHECK DOES NOT COVER SIBLINGS AS THIS WORKFLOW WRITES THEM. It
+   compares steps within one stage only, and only each step's last glob against
+   the last glob of each earlier step, by exact equality plus fnmatch
+   containment. One step per stage means it never fires; two intersecting globs
+   (`src/*/x`, `src/a/*`) would pass it anyway. Disjoint sibling ownership is
+   the planner's guarantee, checked by reading the allowlists.
+
+   Two dispatch checks it also makes, because both fail silently at run time:
 
    - `~/.codex/config.toml` must set `model_reasoning_effort = "high"`. `codex
      exec` takes no effort flag, so that per-machine file outside the repo is

@@ -53,11 +53,19 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
 3. Split a phase into parallel sibling steps by disjoint file ownership:
    whenever one step would own more than about 8 files, or two independent
    packages, cut it into `phase-Na`, `phase-Nb`, ... in stages of their own with
-   no dependency between them. Siblings must not share a file -- readiness fails
-   a plan where two steps own the same path or overlapping globs -- so a file
-   both would touch (`go.mod`, a registry, a shared type) belongs to exactly one
-   sibling or to a small preceding step that lands it first. `judge-N` depends on
-   every sibling stage, so it reviews the whole phase.
+   no dependency between them. DISJOINTNESS IS YOURS TO GUARANTEE. Readiness
+   compares allowlists only between steps of the SAME stage, and only each
+   step's LAST glob against the last glob of each earlier step in that stage,
+   by exact equality plus fnmatch containment -- not a glob-intersection test
+   (`src/*/x` against `src/a/*` passes). Under the one-step-per-stage rule above
+   it therefore never fires, and nothing else checks sibling overlap. So a file
+   two siblings would touch (`go.mod`, a registry, a shared type) belongs to
+   exactly one sibling, or to a small preceding step that lands it first.
+   Where allowlists overlap ACROSS stages, Bernstein's runtime file locks
+   serialize the claims -- the loser backs off on HTTP 409 for 300 s at a time
+   until the owner releases -- so the cost is delay and an ordering you did not
+   choose, not two unguarded writers merging on top of each other. `judge-N`
+   depends on every sibling stage, so it reviews the whole phase.
 4. Assign executors by shape, through the role: seam and investigation steps ->
    `analyst` (claude, claude-opus-5); transfer, exact-line and fix steps ->
    `resolver` (codex, gpt-5.6-sol); Flash only as the `visionary` role, out of
