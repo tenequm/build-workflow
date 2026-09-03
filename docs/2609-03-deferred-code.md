@@ -1,5 +1,11 @@
 # Deferred code work (2026-09-03)
 
+> STATUS 2026-09-04: APPLIED except the scorer language adapters (left as documented
+> coverage gap) and the readiness judge-path print (optional). Landed in v0.1.7:
+> anchored judge parser (blocks malformed), refusal receipt (line-anchored, blocks),
+> whole-plan ownership check with segment-aware overlap, engine pin via the uv tool
+> receipt, role-name fix, completion_signals NOTE removed, plan.py docstring fixed.
+
 The doc/template half of the validated retro review landed as 12 commits ending
 `a931162`; this file is the CODE half, deferred until after the first real
 build so untested behavior changes never precede first use. Source evidence:

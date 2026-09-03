@@ -89,7 +89,9 @@ def report_claims(report: Path) -> dict:
     exits = [int(x) for x in re.findall(r"[Ee]xit(?: code)?[:=]?\s*(\d+)", text)]
     issues = [int(x) for x in re.findall(r"(\d+) issues?\.", text)]
     deviations_none = bool(re.search(r"##\s*Deviations\s*\n+\s*(none|None|-\s*none)", text))
-    refusal = re.search(r"\b(scope_exceeded|underspecified|blocked_on_dependency|awaiting_operator)\b", text)
+    # Line-anchored so a prose mention ("nothing was underspecified") does not read as
+    # a receipt; a real refusal states the code as its own line or a line's leading token.
+    refusal = re.search(r"^[\s>*#`-]*(scope_exceeded|underspecified|blocked_on_dependency|awaiting_operator)\b", text, re.M)
     return {"present": True, "claimed_exit_codes": exits, "claimed_issue_counts": issues, "deviations_none": deviations_none,
             "refusal": refusal.group(1) if refusal else None,
             "mentions_lint": bool(re.search(r"golangci|lint", text, re.I))}

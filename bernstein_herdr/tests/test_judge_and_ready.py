@@ -77,3 +77,11 @@ def test_glob_overlap_predicate():
     assert overlap("pkg/core/**", "pkg/core/engine/facts.go")
     assert not overlap("internal/adapter/**", "internal/adapters/**")
     assert not overlap("a/b.go", "a/c.go")
+
+
+def test_refusal_prose_mention_is_not_a_receipt(tmp_path):
+    r = tmp_path / "report.md"
+    r.write_text("## Deviations\n\nNothing was underspecified; item 2 built the smallest faithful shape.\n")
+    assert ledger.report_claims(r)["refusal"] is None
+    r.write_text("## Report\n\n- scope_exceeded: item 3 needs files outside the allowlist\n")
+    assert ledger.report_claims(r)["refusal"] == "scope_exceeded"
