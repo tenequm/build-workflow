@@ -77,7 +77,7 @@ an unstaged review is a review the gate cannot read):
 
 ```
 git add -f .agents/blind-review.md .agents/scorecard.md
-git commit -m "review: blind review of <phase>"
+git commit -m "docs(review): blind review of <phase>"
 ```
 
 If a sandbox refuses writes under `.agents/`, that is a blocker, not something

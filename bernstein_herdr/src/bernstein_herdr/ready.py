@@ -291,8 +291,8 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     # `just check` once per step, each in a fresh path-cold worktree: 28 replays, about
     # 20 minutes a pass (measured 2026-09-03, azme recall plan). Now: one answer per
     # (base, command), one worktree per distinct base, created lazily and removed at the
-    # end; and no worktree at all when the workspace is checked out at that base and
-    # clean, since the tree is then already the base.
+    # end (always a worktree: brief commands are arbitrary and must not touch the live
+    # workspace).
     replay_memo: dict[tuple[str, str], int] = {}
     base_trees: dict[str, Path] = {}
     base_tmp: list[tempfile.TemporaryDirectory] = []

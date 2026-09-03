@@ -37,7 +37,10 @@ for f in "$dir"/*.md; do
     fi
   fi
 done
-if [ -z "$(git config core.hooksPath || true)" ] && ls .git/hooks/pre-commit .git/hooks/pre-push >/dev/null 2>&1; then
+# --git-common-dir, not .git: in a linked worktree .git is a file and the hooks
+# live in the main checkout, which is exactly where this script is documented to run.
+hooks_dir="$(git rev-parse --git-common-dir 2>/dev/null || echo .git)/hooks"
+if [ -z "$(git config core.hooksPath || true)" ] && ls "$hooks_dir/pre-commit" "$hooks_dir/pre-push" >/dev/null 2>&1; then
   echo "FAIL: active git hooks; point core.hooksPath at an empty repo-local directory before readiness"
   fail=1
 fi

@@ -115,7 +115,7 @@ build with the race detector in a fresh worktree is a full rebuild, and the
 Go cache grows one copy per worktree path unless the repo exports
 `GOFLAGS=-trimpath`), every module a brief names downloaded, hooks
 redirected. Readiness replays each distinct validation command once per
-base, in the workspace itself when it is checked out at that base. `skills/build-plan/scripts/`
+base, in a disposable worktree. `skills/build-plan/scripts/`
 holds `plan-lint.sh` (brief cap, fenced validation, hooks) and
 `plan-check.py` (facts verifier, surface check); both run in seconds and
 replace critic rounds that used to find the same defects.

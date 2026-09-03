@@ -313,6 +313,11 @@ the workspace root.
 
         git worktree add --detach <run>/judge/branch-N/W refs/build/base/<slug>
         git -C <run>/judge/branch-N/W apply --index <branch diff patch>
+        git -C <run>/judge/branch-N/W commit -m "chore: staged branch diff for blind review"
+
+   The commit is load-bearing: the judge prompt diffs `$BASE..HEAD`, and an
+   applied-but-uncommitted patch is invisible to a commit-range diff, so
+   without it the judge's own non-empty guard stops every review.
 
     Give a fresh subagent on your own model the detached worktree, the plan
     document, and this skill's own `templates/judge-prompt.md`. Keep it
@@ -333,7 +338,8 @@ the workspace root.
     - The instruction to write no application files.
 
     Turn findings into committed `.agents/build/plans/<slug>/close-N.md` briefs
-    and dispatch fresh resolver steps with exact allowlists. Rerun affected
+    and dispatch each as a fresh driver-spawned executor subagent with an exact
+    allowlist (the DAG is over; Bernstein is not relaunched for close rounds). Rerun affected
     checks. Repeat review rounds until a round warrants no edits. Remove detached judge worktrees after archiving evidence.
 
     For each `close-N` round, record:

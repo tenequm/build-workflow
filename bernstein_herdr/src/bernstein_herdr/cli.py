@@ -241,7 +241,7 @@ def gate(argv: list[str]) -> int:
     (`gate_runner.py:1613-1634`).
 
     Exit 1 blocks the merge and is TERMINAL: no retry, no escalation, no quarantine -- the
-    branch goes to `salvage/<agent>` and a row lands in `.sdd/runtime/refused_merges.jsonl`
+    branch goes to `refs/graveyard/<sid>-<ts>` (bundle under `.sdd/graveyard/`) and a row lands in `.sdd/runtime/refused_merges.jsonl`
     (measured). So the failing path archives and writes its ledger row too; nothing runs
     after it. That is why a judge step exits 1 on `do not merge` ONLY: every other verdict
     is routing information for `fix-N`, and blocking on it would take `fix-N` with it.

@@ -174,8 +174,10 @@ tool in path mode. Never create a second worktree.
 
 Otherwise capture the primary HEAD sha and branch; HEAD must be the sign-off
 commit or a descendant. Ask once for branch type `feat|fix|chore|refactor`,
-default `feat`. Ensure `.claude/worktrees/` is gitignored, adding only that
-line when needed. Create:
+default `feat`. If `.claude/worktrees/` is not gitignored, add that one line
+to the PRIMARY's working tree UNCOMMITTED (it keeps the worktree path
+untracked there; the workspace branched before the edit, so the committed
+copy is made in the workspace below). Create:
 
     git worktree add -b <type>/<slug> <primary>/.claude/worktrees/<slug> <primary HEAD sha>
 
@@ -197,14 +199,17 @@ the repo, and a worktree's own settings file is ignored. Copy this skill's
 file exists, and confirm the primary gitignores it. Config reloads on the
 worktree switch, so no session restart is needed.
 
-Copy the build-run `bernstein.yaml` template when the repo has none and set
+Copy this skill's own `templates/bernstein.yaml` when the repo has none and set
 `quality_gates.base_ref: <type>/<slug>`. If the repo tracks one, change only
 `base_ref`. Write `.agents/build/plans/ACTIVE` as one line containing
 `<slug>.yaml`. Write `<run>/workspace.json` with EXACTLY these five fields:
-`path`, `branch`, `base`, `base_branch`, `primary`.
+`path` (absolute workspace path), `branch` (`<type>/<slug>`), `base` (the
+primary HEAD sha the worktree branched from), `base_branch` (the primary's
+branch name, commonly `main`), `primary` (absolute primary checkout path).
 
-Make one seed commit containing ONLY `bernstein.yaml`, the `.gitignore` edit
-when made, and `ACTIVE`. Keep copied local state untracked. Enter the workspace
+In the WORKSPACE, repeat the `.gitignore` line when it was missing, then make
+one seed commit containing ONLY `bernstein.yaml`, that `.gitignore` edit, and
+`ACTIVE`. Keep copied local state untracked. Enter the workspace
 with native EnterWorktree path mode. If EnterWorktree is absent, tell the user
 to start a session in the absolute workspace path and stop. Point
 `core.hooksPath` at an empty repo-local directory now (`.agents/build/nohooks`);
@@ -240,9 +245,9 @@ and stubs that compile; never behavior.
 
 Write plan.md sections 7 to 13. Every decision cites the SPEC clause it
 derives from; every phase names the witness tests it turns green; every
-allowlist comes from `rg` over the real tree, never from memory. Run the
-facts verifier and the surface check (plan-lint) before any critic; a surface
-FAIL is a brief defect, fix it first.
+allowlist comes from `rg` over the real tree, never from memory. Run
+`scripts/plan-check.py` (the facts verifier and the surface check) before any
+critic; a surface FAIL is a brief defect, fix it first.
 
 Critics are fresh subagents on your own model, read-only, "write no files",
 launched in ONE message, in parallel:
@@ -279,7 +284,9 @@ Produce exactly:
     .agents/build/plans/<slug>.yaml
     .agents/build/plans/<slug>.steps.yaml
     .agents/build/plans/<slug>/<step>.md
-    .agents/build/runs/<slug>/contracts/<seam>.md   # only for a seam WITNESS did not land in code
+    .agents/build/runs/<slug>/contracts/<seam>.md   # only for a seam WITNESS did not land in code;
+                                                    # run-dir = driver-side evidence, so a brief that needs
+                                                    # it cites the ABSOLUTE path (as fix briefs cite verdict.json)
 
 Keep only generated machine artifacts plus `ACTIVE` under
 `.agents/build/plans/`. Keep prose in the plan directory. Briefs are tracked,

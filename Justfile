@@ -5,6 +5,8 @@ check:
     gitleaks git --redact -v
     test "$(jq -r '.name,.version' plugin.json)" = "$(jq -r '.name,.version' .claude-plugin/plugin.json)"
     sh skills/build-plan/scripts/plan-lint.sh --templates
+    cmp -s skills/build-plan/templates/bernstein.yaml skills/build-run/templates/bernstein.yaml || (echo "bernstein.yaml template copies diverged" && exit 1)
+    cmp -s skills/build-plan/templates/judge-prompt.md skills/build-run/templates/judge-prompt.md || (echo "judge-prompt.md template copies diverged" && exit 1)
     shellcheck skills/build-plan/scripts/*.sh
     claude plugin validate . --strict
     echo "check: clean"

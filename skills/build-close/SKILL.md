@@ -45,6 +45,14 @@ changelog, release notes, tags, package publication, migrations, deployment,
 and smoke checks. If none is documented, ask. Also read `## Release
 requirements` and every `owner: user` row in the plan document.
 
+## Record before landing
+
+BEFORE either merge path: regenerate `report.md` in the plan directory - keep
+its Traceability, Decisions, Escalations and Restatement sections, and
+rewrite `## Run` as `## Outcome` with each SPEC 2 outcome marked delivered or
+not by its witness tests' final state, plus every `owner: user` item and its
+status. Commit it on the workspace branch so the record lands with the code.
+
 ## PR path
 
 When a PR exists for the workspace branch:
@@ -107,14 +115,8 @@ Discard only on the user's explicit request and only after they type
 
 ## Handoff
 
-Regenerate `report.md` in the plan directory: keep its Traceability,
-Decisions, Escalations and Restatement sections, and rewrite `## Run` as
-`## Outcome` with each SPEC 2 outcome marked delivered or not by its witness
-tests' final state, plus every `owner: user` item and its status. Commit it
-on the branch before merging so the record lands with the code.
-
-Then write `<run>/handoff.md` in ASCII with these headings exactly and
-no others:
+Write `<run>/handoff.md` BEFORE the cleanup above removes anything, in ASCII
+with these headings exactly and no others:
 
     ## Outcome
     ## Phases
@@ -126,4 +128,7 @@ Under Integration, record what the user chose and every exact command run.
 Under Phases, include executor, wall time, files, gate, and judge verdict.
 Under Defects, separate caught-before-merge from post-run findings with
 file:line evidence. Under Open, list uncompleted release and `owner: user`
-items. Ensure the evidence copy in the primary checkout contains this handoff.
+items. Then re-run the evidence rsync so the primary's copy contains this
+handoff:
+
+    rsync -a <workspace>/<run>/ <primary>/.agents/build/runs/<slug>/
