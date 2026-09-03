@@ -91,6 +91,12 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
         if step.files and _authored(c) and not any(fnmatch.fnmatch(c, g) for g in step.files)
     ]
 
+    # The plan files are the gate's own configuration. `.agents` is excluded from every
+    # diff above, so a step that rewrites `.agents/build/plans/` (allowlist, gate_cmd,
+    # briefs) merges that edit invisibly and every LATER step is gated by it. Tracked
+    # edits there vs the step base are an automatic block.
+    f["plans_dir_edit"] = [l for l in _sh(f"git diff --name-only {step.base} -- .agents/build/plans", worktree)[1].splitlines() if l]
+
     _, diff = _sh(f"git diff {step.base} -- . ':!.agents'", worktree)
     f["new_nolint_without_reason"] = len(NOLINT.findall(diff))
     f["non_ascii_added_lines"] = len(NON_ASCII.findall(diff))
@@ -127,7 +133,7 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     # committed) and the missing work surfaced only at branch validation (retro item 8).
     f["refusal"] = claims.get("refusal")
     blocked = (rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0
-               or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]))
+               or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]) or bool(f["plans_dir_edit"]))
     f["blocked"] = blocked
     ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-scorer", "step": step.slug, "gate": "scorer", "evidence": "verified", **{k: v for k, v in f.items() if k != "gate"}, "gate_rc": rc})
     return blocked, f

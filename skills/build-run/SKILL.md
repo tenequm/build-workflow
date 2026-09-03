@@ -245,6 +245,9 @@ the workspace root.
 
    `bernstein quarantine list` is empty after a block; the block is not a
    quarantine. The common cause is an allowlist violation named by the row.
+   Any tracked change under `.agents/build/plans/` versus the step base is an
+   automatic block (`plans_dir_edit` in the row): the plan files configure the
+   gate itself and no step may rewrite them.
    Once engine retries are spent, mechanically dispatch a fresh executor only
    when the gate or judge names a concrete defect inside existing allowlists.
    Write and commit a fix brief, rerun readiness, and dispatch the fix. Preserve

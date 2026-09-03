@@ -110,3 +110,25 @@ def test_frozen_ref_beats_root_working_copy_widening(ws: Path) -> None:
     assert f["plan_source"] == "frozen_base"
     assert "evil/x.txt" in f["allowlist_violations"]
     assert blocked
+
+
+def test_plans_dir_edit_blocks(ws: Path) -> None:
+    """H2: a tracked change under .agents/build/plans/ vs the step base is a block."""
+    wt = worktree(ws)
+    brief = wt / ".agents" / "build" / "plans" / "t.steps.yaml"
+    brief.write_text(brief.read_text() + "# widened\n")
+    (wt / "src" / "a.txt").write_text("work\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert f["plans_dir_edit"] == [".agents/build/plans/t.steps.yaml"]
+    assert blocked
+
+
+def test_no_plans_dir_edit_passes(ws: Path) -> None:
+    """H2: an ordinary step that leaves the plans dir alone is not blocked by it."""
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert f["plans_dir_edit"] == []
+    assert not blocked
