@@ -84,3 +84,8 @@ line of your final message and stop.
 
 Commit nothing else. Restore every probing edit first; `git status` must be
 clean of your probes.
+
+## Commit convention
+
+Commit with Conventional Commits: `type(scope): description`, type in feat,
+fix, chore, refactor, docs, test, ci, perf. No attribution lines or trailers.

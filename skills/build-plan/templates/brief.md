@@ -67,3 +67,8 @@ git add -A && git add -f <report path> && git commit -m "<type>(<scope>): <what>
 A refusal (`scope_exceeded`, `underspecified`, `blocked_on_dependency`,
 `awaiting_operator`) stated in the report is the right answer when the spec does
 not determine the work; do not improvise.
+
+## Commit convention
+
+Commit with Conventional Commits: `type(scope): description`, type in feat,
+fix, chore, refactor, docs, test, ci, perf. No attribution lines or trailers.

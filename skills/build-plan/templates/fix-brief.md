@@ -59,3 +59,8 @@ whether there is anything to do.
 `<report path>`, on every path. On the fix path, one entry per certain item with
 file:line, the test that now covers it, and the review's own wording of the
 defect. Record anything you did not fix, and why, under `## Deviations`.
+
+## Commit convention
+
+Commit with Conventional Commits: `type(scope): description`, type in feat,
+fix, chore, refactor, docs, test, ci, perf. No attribution lines or trailers.
