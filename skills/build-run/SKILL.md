@@ -53,12 +53,49 @@ its worktree before the merge. All commands run from the repo root.
    `.git/config`, so it never reaches an agent's diff, and unlike `LEFTHOOK=0` it
    survives the adapters' filtered spawn env and a mid-run `lefthook install`.
    Unset it when the run is over (step 11).
-4. Launch. `--wait` blocks, so background it and keep the driver free
-   (`--from-plan` is a different, seed-driven path; do not use it):
+4. Launch DETACHED, in a session of its own (`--from-plan` is a different,
+   seed-driven path; do not use it):
 
-       BERNSTEIN_SERVER_URL=http://127.0.0.1:<N> \
-       nohup bernstein run .agents/build/plans/<slug>.yaml --auto-approve --quiet \
-         --fresh --wait 1500 --port <N> > <run>/bernstein-run.log 2>&1 &
+       python3 - <<'PY' | tee -a <run>/ledger.md
+       import os, pathlib, subprocess
+       run  = pathlib.Path("<run>")
+       log  = run / "bernstein-run.log"
+       env  = dict(os.environ, BERNSTEIN_SERVER_URL="http://127.0.0.1:<N>")
+       cmd  = ["bernstein", "run", ".agents/build/plans/<slug>.yaml",
+               "--auto-approve", "--quiet", "--fresh", "--wait", "<budget s>", "--port", "<N>"]
+       with log.open("ab") as f:
+           p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env,
+                                start_new_session=True)
+       print(f"- launched bernstein run: wrapper_pid={p.pid} log={log}")
+       PY
+
+   `start_new_session=True` is the point of the wrapper: it puts the run in its
+   OWN session and process group, so a cleanup that kills the driver's process
+   group cannot reach the orchestrator, the task server or the live agents.
+   `nohup ... &` does not do this -- it only ignores SIGHUP, leaving the run in
+   the driver's group, and a run died exactly that way mid-phase (`Signal 15
+   received, stopping orchestrator`, 2026-09-03; the restart then rebuilt the
+   board wrong, see below). Record the printed `wrapper_pid` and log path in the
+   ledger, because they are now the only handle you have: stopping the run
+   deliberately is `kill -TERM -<wrapper_pid>` (the negative sign kills the
+   group).
+
+   `--wait` IS A BUDGET, NOT A CONSTANT. Set `<budget s>` from this plan: the
+   sum of the `scope:` buckets along the DAG's critical path, doubled. Fixed
+   example numbers have been wrong every time (a 25-minute wait over a run that
+   took 1h52m). When the budget lapses the WRAPPER exits; the orchestrator does
+   not, so keep watching by step 5's rules rather than reading the wrapper's
+   exit as the end of the run.
+
+   AN INTERRUPTED RUN IS NOT RESUMED ONTO AN ADVANCED TIP. Neither a plain
+   resume nor `--fresh` is safe once merges from this run are in the branch: a
+   resume rebuilt the board as four newly open tasks (`Done: 0`) on the
+   already-merged tip, and `--fresh` on that same tip re-runs completed tasks as
+   duplicates. Two safe moves, and it is the user's call which: restore the
+   frozen base (`git rev-parse refs/build/base/<slug>`, after archiving what
+   merged) and run fresh; or write a new plan holding only the remaining work,
+   with its own slug, and run that. `<run>/ledger.md` and `runs.jsonl` are what
+   say which steps actually merged.
 
    `BERNSTEIN_SERVER_URL` is NOT optional. `--port` moves the server only; the
    URL that Bernstein writes into every agent prompt (`bernstein task complete`,
