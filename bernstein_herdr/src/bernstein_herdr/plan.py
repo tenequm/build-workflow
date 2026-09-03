@@ -7,7 +7,8 @@ step title. Both files are tracked under `.agents/build/plans/`; the run directo
 worktree.
 
 Sidecar shape:
-    defaults: {base: <ref>, doc: <plan doc>, design: <product spec>, gate_cmd: just check,
+    defaults: {base: <ref>, doc: <plan dir>/plan.md, spec: <plan dir>/spec.md,
+               design: <product spec>, gate_cmd: just check,
                shadow: null, judge: required|optional|none}
     steps:
       "<step title>": {brief: briefs/<step>.md, report: .agents/<step>.md, base: <ref>,
@@ -195,6 +196,9 @@ def pinned_hashes(plan: Plan) -> dict[str, str]:
     doc = defaults.get("doc")
     spec_path = plan.root / doc if doc else plan.root / "docs" / "spec.md"
     h = {"spec": sha256(spec_path), "plan": sha256(plan.path)}
+    build_spec = defaults.get("spec")
+    if build_spec:
+        h["build_spec"] = sha256(plan.root / build_spec)
     for s in plan.steps():
         st = plan.step(s["title"])
         h[f"brief:{st.slug}"] = sha256(st.brief)

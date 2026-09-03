@@ -41,20 +41,25 @@ def _authored(path: str) -> bool:
 
 
 def _sh(cmd: str, cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
-    p = subprocess.run(["bash", "-lc", cmd], cwd=cwd, capture_output=True, text=True, check=False,
+    # `bash -c`, not `-lc`: the login profile can reorder PATH under the gate and buys
+    # nothing the adapters' environment does not already carry.
+    p = subprocess.run(["bash", "-c", cmd], cwd=cwd, capture_output=True, text=True, check=False,
                        env={**os.environ, **env} if env else None)
     return p.returncode, (p.stdout + p.stderr)[-6000:]
 
 
-def lint_env(worktree: Path) -> dict[str, str]:
-    """A lint cache private to this worktree.
+def lint_env(worktree: Path, run_dir: Path | None = None) -> dict[str, str]:
+    """A lint cache private to this run, shared by its worktrees.
 
     golangci-lint's shared default cache is what let a report claim a clean run over
-    files that had issues, and two gates running at once would race on it. A cache under
-    the worktree is cold for a step's first gate, warm only for its own retry, and dies
-    with the worktree -- so `cache clean` before every gate is no longer needed.
+    files that had issues, so the gate never uses it. A cache per WORKTREE was the first
+    fix, but it is cold for every step's first gate: measured 2026-09-03, 11.2s cold
+    against 1.4s warm, about five minutes over a thirty-worktree run. The cache is
+    content-addressed with atomic renames, so one cache per run is safe under concurrent
+    gates and warm after the first; it keeps other repos and other runs out, which was
+    the point. Falls back to the worktree-local cache when no run dir is known.
     """
-    cache = worktree / ".sdd" / "lintcache"
+    cache = (run_dir / "lintcache") if run_dir else (worktree / ".sdd" / "lintcache")
     cache.mkdir(parents=True, exist_ok=True)
     return {"GOLANGCI_LINT_CACHE": str(cache)}
 
@@ -64,7 +69,7 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     step = plan.step(task_title)
     f: dict = {"step": step.slug, "gate_cmd": step.gate_cmd}
 
-    rc, out = _sh(step.gate_cmd, worktree, lint_env(worktree))
+    rc, out = _sh(step.gate_cmd, worktree, lint_env(worktree, step.run_dir))
     f["gate"] = {"rc": rc, "tail": out[-1200:]}
     lint_issues = re.findall(r"(\d+) issues?\.", out)
     f["lint_issues_measured"] = int(lint_issues[-1]) if lint_issues else None

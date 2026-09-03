@@ -230,14 +230,54 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
     ok &= v.returncode == 0
 
+    # Validation commands are replayed on the BASE, which is the same ref for every step
+    # of a plan, so the same command answers the same for all of them. The old shape ran
+    # `just check` once per step, each in a fresh path-cold worktree: 28 replays, about
+    # 20 minutes a pass (measured 2026-09-03, azme recall plan). Now: one answer per
+    # (base, command), one worktree per distinct base, created lazily and removed at the
+    # end; and no worktree at all when the workspace is checked out at that base and
+    # clean, since the tree is then already the base.
+    replay_memo: dict[tuple[str, str], int] = {}
+    base_trees: dict[str, Path] = {}
+    base_tmp: list[tempfile.TemporaryDirectory] = []
+
+    def tree_for(ref: str) -> Path:
+        if ref in base_trees:
+            return base_trees[ref]
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=plan.root, capture_output=True, text=True, check=False).stdout.strip()
+        want = subprocess.run(["git", "rev-parse", ref], cwd=plan.root, capture_output=True, text=True, check=False).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=plan.root, capture_output=True, text=True, check=False).stdout.strip()
+        if head and head == want and not dirty:
+            base_trees[ref] = plan.root
+            lines.append(f"PASS validation replays for base {ref} run in the workspace itself (HEAD is the base, tree clean)")
+            return plan.root
+        tmp = tempfile.TemporaryDirectory()
+        base_tmp.append(tmp)
+        wt = Path(tmp.name) / "base"
+        subprocess.run(["git", "worktree", "add", "--detach", str(wt), ref], cwd=plan.root, capture_output=True, check=True)
+        base_trees[ref] = wt
+        return wt
+
+    def replay(ref: str, cmd: str) -> tuple[int, bool]:
+        key = (ref, cmd)
+        if key in replay_memo:
+            return replay_memo[key], True
+        r = subprocess.run(["bash", "-c", cmd], cwd=tree_for(ref), capture_output=True, text=True, check=False)
+        replay_memo[key] = r.returncode
+        return r.returncode, False
+
     defaults = plan.sidecar.get("defaults", {})
     plan_doc = defaults.get("doc")
     design_doc = defaults.get("design")
+    build_spec = defaults.get("spec")
+    design_path = plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md"
+    # SPEC is the build spec (spec.md beside plan.md) when the sidecar pins one; the
+    # lowercase legacy form and an unpinned SPEC still mean the product spec.
     citation_sources = {
         "PLAN": plan.root / plan_doc if plan_doc else None,
-        "DESIGN": plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md",
-        "SPEC": plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md",
-        "spec": plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md",
+        "DESIGN": design_path,
+        "SPEC": plan.root / build_spec if build_spec else design_path,
+        "spec": design_path,
     }
     citation_sections = {
         label: _spec_sections(path) if path is not None else set()
@@ -277,7 +317,7 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                 source = citation_sources[label]
                 sections = citation_sections[label]
                 if source is None:
-                    fail(f"{step.slug}: cites {label} {sec}, but sidecar defaults.doc is not set")
+                    fail(f"{step.slug}: cites {label} {sec}, but the sidecar pins no source for it (defaults.doc / defaults.spec)")
                 elif not source.exists():
                     fail(f"{step.slug}: cites {label} {sec}, but citation source {source} does not exist")
                 elif sec not in sections and sec.split(".")[0] not in sections:
@@ -336,15 +376,10 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                     fail(f"{step.slug}: brief has no `## Validation` fenced code block; add the exact commands "
                          f"the executor must run, one per line, so they can be replayed on the base")
                 else:
-                    with tempfile.TemporaryDirectory() as tmp:
-                        wt = Path(tmp) / "base"
-                        subprocess.run(["git", "worktree", "add", "--detach", str(wt), step.base], cwd=plan.root, capture_output=True, check=True)
-                        try:
-                            for cmd in [c for c in m.group(1).splitlines() if c.strip() and not c.startswith("#")]:
-                                r = subprocess.run(["bash", "-lc", cmd], cwd=wt, capture_output=True, text=True, check=False)
-                                lines.append(f"{'PASS' if r.returncode == 0 else 'RED '} {step.slug} on base {step.base}: `{cmd[:80]}` rc={r.returncode}")
-                        finally:
-                            subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=plan.root, capture_output=True, check=False)
+                    for cmd in [c for c in m.group(1).splitlines() if c.strip() and not c.startswith("#")]:
+                        rc, reused = replay(step.base, cmd)
+                        lines.append(f"{'PASS' if rc == 0 else 'RED '} {step.slug} on base {step.base}: `{cmd[:80]}` rc={rc}"
+                                     + (" (memoised)" if reused else ""))
             if step.judges and step.judges not in {s["title"] for s in plan.steps()}:
                 fail(f"{step.slug}: judges {step.judges!r} which is not a step title in the plan; "
                      f"copy the reviewed step's `title:` verbatim into the sidecar `judges:`")
@@ -362,6 +397,11 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     for s in plan.steps():
         if plan.step(s["title"]).judge == "required" and not s.get("completion_signals"):
             lines.append(f"NOTE {s['title']}: judge required but no completion_signals (the judge gate runs from bernstein.yaml pipeline)")
+    for ref, wt in base_trees.items():
+        if wt != plan.root:
+            subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=plan.root, capture_output=True, check=False)
+    for tmp in base_tmp:
+        tmp.cleanup()
     return ok, lines
 
 
