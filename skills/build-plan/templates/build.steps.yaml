@@ -8,13 +8,18 @@
 # (`analyst`, `adversary`); give bulk steps inside one already-decided package a role that
 # resolves to codex (`resolver`).
 defaults:
-  # The integration branch, not a sha: a step's diff, its allowlist check and its archive
+  # Pin discovery here. `doc` is the plan document. Omit `design` when the repo has no
+  # product spec. Readiness resolves PLAN citations against doc and DESIGN citations
+  # against design; pinned_hashes hashes doc as its `spec` compatibility key.
+  doc: <discovered plan document path>
+  design: <discovered product spec path; omit this key when none>
+  # The workspace branch, not a sha: a step's diff, its allowlist check and its archive
   # are all `git diff <base>`, and after an earlier step merges, a fixed sha shows that
   # step's files as this one's changes (measured: a scorer blocked on a sibling's file).
   # The JUDGE is the exception -- it needs the sha frozen at run start, which
   # `bernstein-herdr run-config` writes to <run>/bernstein.json and to the git ref
   # refs/build/base/<slug>. See judge-brief.md.
-  base: <integration branch>
+  base: <type>/<slug>
   # The default gate command: THIS REPO'S whole-tree check, written out. There is no
   # generic one. Leave the key out and the built-in fallback is `just check`, which on a
   # repo with no Justfile fails for a reason that has nothing to do with the step, so set

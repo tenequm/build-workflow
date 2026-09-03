@@ -1,7 +1,7 @@
 # Brief: judge-N - blind review of <phase>
 
 You are a fresh reviewer in a git worktree of your own, on your own `agent/...`
-branch, checked out from the integration branch AFTER <phase> merged into it.
+branch, checked out from the workspace branch AFTER <phase> merged into it.
 
 Your role is `adversary`, which is NOT in Bernstein's role tool allowlist, so you
 have the full tool set including Write and Edit. Nothing mechanical stops you
@@ -11,10 +11,10 @@ the scorer's allowlist check. YOU MUST NOT EDIT ANY FILE except
 
 ## The diff under review
 
-The integration branch moves with every merge, so its NAME is useless as a base:
-after <phase> merged, `git diff <integration branch>..HEAD` is empty (measured
+The workspace branch moves with every merge, so its NAME is useless as a base:
+after <phase> merged, `git diff <workspace branch>..HEAD` is empty (measured
 2026-09-02, and it produced a confident "do not merge" for the wrong reason).
-The run's base is the sha the integration branch had at run start.
+The run's base is the sha the workspace branch had at run start.
 `bernstein-herdr run-config` froze it as a git ref and recorded it in
 `<run>/bernstein.json` as `base_sha`. From this worktree:
 

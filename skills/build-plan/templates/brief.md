@@ -1,9 +1,10 @@
 # Brief: <phase> - <one line>
 
 You are an executor in a git worktree of your own, on your own `agent/...`
-branch. Read this whole file, then the `docs/spec.md` sections cited below --
-written as the literal token `spec <n>` / `spec <n.m>`, which is the only form
-readiness resolves -- then the plan
+branch. Read this whole file, then the plan-document sections cited below as
+the literal token `PLAN <n>` / `PLAN <n.m>`. Read product-spec sections cited
+as `DESIGN <n>` only when the sidecar pins a product spec. These are the only
+forms readiness resolves. Then read the machine plan
 `.agents/build/plans/<slug>.yaml` (this step). Do the work, write the report,
 then COMMIT on your branch: the commit is how the work reaches the gate and the
 merge, and nothing runs after you exit. Do not ask questions; where something is
@@ -42,7 +43,9 @@ Report each command, its exit code and the last 30 lines of output.
 
 ## Rules
 
-- `docs/spec.md` is driver-owned: never edit it.
+- The plan document is driver-owned: never edit it.
+- Edit the product spec only when the plan's Spec amendments section requires
+  it and the file is in this step's allowlist.
 - ASCII only in authored text. No em-dashes.
 - Commit on your branch with a conventional message. Never push. Never main.
 - Run the project formatter before writing the report.

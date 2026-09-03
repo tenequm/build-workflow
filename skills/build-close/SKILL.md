@@ -1,59 +1,108 @@
 ---
 name: build-close
-description: "Stage 5 of the build workflow: converge the merged branch. Runs polish-new over the whole branch, a whole-branch blind judge, fix rounds until a review round warrants no edits, then writes the final summary, runs.jsonl rows and handoff.md. Use after a Bernstein run ends. Triggers: /build-close, close the build, finish the branch."
+description: "Land a validated three-stage build and run its release ceremonies. Use /build-close <path_to_plan_doc> after /build-run, whether the workspace branch has a PR or remains local."
 ---
 
 # build-close
 
-Input: `<run>` = `.agents/build/runs/<slug>`, after `bernstein run` ended.
-Output: `<run>/handoff.md`, final rows in `<run>/runs.jsonl`, a branch ready for
-the user to merge. The driver never merges to main.
+Input: `<path_to_plan_doc>`. Never edit application code. Send every code fix
+to a fresh executor with a brief and allowlist. Never merge on your own
+judgment; merge only after the user answers.
 
-1. Read what the run left, before anything else:
+## Preflight
 
-       cat <run>/ledger.md
-       python3 -c "import json,sys;[print(json.dumps(json.loads(l))[:200]) for l in open('<run>/runs.jsonl')]"
-       ls <run>/reports/*/latest/report.md <run>/judge/*/blind-review.md
+Run inside the workspace `/build-plan` created. Resolve the checkout with
+`git rev-parse --git-dir`, `git rev-parse --git-common-dir`, and
+`git rev-parse --show-superproject-working-tree`. Refuse when git dir equals
+common dir, the superproject result is non-empty, or HEAD is detached.
 
-   `<run>/reports/<T>/<task>-<head>/` holds ONE GATE ATTEMPT's `report.md`,
-   `diff.patch`, `numstat.txt`, `status.txt`, and `latest` symlinks to the newest
-   attempt; several directories under one `<T>` mean the step was retried, and
-   the attempt that merged is the one whose `runs.jsonl` row has `blocked=false`; `<run>/judge/<phase T>/` holds `blind-review.md`,
-   `scorecard.md` and the judge worktree `W/`. A `blocked` line in `ledger.md`
-   with `do_not_merge=True` is a phase that never merged: its defects are fix
-   items, not close items.
-2. `polish-new` over the branch against the integration base
-   (`git diff <base>..HEAD`).
-3. Whole-branch blind judge: a fresh Opus subagent given
-   `.agents/skills/build-plan/templates/judge-prompt.md` with `<judge dir>` =
-   `<run>/judge/branch`, staged the same way a judge step is staged:
+Resolve the sidecar whose `defaults.doc` equals the input plan document. Fall
+back to `.agents/build/plans/ACTIVE` only when exactly that ACTIVE plan pins the
+same document. Refuse disagreement. Derive `<slug>` and `<run>` from the selected
+machine plan.
 
-       git worktree add --detach <run>/judge/branch/W <base>
-       git -C <run>/judge/branch/W apply --index <(git diff <base>..HEAD -- . ':!.agents')
+Read `<run>/workspace.json`, `<run>/ledger.md`, and `<run>/runs.jsonl` before
+anything else. Require workspace.json to contain exactly `path`, `branch`,
+`base`, `base_branch`, and `primary`. Require the current absolute root and
+checked-out branch to equal `path` and `branch`. Read every attempt report and
+judge result named by runs.jsonl; a blocked row is unresolved evidence.
 
-   Findings become fix briefs committed at `.agents/build/plans/<slug>/close-N.md`
-   and dispatched as a fresh `resolver` step; re-run the touched
-   tests after every fix.
-4. Stop when a review round warrants no edits.
-5. Archive and journal:
+Discover what release means. Check CLAUDE.md (or the equivalent project
+instructions) for release and deploy ceremonies - commonly versioning,
+changelog, release notes, tags, package publication, migrations, deployment,
+and smoke checks. If none is documented, ask. Also read `## Release
+requirements` and every `owner: user` row in the plan document.
 
-       git worktree remove --force <run>/judge/*/W        # the judge worktrees
-       git -C . worktree prune
-       git log --oneline <base>..HEAD                     # the phases that landed
-       printf -- "- %s close: %s commits, %s judge rounds, verdict %s\n" \
-         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git rev-list --count <base>..HEAD)" \
-         "$(ls <run>/judge | wc -l)" "<final verdict>" >> <run>/ledger.md
+## PR path
 
-   `<run>/` is untracked by design (`.gitignore` carries
-   `.agents/build/runs/`); nothing in it is committed. Copy anything the next
-   session needs into `handoff.md`.
-6. `<run>/handoff.md`, ASCII, these headings and nothing else:
+When a PR exists for the workspace branch:
 
-       # handoff <slug> <date>
-       ## Outcome        one line: branch, what landed, what did not
-       ## Phases         per phase: executor kind, wall_s, files, gate, judge verdict
-       ## Defects        caught before merge vs found after, with file:line
-       ## Open           what the next session must decide, and the spec sections at risk
-       ## Merge          the exact `git merge` the user runs, and the checks to run first
+1. Watch CI until terminal. Do not merge red or pending checks.
+2. Read review feedback and unresolved threads. Turn every requested code
+   change into a committed brief and dispatch a fresh fix executor. Never edit
+   the code in the driver session.
+3. Re-run the affected checks, push executor commits to the existing branch,
+   reply, and resolve threads according to repo convention.
+4. Require green checks and all required threads resolved.
+5. Ask the user whether to merge. On explicit yes, use the repo's merge method,
+   squash where the repo squashes. Otherwise keep the PR, branch, and worktree.
 
-   `/build-design` reads this file first on the next run.
+## Local path
+
+When no PR exists, ask the user whether to land the validated branch locally.
+On explicit yes, operate from the primary checkout recorded in workspace.json:
+
+1. Read its current branch. Require it to equal `base_branch`. If it moved,
+   stop and ask; do not switch or merge.
+2. Run `git -C <primary> checkout <base_branch>` only if needed after the check.
+3. Run `git -C <primary> merge --no-ff <branch>`.
+4. Run the sidecar's `defaults.gate_cmd` on the merged primary tree.
+
+If the merged-tree check is red, stop. Leave the merge, workspace, and branch
+in place for diagnosis. Send any code repair to a fresh executor; do not hide
+the failed integration with cleanup.
+
+## Ceremonies
+
+After a completed merge, assemble one release list from the discovered repo
+instructions, the plan document's `## Release requirements`, and all
+`owner: user` phase rows. Execute only driver-safe, authorized items. Hand every
+credentialed, infrastructure, destructive, or manual `owner: user` item to the
+user explicitly. Do not claim a release step that was not measured.
+
+## Evidence and cleanup
+
+Before removing anything, preserve evidence:
+
+    rsync -a <workspace>/<run>/ <primary>/.agents/build/runs/<slug>/
+
+Run `git config --unset core.hooksPath`; tolerate only the exit that means the
+key was absent.
+
+After either merge path has completed:
+
+1. Run `git status --porcelain` in the workspace.
+2. If dirty, list every path and ask. Keep the worktree and branch.
+3. If clean, remove the worktree without `--force` from the primary checkout.
+4. Delete the merged branch with `git branch -d <branch>`.
+
+Keep the worktree while a PR remains open or when the user chooses to keep it.
+Discard only on the user's explicit request and only after they type
+`discard`. Confirm exact paths before any discard action.
+
+## Handoff
+
+Finish by writing `<run>/handoff.md` in ASCII with these headings exactly and
+no others:
+
+    ## Outcome
+    ## Phases
+    ## Defects
+    ## Open
+    ## Integration
+
+Under Integration, record what the user chose and every exact command run.
+Under Phases, include executor, wall time, files, gate, and judge verdict.
+Under Defects, separate caught-before-merge from post-run findings with
+file:line evidence. Under Open, list uncompleted release and `owner: user`
+items. Ensure the evidence copy in the primary checkout contains this handoff.

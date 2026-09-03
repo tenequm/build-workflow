@@ -1,156 +1,224 @@
 ---
 name: build-plan
-description: "Stage 2 of the build workflow: cut docs/spec.md into a Bernstein plan and per-step briefs. Writes .agents/build/plans/<slug>.yaml with stages, steps, owners, cli and model per step, and briefs plus interface contracts for parallel splits in the run dir. Use after /build-design or when a spec exists and a plan does not. Triggers: /build-plan, cut the plan, write briefs."
+description: "Design, cut, workspace, and ready a three-stage Bernstein build. Use /build-plan with an idea, an existing plan document path, or nothing whenever a build needs a plan, generated DAG artifacts, an isolated workspace, and readiness validation before paid execution."
 ---
 
 # build-plan
 
-Input: `.agents/build/runs/<slug>` with the spec sha256 in `ledger.md`.
-Output, exact paths (`<run>` = that directory, `<T>` = a step's title slug:
-lowercase, every non-alphanumeric run replaced by `-`, cut to 48 chars):
+Run in the primary checkout. Accept an idea, an existing plan document path, or
+nothing. Never edit application code. Research and criticism may use subagents;
+the driver writes every plan document, generated plan, contract, and brief.
 
-    .agents/build/plans/<slug>.yaml         plan, tracked; `name:` MUST equal <slug>
-    .agents/build/plans/<slug>.steps.yaml   sidecar, tracked, same directory
-    .agents/build/plans/<slug>/<step>.md    brief, TRACKED; <step> is the stage name
-    <run>/contracts/<seam>.md               driver-written interface contract per seam
+Use absolute paths in commands. Use `fd`, not `find`, and `rg` without `-r`.
+Author ASCII only with a single `-`, never an em dash.
 
-BRIEFS ARE TRACKED FILES, not run-directory files. The step's plan
-`description:` tells the agent to read its brief by path, and only tracked files
-exist inside the agent's worktree: the run directory is untracked and outside
-every worktree. The sidecar's `brief:` therefore starts with `.agents/` and
-resolves against the REPO ROOT; anything else resolves against `<run>` and is
-driver-side only. A brief edit is a commit.
+## 1. DESIGN
 
-Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
-(project install; `~/.agents/skills/...` for a global one).
+Discover repo facts before designing. Check CLAUDE.md (or the equivalent
+project instructions) for the product spec document - commonly `docs/spec.md`
+or `DESIGN.md`. A repo may have none; if none is documented, ask. Check the
+same instructions for the plan-documents directory - commonly `docs/plans/`.
+If none is documented, use `docs/plans/`. Check them for the whole-tree check
+command - commonly `just check`, `pnpm check`, `cargo clippy`, or
+`uv run ruff check`. If none is documented, ask.
 
-1. Decompose by dependency graph, not by file list: independent subtasks run in
-   parallel stages; a seam split gets a driver-written interface contract first.
-   Phase length target 15-30 min of executor wall; split longer ones. Then give
-   every step a `scope:`, because the adapter watchdog arms from that bucket and
-   nothing else: small 15m, medium 30m, large 60m, `large` + `complexity: high`
-   120m, DEFAULT medium. A step expected to run past ~20 min gets `scope: large`
-   -- the default kills it at 30 minutes of wall whatever `tuning:` says in
-   `bernstein.yaml`, and those keys reach the kill paths only on the patched
-   engine the README installs. Judge steps over a multi-file phase are always
-   `large`.
-2. One step per stage, stage name = step name, `depends_on` carries the DAG.
-   Bernstein batches concurrently-open same-role tasks into ONE session
-   (`max_tasks_per_agent` defaults to 2 and no seed key, `tuning:` section or run
-   flag changes it), and a batched session spawns once. What keeps two open
-   siblings apart is a differing cli or model (`_groups_can_merge`,
-   tick_pipeline.py:113-127), and both are resolved from the step's `role:`
-   through `role_model_policy` in `bernstein.yaml`. **Do not write a per-step
-   `cli:`**: it is not in Bernstein's plan schema, it won the first spawn and was
-   LOST on the retry (measured 2026-09-02). Give two parallel siblings different
-   ROLES that resolve to different clis -- `resolver` (codex) and `analyst`
-   (claude). Readiness fails any role with no policy entry. The five roles are
-   `resolver` and `ci-fixer` (the two codex names, so two concurrent codex steps
-   are not batched into one), `analyst`, `adversary` (judge) and
-   `visionary` (shadow): the
-   obvious names (`backend`, `reviewer`) each pull a 10 KB irrelevant catalog
-   persona onto the front of the prompt with no way to switch it off, and
-   anything outside Bernstein's role enum fails `plan validate`. Do not rename
-   them; see `docs/2609-02-persona-prefix.md`.
-3. Split a phase into parallel sibling steps by disjoint file ownership:
-   whenever one step would own more than about 8 files, or two independent
-   packages, cut it into `phase-Na`, `phase-Nb`, ... in stages of their own with
-   no dependency between them. DISJOINTNESS IS YOURS TO GUARANTEE. Readiness
-   compares allowlists only between steps of the SAME stage, and only each
-   step's LAST glob against the last glob of each earlier step in that stage,
-   by exact equality plus fnmatch containment -- not a glob-intersection test
-   (`src/*/x` against `src/a/*` passes). Under the one-step-per-stage rule above
-   it therefore never fires, and nothing else checks sibling overlap. So a file
-   two siblings would touch (`go.mod`, a registry, a shared type) belongs to
-   exactly one sibling, or to a small preceding step that lands it first.
-   Where allowlists overlap ACROSS stages, Bernstein's runtime file locks
-   serialize the claims -- the loser backs off on HTTP 409 for 300 s at a time
-   until the owner releases -- so the cost is delay and an ordering you did not
-   choose, not two unguarded writers merging on top of each other. `judge-N`
-   depends on every sibling stage, so it reviews the whole phase.
-4. Assign executors by shape, through the role: seam and investigation steps ->
-   `analyst` (claude, claude-opus-5); transfer, exact-line and fix steps ->
-   `resolver` (codex, gpt-5.6-sol); Flash only as the `visionary` role, out of
-   the chain. Every judge step is `adversary` (claude, claude-opus-5). Unlike
-   Bernstein's built-in `reviewer`, `adversary` is NOT in the role tool
-   allowlist, so the judge does have Write and Edit and nothing stops it
-   touching code: its brief must forbid editing anything but its review file.
-5. Judge nodes: `judge-N` depends on every `phase-N` sibling stage; `fix-N`
-   depends on `judge-N` (plain `depends_on` -- Bernstein's plan schema has no
-   per-stage condition or retry field, so fix-N always runs: a clean review -- a
-   legal verdict, both counts declared, `Certain: 0` -- makes it a no-op, and a
-   missing or malformed one makes it refuse, and its brief must say both);
-   dependents depend on `phase-N` only, so
-   `phase-N+1` starts while `judge-N` runs. `polish-N` optional, non-blocking,
-   files restricted to phase-N's.
+Read the relevant code, prior plan documents, and handoffs. Fan out subagents
+for RESEARCH ONLY: identify uncertainties, find dependencies and their docs,
+and verify assumptions against the codebase. Research subagents may use
+`model: opus`. Require reports only; never let a subagent write the document.
 
-   THE fix-N / phase-N+1 EDGE. `fix-N` reuses phase-N's allowlist, and
-   `phase-N+1` normally builds on the same seam files, so the two stages have
-   intersecting allowlists and no dependency between them. Bernstein file-locks
-   declared files, so whichever claims second sits in `HTTP 409 File ownership
-   conflict` backoff (300 s a time) until the other releases: a wait, not a
-   hang, and sometimes 40 minutes of one. Choose per phase, and say which in the
-   plan comment: either (a) `phase-N+1` also `depends_on: [fix-N]` -- serialized,
-   the fix is in the tree before its consumer is built, at the cost of the whole
-   judge round on the critical path; or (b) leave them concurrent and add a
-   final `regress-N` step depending on BOTH, carrying the whole-tree gate
-   command, so a seam fix that lands after phase-N+1's tests passed is still
-   rechecked. Do NOT invert the edge (`fix-N` depending on `phase-N+1`): the
-   repair then lands after its consumer was verified, and fix-N's scoped
-   `gate_cmd` never rechecks that consumer.
+When starting from an idea, ask the user three to five questions that change
+the design. Record each decision and rejected alternative. Pick a short
+lowercase title slug, one word or two joined by `-`, and write the tracked plan
+document at `<plans_dir>/<YYMM-DD>-<slug>.md`. When given an existing design
+document, edit it IN PLACE as the plan document and skip the interview. With no
+argument, continue the current document when it is clear; otherwise ask.
 
-   Three hard requirements on a judge step, all silent if missed:
-   its sidecar entry carries `judges: "<exact phase title>"` (that field, not
-   the title, selects the verdict gate); its `report:` is exactly
-   `.agents/blind-review.md` (the verdict parser reads that path and nothing
-   else, so unlike an executor's report it cannot be moved -- a sandbox that
-   refuses `.agents/` cannot host a judge step at all); its plan `files:` is
-   `[]`.
-6. Write the plan and sidecar from `$TPL/build.yaml` and `$TPL/build.steps.yaml`;
-   replace every `<...>` placeholder and delete the sibling/judge/fix/polish
-   stanzas the phase does not use. Briefs from `$TPL/brief.md` into
-   `.agents/build/plans/<slug>/<step>.md`: allowlist, items whose done-criterion the Validation
-   block can decide, exact validation commands, report format. Cite spec
-   sections as the literal token `spec N` or `spec N.M` (`spec 4.10`, not
-   "section 4.10" or "docs/spec.md 4.10"): that grammar is what readiness
-   resolves against the spec's headings, and any other phrasing is simply not
-   checked. Judge steps use
-   `$TPL/judge-brief.md` (paste the phase brief and `$TPL/judge-prompt.md` into
-   it), fix steps `$TPL/fix-brief.md`. Length cap 16k. Every brief needs an
-   `## Items` heading, a `## Validation` heading with a fenced command block, and
-   a `## Report` heading whose text names Deviations; readiness fails without
-   them. NO brief may tell an executor to run a repo setup recipe (`just setup`,
-   `make bootstrap`, `lefthook install`): those reinstall hooks into the SHARED
-   `.git/hooks` mid-run, under every worktree, and one did (2026-09-03, phase-2's
-   20 files). List the exact build/test commands instead.
-7. Set each sidecar step's `brief:` and `report:` explicitly rather than relying
-   on the `<T>` default. `report:` is relative to the executor's worktree root
-   and is copied to `<run>/reports/<T>/<task>-<head>/report.md` by the gate
-   (one directory per ATTEMPT; `latest` is a symlink to the newest). Pick a
-   report path the executor can actually WRITE and COMMIT: `.agents/` is
-   gitignored in many repos (the brief templates stage with `git add -f`) and a
-   codex sandbox has refused writes under it outright, leaving a step with no
-   report and, on the fix-N no-op path, no commit at all -- which the gate
-   blocks. If a sandbox refuses `.agents/`, move that step's `report:` to a
-   tracked path the sandbox allows and set the sidecar to match; report text in
-   an executor's final message is not a substitute, because nothing commits it
-   and the scorer reads only the file.
-   A `fix-N` or `polish-N` step also needs `fixes: "<exact title of the step it
-   repairs>"` and that step's OWN `gate_cmd:`. It runs last, after a later phase
-   has deliberately left the rest of the tree red, and it is scored on the fixed
-   step's files: inheriting `defaults.gate_cmd` blocked a correct seven-commit
-   fix three times over a module it never touched (2026-09-03). Readiness NOTEs
-   the mismatch, and FAILS both a `fixes:` that names no step and a `fix-`/
-   `polish-` step that declares no `fixes:` at all -- the plan that caused this
-   declared nothing, which is why silence cannot be the passing case. Codex has twice
-   exited without writing its report (`report_mismatch: ["no report file"]`,
-   non-blocking): keep the Report section short and make it the last item.
-8. Record the plan and brief hashes in `<run>/ledger.md`:
+Write these sections in order:
 
-       printf -- "- %s plan=%s briefs=%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-         "$(shasum -a 256 .agents/build/plans/<slug>.yaml | cut -d' ' -f1)" \
-         "$(shasum -a 256 .agents/build/plans/<slug>/*.md | cut -d' ' -f1 | tr '\n' ' ')" \
-         >> <run>/ledger.md
-       git add .agents/build/plans && git commit -m "chore(build): plan and sidecar for <slug>"
+1. Numbered design sections named `## <n>. <title>`. Once a brief cites a
+   section, freeze its number and meaning.
+2. `## Phases`, with a table whose every row names an owner. Use an executor
+   role for code-in-worktree work. Use `user` for live credentials, infra ops,
+   or manual verification. Never cut `owner: user` rows into the DAG; hand them
+   back at close.
+3. `## Spec amendments`, listing exactly which product-spec sections this
+   build adds or amends. Executors make those changes inside their allowlists;
+   the driver does not. Omit this section when the repo has no product spec.
+4. Optional `## Release requirements`, for `/build-close`.
 
-   Then offer `/build-ready <run>`.
+Validate with one fresh critic subagent on your own model. Keep it read-only.
+Give it the whole document and touched code and ask: "contradictions, undefined
+terms, invariants with no check, uncut dependencies; blocking findings only;
+write no files". Edit the document yourself and rerun fresh critics until a
+round warrants no edits. Commit the plan document with a conventional commit.
+
+For an old plan, skip DESIGN when its pinned document hash is current or the
+user says the document is current.
+
+## 2. CUT
+
+Pick `<slug>` here. It is the run directory name, machine plan `name:`, and
+machine plan file name. Use the title-slug rule for every `<T>`: lowercase,
+replace each non-alphanumeric run with `-`, trim, and cut to 48 characters.
+
+Produce exactly:
+
+    .agents/build/plans/<slug>.yaml
+    .agents/build/plans/<slug>.steps.yaml
+    .agents/build/plans/<slug>/<step>.md
+    .agents/build/runs/<slug>/contracts/<seam>.md
+
+Keep only generated machine artifacts plus `ACTIVE` under
+`.agents/build/plans/`. Keep prose in `<plans_dir>`. Keep evidence and
+driver-written seam contracts in `<run> = .agents/build/runs/<slug>/`.
+
+Briefs are tracked, not run files. Only tracked files enter executor worktrees.
+Point each plan `description:` at its tracked brief. A sidecar `brief:` starting
+with `.agents/` resolves from the repo root; other paths resolve from `<run>`.
+A brief edit is a commit.
+
+Copy templates from `.agents/skills/build-plan/templates` for a project install
+or `~/.agents/skills/build-plan/templates` for a global install. Write the
+machine plan from `build.yaml`, the sidecar from `build.steps.yaml`, executor
+briefs from `brief.md`, judge briefs from `judge-brief.md` plus
+`judge-prompt.md`, and fixes from `fix-brief.md`. Replace every placeholder and
+remove unused sibling, judge, fix, and polish stanzas.
+
+Pin discovery in the sidecar:
+
+    defaults.doc: <plan document path>
+    defaults.design: <product spec path>  # omit when none
+    defaults.gate_cmd: <whole-tree check command>
+
+Decompose by dependency graph, not file list. Target 15-30 minutes of executor
+wall per step. Write a driver-owned interface contract before a seam split.
+Split more than about eight files or two independent packages into disjoint
+`phase-Na`, `phase-Nb` siblings. Give shared files to one sibling or a small
+predecessor. Readiness compares only same-stage last globs and is not a real
+intersection test, so guarantee sibling disjointness yourself.
+
+Use one step per stage and make stage name equal step name. Carry the DAG in
+`depends_on`. Bernstein batches concurrently open tasks with the same role into
+one session. Give parallel siblings different roles that resolve to different
+dispatch policies. Never write per-step `cli:`; Bernstein loses it on retry.
+Use only the persona-free roles: `resolver` and `ci-fixer` for Codex,
+`analyst` for Claude, and `adversary` for judges. Assign seam and investigation
+work to `analyst`; assign transfer, exact-line, and fix work to `resolver` or
+`ci-fixer`.
+
+Set every step's `scope:` because it controls the adapter watchdog: `small`
+15m, `medium` 30m, `large` 60m, and `large` plus `complexity: high` 120m.
+Default is medium. Use large above about 20 minutes and for every multi-file
+judge.
+
+Use this judge shape:
+
+- Make `judge-N` depend on every phase-N sibling.
+- Make `fix-N` depend on `judge-N`; it always runs and takes the no-op path only
+  for a legal verdict with both counts declared and `Certain: 0`.
+- Let phase N+1 depend on phase N, not its judge, when speculation is safe.
+- Set judge sidecar `judges:` to the exact reviewed title, `report:` exactly
+  `.agents/blind-review.md`, and plan `files: []`.
+- Set every fix or polish sidecar `fixes:` to the exact repaired title and copy
+  that step's own scoped `gate_cmd:`.
+
+`fix-N` and phase N+1 commonly overlap. Either serialize phase N+1 behind
+`fix-N`, or keep them concurrent and add a final regression step depending on
+both with the whole-tree gate. Record the choice in a plan comment. Never make
+the fix depend on the later consumer; that verifies the consumer before the
+repair lands.
+
+For every executor brief:
+
+- Cite plan sections only as literal `PLAN <n>` or `PLAN <n.m>` tokens.
+- Cite product-spec sections only as `DESIGN <n>` and only when a product spec
+  exists.
+- Include `## Items`, `## Validation` with a fenced command block, and
+  `## Report` naming Deviations.
+- Give each item a done criterion that Validation can decide.
+- List exact allowlisted paths and exact validation commands.
+- Keep it under 16k.
+- Never tell an executor to run a setup recipe such as `just setup`,
+  `make bootstrap`, or `lefthook install`; linked worktrees share hooks.
+- Choose a writable, committed report path and set sidecar `brief:` and
+  `report:` explicitly. If `.agents/` is refused, use a tracked allowed path.
+
+Set sidecar `defaults.base` to the future `<type>/<slug>` workspace branch.
+Set a step-specific gate when the whole tree is intentionally red. The scorer
+measures the command even where its Go and TypeScript heuristics do not apply.
+
+Record hashes in `<run>/ledger.md` and commit `.agents/build/plans` with a
+conventional commit. Re-cut only changed artifacts when re-verifying an old
+plan.
+
+## 3. WORKSPACE
+
+Make this phase idempotent. Resolve checkout identity first with
+`git rev-parse --git-dir`, `git rev-parse --git-common-dir`, and
+`git rev-parse --show-superproject-working-tree`. Refuse a submodule. When the
+git dir differs from the common dir and the superproject result is empty,
+already inside a linked worktree: continue to READY.
+
+In the primary checkout, if `<run>/workspace.json` exists, verify its five
+fields and re-enter its recorded absolute `path` with the native EnterWorktree
+tool in path mode. Never create a second worktree.
+
+Otherwise capture the primary HEAD sha and branch. Ask once for branch type
+`feat|fix|chore|refactor`, default `feat`. Ensure `.claude/worktrees/` is
+gitignored, adding only that line when needed. Create:
+
+    git worktree add -b <type>/<slug> <primary>/.claude/worktrees/<slug> <primary HEAD sha>
+
+Use absolute paths in the real command. Copy ONLY the untracked run directory:
+
+    rsync -a <primary>/<run>/ <workspace>/.agents/build/runs/<slug>/
+
+Bootstrap by copying, never committing, the primary's gitignored local state:
+`.agents/skills/`, `skills-lock.json`, and
+`.agents/skills/build-plan/templates/claude-settings.local.json` to
+`.claude/settings.local.json`. Merge allow lists by hand if settings already
+exist.
+
+Copy the build-run `bernstein.yaml` template when the repo has none and set
+`quality_gates.base_ref: <type>/<slug>`. If the repo tracks one, change only
+`base_ref`. Write `.agents/build/plans/ACTIVE` as one line containing
+`<slug>.yaml`. Write `<run>/workspace.json` with EXACTLY these five fields:
+`path`, `branch`, `base`, `base_branch`, `primary`.
+
+Make one seed commit containing ONLY `bernstein.yaml`, the `.gitignore` edit
+when made, and `ACTIVE`. Keep copied local state untracked. Enter the workspace
+with native EnterWorktree path mode. If EnterWorktree is absent, tell the user
+to start a session in the absolute workspace path and stop.
+
+## 4. READY
+
+From the workspace root run:
+
+    bernstein-herdr ready --plan .agents/build/plans/<slug>.yaml
+
+Read every PASS, FAIL, RED, and NOTE line. NOTE is advisory: a missing
+allowlisted path may be a new file and a missing report requirement weakens
+evidence. Treat unexpected RED as a brief error unless the brief names that red
+window. Read every printed gate command and replace the `just check` fallback
+with the discovered whole-tree command. Keep step-specific gates scoped.
+
+If commit hooks exist, follow the printed remedy: point `core.hooksPath` at an
+empty repo-local directory and rerun readiness. Preserve the dispatch guards:
+Codex effort must be high, every role needs a `role_model_policy`, fast-path
+titles must be reworded, parallel tasks must not share a role, judge fields must
+be exact, and fix gates must match the step they repair.
+
+Run one fresh critic subagent per brief on your own model, read-only. Give each
+the brief, plan document, optional product spec, and named files. Ask for
+blocking findings only: underspecification, contradictions, validation gaps,
+allowlist gaps, and overlapping claims. Require "write no files". Edit briefs
+yourself, rerun ready so it re-pins, and rerun fresh critics until a whole round
+warrants no edits.
+
+Record the readiness rounds and final pins in `<run>/ledger.md`. End STOPPED.
+Print exactly:
+
+    use /build-run <path_to_plan_doc> to start plan execution
+
+Never auto-chain. Starting the paid run is the user's explicit decision.

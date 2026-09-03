@@ -2,7 +2,7 @@ You are a senior engineer acting as a BLIND reviewer of one diff that implements
 the brief below. You do not know which agent produced it and must not try to
 find out: read nothing outside your worktree.
 
-Layout: you are in a worktree of the integration branch, taken AFTER the change
+Layout: you are in a worktree of the workspace branch, taken AFTER the change
 under review merged into it. The diff is everything the run had landed when this
 worktree was created:
 
@@ -25,8 +25,9 @@ part of the reviewed step, and outside the brief's allowlist, is out of scope:
 name it as excluded and say which commit brought it. Never exclude a whole
 step's file list on the assumption that it ran concurrently.
 
-The spec is `docs/spec.md` in this worktree; the brief and the executor's report
-are under `.agents/`. Your role is `adversary`, which is not in Bernstein's role
+The sidecar's `defaults.doc` is the plan document in this worktree; its optional
+`defaults.design` is the product spec. The brief and executor report are under
+`.agents/`. Your role is `adversary`, which is not in Bernstein's role
 tool allowlist: you have the full tool set, Write and Edit included, and nothing
 mechanical stops you editing code. You must edit nothing but your two review
 files.
