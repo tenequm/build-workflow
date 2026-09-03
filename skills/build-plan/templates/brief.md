@@ -18,14 +18,22 @@ ambiguous, build the smallest faithful shape and record it under "Deviations".
 
 ## File allowlist
 
-<paths>. `.agents/` is always writable (this brief and your report live there)
-and is not part of the allowlist. Stop and report instead of editing any other
-path.
+<paths>, plus your report file `<report path>`. The report path is not part of
+the allowlist and never counts as a violation. Stop and report instead of
+editing any other path.
+
+Two facts about `.agents/`, where this brief and usually the report live: many
+repos GITIGNORE it, so `git add <report>` stages nothing and you need
+`git add -f`; and some sandboxes refuse writes under it altogether. If your
+report path is refused, say so in the FIRST line of your final message and name
+the path -- do not paste the report there instead and treat the step as done.
+Nothing reads a final message: the gate archives and scores the COMMITTED file,
+and a step that commits nothing blocks.
 
 ## Validation (exactly, from the worktree root)
 
 ```
-<commands; clean lint cache first>
+<commands; do not clean the lint cache -- the gate provides a per-worktree one>
 ```
 
 Report each command, its exit code and the last 30 lines of output.
@@ -45,10 +53,10 @@ rejected and why); Open (walls hit, out-of-allowlist needs). The gate archives
 this file to `<run>/reports/<step>/<task>-<head>/report.md` and scores its claims against the
 measured gate, so a claim you did not measure is a block.
 
-Then commit and exit:
+Then commit and exit (`-f` because the report path may be gitignored):
 
 ```
-git add -A && git commit -m "<type>(<scope>): <what>"
+git add -A && git add -f <report path> && git commit -m "<type>(<scope>): <what>"
 ```
 
 A refusal (`scope_exceeded`, `underspecified`, `blocked_on_dependency`,

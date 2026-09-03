@@ -116,7 +116,15 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
 7. Set each sidecar step's `brief:` and `report:` explicitly rather than relying
    on the `<T>` default. `report:` is relative to the executor's worktree root
    and is copied to `<run>/reports/<T>/<task>-<head>/report.md` by the gate
-   (one directory per ATTEMPT; `latest` is a symlink to the newest).
+   (one directory per ATTEMPT; `latest` is a symlink to the newest). Pick a
+   report path the executor can actually WRITE and COMMIT: `.agents/` is
+   gitignored in many repos (the brief templates stage with `git add -f`) and a
+   codex sandbox has refused writes under it outright, leaving a step with no
+   report and, on the fix-N no-op path, no commit at all -- which the gate
+   blocks. If a sandbox refuses `.agents/`, move that step's `report:` to a
+   tracked path the sandbox allows and set the sidecar to match; report text in
+   an executor's final message is not a substitute, because nothing commits it
+   and the scorer reads only the file.
    A `fix-N` or `polish-N` step also needs `fixes: "<exact title of the step it
    repairs>"` and that step's OWN `gate_cmd:`. It runs last, after a later phase
    has deliberately left the rest of the tree red, and it is scored on the fixed

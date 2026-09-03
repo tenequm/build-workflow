@@ -262,11 +262,16 @@ its worktree before the merge. All commands run from the repo root.
    sidecar `judges:` exits 1 only on the verdict `do not merge` (or a missing
    `.agents/blind-review.md`); `merge after listed fixes` and any number of
    certain defects exit 0, so the review merges and `fix-N` spawns. The gate row
-   and `<run>/judge/<phase>/verdict.json` carry `verdict`, `certain` and
-   `plausible`; `fix-N`'s brief routes on `certain` and completes as a no-op
-   (one report commit under `.agents/`, no source change) when it is 0. A
-   `do not merge` IS terminal and IS a decision for you: read the review, then
-   change the plan.
+   and `<run>/judge/<phase>/verdict.json` carry `verdict`, `certain`,
+   `plausible` and `counts_declared`. `fix-N`'s brief takes the no-op path (one
+   report commit, no source change) only when the verdict is one of the three
+   legal strings AND `counts_declared` is true AND `certain` is 0; on a
+   `missing` or `unclear` verdict, or undeclared counts, it refuses with
+   `blocked_on_dependency` and the judge is yours to re-run. The parser does not
+   enforce that: a missing review parses as `verdict: missing, certain: 0` and a
+   malformed one as `unclear` with word-count fallbacks, and neither blocks the
+   merge, so the brief's routing is the only guard. A `do not merge` IS terminal
+   and IS a decision for you: read the review, then change the plan.
 9. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
    the user as one line with the ledger excerpt and the row; the answer becomes a
    brief edit, a rerun of `/build-ready`, and a re-dispatch.

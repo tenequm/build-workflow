@@ -68,12 +68,19 @@ exact path in this worktree and nowhere else. Also write `.agents/scorecard.md`
 (numbers only). Record under a `## Deviations` heading in the scorecard anything
 you could not measure and why.
 
-When both files exist:
+When both files exist (`-f` because `.agents/` is gitignored in many repos, and
+an unstaged review is a review the gate cannot read):
 
 ```
-git add .agents/blind-review.md .agents/scorecard.md
+git add -f .agents/blind-review.md .agents/scorecard.md
 git commit -m "review: blind review of <phase>"
 ```
+
+If a sandbox refuses writes under `.agents/`, that is a blocker, not something
+to work around by putting the review in your final message: nothing reads a
+final message, and a missing `.agents/blind-review.md` parses as
+`verdict: missing` and refuses this merge. Say the path was refused in the first
+line of your final message and stop.
 
 Commit nothing else. Restore every probing edit first; `git status` must be
 clean of your probes.
