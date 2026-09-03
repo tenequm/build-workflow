@@ -235,7 +235,10 @@ to start a session in the absolute workspace path and stop.
 
 ## 4. READY
 
-From the workspace root run:
+If `bernstein-herdr` is not on PATH, stop and hand the operator the install
+commands from this repo's README (the patched Bernstein clone plus
+`bernstein_herdr`); never install it yourself. Then from the workspace root
+run:
 
     bernstein-herdr ready --plan .agents/build/plans/<slug>.yaml
 
