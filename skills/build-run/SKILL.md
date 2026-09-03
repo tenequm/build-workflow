@@ -42,8 +42,10 @@ its worktree before the merge. All commands run from the repo root.
    branch name is useless to a judge because every merge advances it. Fix what
    run-config names and rerun until it exits 0. Use that N below; never assume
    8052.
-3. Point the git hooks somewhere empty, AFTER readiness is READY and never
-   before (readiness fails on a hook that exists, not on the remedy):
+3. Point the git hooks somewhere empty, any time before the launch -- readiness
+   fails on a hook that EXISTS, not on this remedy, and PASSes with the empty
+   path already configured, so setting it first is fine and re-running readiness
+   after it is safe:
 
        mkdir -p .agents/build/nohooks && git config core.hooksPath .agents/build/nohooks
 
@@ -52,7 +54,7 @@ its worktree before the merge. All commands run from the repo root.
    phase-2's 20 files (2026-09-03). `core.hooksPath` lives in untracked
    `.git/config`, so it never reaches an agent's diff, and unlike `LEFTHOOK=0` it
    survives the adapters' filtered spawn env and a mid-run `lefthook install`.
-   Unset it when the run is over (step 11).
+   Unset it when the run is over (step 12).
 4. Launch DETACHED, in a session of its own (`--from-plan` is a different,
    seed-driven path; do not use it):
 

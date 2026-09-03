@@ -58,7 +58,8 @@ place, a line in `<run>/ledger.md`.
      puts them back at any moment -- a brief that told an executor to run the
      repo's `just setup` did exactly that mid-run and cost phase-2's 20 files.
      So: NEVER let a brief tell an executor to run a setup recipe that installs
-     hooks, and once readiness is READY, before launching the run:
+     hooks; and at any point before the launch -- the order does not matter,
+     because readiness PASSes with the empty path already configured -- run:
 
          mkdir -p .agents/build/nohooks
          git config core.hooksPath .agents/build/nohooks     # unset after the run
