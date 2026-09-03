@@ -25,17 +25,12 @@ def row(run_dir: Path, data: dict) -> None:
         f.write(json.dumps({"ts": now(), **data}, separators=(",", ":")) + "\n")
 
 
-#: Bernstein drops a per-task CLAUDE.md into the tree it hands the agent, and where the
-#: repo keeps CLAUDE.md as a symlink (gopost: `CLAUDE.md -> AGENTS.md`) that write lands
-#: on the target -- a tracked file the executor never opened. Both are orchestrator
-#: writes, so they stay out of the diff the row, the archive and the judge are built from.
+#: Bernstein drops a per-task CLAUDE.md into the tree it hands the agent. It is an
+#: orchestrator write, so it stays out of the diff the row, the archive and the judge
+#: are built from. Where the repo tracks CLAUDE.md as a symlink, Bernstein replaces the
+#: link rather than writing through it, so the link's target is the executor's own file
+#: and must stay visible to the scorer and the judge.
 ORCHESTRATOR_FILES = ("CLAUDE.md",)
-
-
-def orchestrator_files(wt: Path) -> tuple[str, ...]:
-    link = wt / "CLAUDE.md"
-    target = link.readlink().name if link.is_symlink() else ""
-    return ORCHESTRATOR_FILES + ((target,) if target else ())
 
 
 #: State directories the orchestrator and this package write. `.agents` holds the brief
@@ -45,7 +40,7 @@ ORCHESTRATOR_PATHS = (".agents", ".sdd", ".claude")
 
 
 def pathspec(wt: Path) -> list[str]:
-    return ["--", ".", *(f":!{p}" for p in ORCHESTRATOR_PATHS), *(f":!{f}" for f in orchestrator_files(wt))]
+    return ["--", ".", *(f":!{p}" for p in ORCHESTRATOR_PATHS), *(f":!{f}" for f in ORCHESTRATOR_FILES)]
 
 
 def diff_stats(wt: Path, base: str) -> dict:

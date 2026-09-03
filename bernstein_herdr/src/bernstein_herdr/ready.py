@@ -76,23 +76,6 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         else:
             lines.append(f"PASS .agents/build/plans/ACTIVE selects {active}")
 
-    # A symlinked agent-instruction file at the root makes Bernstein's
-    # `validate_worktree_isolation` refuse the repo ("points into parent repo mutable
-    # state") even when the target is inside the same worktree. The refusal is silent:
-    # `spawner_core.py:4489` falls back to running EVERY executor at the ROOT on an
-    # `agent/<session>` branch, where the merge target is that same branch and nothing
-    # ever lands on the integration branch (measured, gopost 1a replay). The adapter
-    # refuses that spawn per step; this catches the whole run before a token is spent.
-    for name in ("CLAUDE.md", "AGENTS.md"):
-        f = plan.root / name
-        if f.is_symlink():
-            fail(f"{name} at the repo root is a symlink -> {f.readlink()}; Bernstein refuses worktree "
-                 f"isolation for it and silently runs every executor at the root on an agent branch, "
-                 f"with no merge back. Make it a real file (`cp --remove-destination` the target over it, "
-                 f"or copy the content and drop the link) and commit.")
-        elif f.exists():
-            lines.append(f"PASS {name} is a regular file")
-
     # The root checkout is the merge target: every merge-back lands on whatever branch
     # the root has out. A warm-pool spawn runs an agent AT THE ROOT and leaves it on that
     # agent branch, so a second run silently merges everything onto the leftover branch.

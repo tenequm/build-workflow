@@ -36,8 +36,8 @@ TEST_FILE = re.compile(r"_test\.go$|\.test\.ts$|\.spec\.ts$")
 ORCHESTRATOR_PATHS = (".agents/", ".sdd/", ".claude/")
 
 
-def _authored(path: str, orchestrator_files: tuple[str, ...]) -> bool:
-    return not path.startswith(ORCHESTRATOR_PATHS) and path not in orchestrator_files
+def _authored(path: str) -> bool:
+    return not path.startswith(ORCHESTRATOR_PATHS) and path not in ledger.ORCHESTRATOR_FILES
 
 
 def _sh(cmd: str, cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
@@ -73,10 +73,9 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
         tracked = _sh(f"git diff --name-only {step.base} -- . ':!.agents'", worktree)[1].splitlines()
         untracked = _sh("git ls-files --others --exclude-standard -- . ':!.agents'", worktree)[1].splitlines()
         changed_files = sorted({l for l in tracked + untracked if l})
-    orchestrator_files = ledger.orchestrator_files(worktree)
     f["allowlist_violations"] = [
         c for c in changed_files
-        if step.files and _authored(c, orchestrator_files) and not any(fnmatch.fnmatch(c, g) for g in step.files)
+        if step.files and _authored(c) and not any(fnmatch.fnmatch(c, g) for g in step.files)
     ]
 
     _, diff = _sh(f"git diff {step.base} -- . ':!.agents'", worktree)

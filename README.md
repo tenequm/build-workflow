@@ -22,8 +22,6 @@ uv tool install ~/pjv/sipyourdrink-ltd/bernstein \
 
 grep -q 'model_reasoning_effort = "high"' ~/.codex/config.toml \
   || echo 'model_reasoning_effort = "high"' >> ~/.codex/config.toml
-
-test -L CLAUDE.md -o -L AGENTS.md && echo "make it a real file first"
 ```
 
 ## Pipeline
@@ -64,9 +62,12 @@ catalog personas; see the comments in `bernstein.yaml` and
 1. One ACTIVE plan per checkout. `.sdd/`, the task-server port, run config,
    ACTIVE, and `refs/build/base/<slug>` are per checkout. A concurrent build
    needs another workspace.
-2. Root `CLAUDE.md` or `AGENTS.md` must be a real file. Bernstein replaces and
-   restores task instructions per spawn; readiness rejects a symlink before it
-   can redirect those writes outside the worktree.
+2. Bernstein must be the patched clone below, not stock upstream. Two fixes
+   this workflow depends on are carried there: worktree isolation no longer
+   refuses a symlink that stays inside its own worktree, and a per-spawn task
+   instruction file replaces a symlinked `CLAUDE.md` instead of writing through
+   it. Without them a repo that tracks `CLAUDE.md -> AGENTS.md` fails every
+   spawn, and the orchestrator's write lands on a tracked file.
 
 ## Components
 
