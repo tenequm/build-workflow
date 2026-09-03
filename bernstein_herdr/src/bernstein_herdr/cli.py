@@ -5,7 +5,6 @@
   bernstein-herdr gate                                     THE quality gate: run by Bernstein from the agent worktree
   bernstein-herdr scorer --step "<title>"                  scorer gate in the current worktree; exit 0/1
   bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the verdict is `do not merge`
-  bernstein-herdr agy-session <db> [name] [--steps]        timing and tokens from an Antigravity conversation DB
 """
 
 from __future__ import annotations
@@ -405,9 +404,6 @@ def main() -> int:
     if cmd == "ready":
         from bernstein_herdr.ready import main as ready_main
         return ready_main(rest)
-    if cmd == "agy-session":
-        from bernstein_herdr.agy_session import main as agy_main
-        return agy_main(rest)
     if cmd == "scorer":
         from bernstein_herdr.gates.scorer import score
         blocked, f = score(Path.cwd(), _arg(rest, "--step") or "")

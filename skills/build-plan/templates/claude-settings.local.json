@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bernstein:*)",
+      "Bash(bernstein-herdr:*)",
+      "Bash(uv tool install:*)",
+      "Bash(lsof:*)",
+      "Bash(pgrep:*)",
+      "Bash(kill:*)",
+      "Bash(rm -rf .sdd:*)",
+      "Bash(rm -rf .agents/build/runs/*)",
+      "Bash(git worktree:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "This repo root is a build-pipeline root: the commands that drive a native Bernstein run are routine here. That means bernstein and bernstein-herdr (ready, run-config, gate, run, status, doctor, quarantine), reinstalling the gate with uv tool install, finding the run port with lsof and pgrep, killing leftover bernstein or codex processes, removing .sdd or .agents/build/runs, git worktree add/remove and git worktree prune on this root and its .sdd worktrees, git reset, git checkout of the workspace branch to undo a warm-pool spawn that switched the root, and in-place edits of files under .agents/build. The driver never edits application code; it merges only with explicit user consent."
+    ]
+  }
+}

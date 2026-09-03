@@ -1,1 +1,0 @@
-../skills/build-plan/templates/fix-brief.md

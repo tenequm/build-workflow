@@ -10,7 +10,7 @@ cli: codex
 # into sharing files, which readiness refuses and the merge would serialise anyway.
 max_agents: 4
 
-# THE dispatch table. Bernstein spawns its own adapters (claude, codex, agy) and resolves
+# THE dispatch table. Bernstein spawns its own adapters (claude and codex) and resolves
 # cli/model/effort by ROLE: `resolution for role='resolver': match=exact` (measured). A
 # per-step `cli:` in the plan is not in Bernstein's schema, won the first spawn and was
 # LOST on the retry, so the role is the only durable key -- every `role:` used in the plan
@@ -34,7 +34,6 @@ max_agents: 4
 #                into ONE spawn, so the DAG's parallel half needs two codex role names
 #   analyst    = the claude executor (was `backend2`)  seam and interface steps
 #   adversary  = the blind judge     (was `reviewer`)
-#   visionary  = the shadow observer, out of the chain (was `shadow`)
 #
 # Side effect of dropping `reviewer`: the judge no longer gets Bernstein's role tool
 # allowlist (`_ROLE_ALLOWED_TOOLS`, adapters/claude.py:311-316 gives `reviewer` only
@@ -57,7 +56,6 @@ role_model_policy:
   ci-fixer:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
   analyst:   { cli: claude, model: claude-opus-5,        effort: high }
   adversary: { cli: claude, model: claude-opus-5,        effort: high }
-  visionary: { cli: agy,    model: gemini-3.7-flash-high }
 
 # Seed hygiene. Both keys are real seed keys (core/config/seed_parser.py:2517-2518,
 # defaults True); both defaults cost a build run something.
@@ -83,7 +81,7 @@ gate_repair_enabled: false
 # (core/tasks/task_lifecycle.py:288-297), so a claiming spawn gets `Path("")` = the repo
 # ROOT (spawner_core.py:4471-4479) and switches the root checkout to that agent branch.
 # Our gate refuses to score at the repo root, so the step blocks rather than merging
-# garbage; the driver's recovery is `git checkout <integration branch>` at the root.
+# garbage; the driver's recovery is `git checkout <workspace branch>` at the root.
 # See build-run/SKILL.md step 5.
 
 quality_gates:
@@ -105,10 +103,10 @@ quality_gates:
     - { name: "tests", required: true, condition: "always", command_override: "bernstein-herdr gate" }
     - { name: "run_config", required: true, condition: "always" }
   # Gate changed-files are `git diff --name-only <base_ref>..HEAD` in the agent's
-  # worktree. The default "main" carries every commit the integration branch is ahead
+  # worktree. The default "main" carries every commit the workspace branch is ahead
   # by, so gates judge the branch rather than the step. Set it to the branch this run
   # merges into -- the same branch checked out at the repo root.
-  base_ref: <integration branch, e.g. build/<slug>>
+  base_ref: <workspace branch, e.g. feat/<slug>>
   cross_model:
     enabled: false          # our judge replaces the 12k-char cheap-model review
   intent_verification:

@@ -3,8 +3,8 @@
 # steps in a stage run in parallel. Bernstein's plan schema is strict, so
 # build-workflow options (brief, report, base, judges, gate_cmd) live in the sidecar.
 #
-# `name:` MUST equal the run-directory slug: the tool derives .agents/build/runs/<name>
-# from it.
+# `name:` MUST equal the run-directory slug and this machine plan's file name. The
+# sidecar pins the discovered plan document and optional product spec.
 #
 # ROLE, NOT cli. Bernstein spawns its own adapters and resolves cli/model/effort by role
 # through `role_model_policy` in bernstein.yaml (measured: `resolution for role='resolver':
@@ -12,8 +12,8 @@
 # spawn and was LOST on the retry, so it is not a dispatch key and is omitted below.
 # Readiness fails any role with no policy entry.
 #
-# The five roles -- `resolver` and `ci-fixer` (codex), `analyst` (claude), `adversary` (the
-# judge), `visionary` (the shadow) -- are the persona-free names of Bernstein's role enum.
+# The four roles -- `resolver` and `ci-fixer` (codex), `analyst` (claude), and
+# `adversary` (the judge) -- are persona-free names from Bernstein's role enum.
 # `ci-fixer` exists only so a step that runs CONCURRENTLY with another codex step has a
 # different role: same role plus same cli plus same model = one batched spawn. The
 # obvious names (`backend`, `reviewer`) each drag a 10 KB irrelevant catalog persona onto
@@ -100,10 +100,11 @@ max_agents: 4
 # untracked path is recorded `{"reason_code": "missing"}` and reaches nobody (measured
 # 2026-09-02). Readiness fails an entry that is not in the step base.
 context_files:
-  - docs/spec.md
+  - <sidecar defaults.doc plan document path>
+  - <sidecar defaults.design product spec path; omit when none>
 constraints:
-  - "docs/spec.md is driver-owned: never edit it. Ambiguity -> smallest faithful shape, recorded under Deviations."
-  - "Commit on your branch. Never push. Never touch main."
+  - "The plan document is driver-owned: never edit it. Ambiguity -> smallest faithful shape, recorded under Deviations."
+  - "Commit on your branch. Never push. Never touch the workspace branch."
 
 stages:
   # phase-1a and phase-1b are siblings: no dependency between them, so they run in
