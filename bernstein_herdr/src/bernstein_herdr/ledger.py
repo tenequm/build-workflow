@@ -66,12 +66,22 @@ def diff_stats(wt: Path, base: str) -> dict:
 
 
 def archive(wt: Path, base: str, dest: Path) -> dict:
+    """Everything the gate saw, under `dest`, which must be unique per ATTEMPT.
+
+    `status.txt` carries the worktree's identity as well as its porcelain status: an empty
+    porcelain listing is the NORMAL case (the executor committed everything), and a
+    zero-byte file is indistinguishable from a step that never ran (finding T).
+    """
     dest.mkdir(parents=True, exist_ok=True)
     run = lambda *a: subprocess.run(a, cwd=wt, capture_output=True, text=True, check=False).stdout
     run("git", "add", "-A", "-N", ".")
     (dest / "diff.patch").write_text(run("git", "diff", base, *pathspec(wt)))
     (dest / "numstat.txt").write_text(run("git", "diff", base, "--numstat", *pathspec(wt)))
-    (dest / "status.txt").write_text(run("git", "status", "--porcelain"))
+    porcelain = run("git", "status", "--porcelain")
+    (dest / "status.txt").write_text(
+        f"worktree: {wt}\nbase: {base}\nbranch: {run('git', 'symbolic-ref', '--short', '-q', 'HEAD').strip() or '(detached)'}\n"
+        f"head: {run('git', 'rev-parse', 'HEAD').strip()}\ncommits since base: {run('git', 'rev-list', '--count', f'{base}..HEAD').strip()}\n"
+        f"uncommitted:\n{porcelain or '  (none -- the tree is clean)\n'}")
     run("git", "reset", "-q")
     return diff_stats(wt, base)
 

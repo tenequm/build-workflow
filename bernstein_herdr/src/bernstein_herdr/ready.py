@@ -190,21 +190,34 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     managers = [f for f in ("lefthook.yml", "lefthook.yaml", ".lefthook.yml", "lefthook.toml",
                             "lefthook.json", ".pre-commit-config.yaml", ".husky")
                 if (plan.root / f).exists()]
-    if live_hooks or (managers and configured):
-        fail(f"this repo runs git hooks on commit ({', '.join(live_hooks) or 'via ' + ', '.join(managers)}"
+    remedy = (f"  mkdir -p .agents/build/nohooks && git -C {plan.root} config core.hooksPath .agents/build/nohooks\n"
+              f"  # after the run: git -C {plan.root} config --unset core.hooksPath\n"
+              f"core.hooksPath lives in .git/config, which is untracked, so it never reaches an agent's diff, "
+              f"and unlike LEFTHOOK=0/HUSKY=0 it survives both the adapters' filtered spawn env and a mid-run "
+              f"`lefthook install` -- a brief that tells an executor to run a setup recipe rewrites the SHARED "
+              f".git/hooks under every worktree (measured 2026-09-03).")
+    if live_hooks:
+        # Only hooks that exist RIGHT NOW under the path git will actually consult are a
+        # failure. The old clause also failed on `managers and configured`, which fired
+        # exactly when this remedy had been applied -- readiness refused its own fix
+        # (finding P). A configured hooksPath with nothing executable in it is the fix
+        # working, not a fault.
+        fail(f"this repo runs git hooks on commit ({', '.join(live_hooks)}"
              f"{'; core.hooksPath=' + configured if configured else ''}). Linked worktrees share them, so "
              f"they run inside every agent worktree and against Bernstein's salvage commit -- a hook that "
              f"fails there loses the whole step's work (measured 2026-09-03). Point the hooks somewhere "
-             f"empty for the run and put it back after:\n"
-             f"  mkdir -p .agents/build/nohooks && git -C {plan.root} config core.hooksPath .agents/build/nohooks\n"
-             f"  # after the run: git -C {plan.root} config --unset core.hooksPath\n"
-             f"core.hooksPath lives in .git/config, which is untracked, so it never reaches an agent's diff. "
-             f"An env switch (LEFTHOOK=0, HUSKY=0) is NOT enough: adapters spawn under a filtered env.")
-    elif managers:
-        lines.append(f"NOTE hook manager config present ({', '.join(managers)}) but no executable hook is "
-                     f"installed; nothing fires on commit")
+             f"empty for the run and put it back after:\n{remedy}")
+    elif managers and not configured:
+        # A NOTE, not a fail: nothing fires yet. But `lefthook install` puts the hooks back
+        # into the default .git/hooks at any moment, and the 2026-09-03 run lost 20 files
+        # that way -- a brief told the executor to run the repo's setup recipe.
+        lines.append(f"NOTE hook manager config present ({', '.join(managers)}) with no hook installed and no "
+                     f"core.hooksPath set. Nothing fires today, but any `lefthook install` / `husky install` -- "
+                     f"including one a brief asks an executor to run -- reinstalls into the shared .git/hooks "
+                     f"mid-run. Set the hooks path before launching the run and unset it after:\n{remedy}")
     else:
-        lines.append(f"PASS no commit-time git hooks under {hook_root}")
+        lines.append(f"PASS no commit-time git hooks under {hook_root}"
+                     + (f" (core.hooksPath={configured})" if configured else ""))
 
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
@@ -259,6 +272,34 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
             lines.append(f"PASS {step.slug}: judge step, gate is the verdict parser, no gate command"
                          if step.judges else
                          f"PASS {step.slug}: gate command `{step.gate_cmd}` (base {step.base})")
+            # A fix step runs LAST, after a later phase has reddened the tree, and it is
+            # scored on the files of the step it fixes. Inheriting `defaults.gate_cmd`
+            # there blocked a correct fix three times over a module it never touched
+            # (finding W, 2026-09-03: every package ok and golangci-lint 0 issues under
+            # the phase's own command). The same argument holds for a judge step whose
+            # brief replays a Validation block.
+            target = step.fixes or step.judges
+            if target and target in {s.get("title") for s in plan.steps()}:
+                other = plan.step(target)
+                if other.gate_cmd != step.gate_cmd:
+                    lines.append(f"NOTE {step.slug}: gate command `{step.gate_cmd}` DIFFERS from the command of "
+                                 f"the step it {'fixes' if step.fixes else 'judges'} ({other.slug}: "
+                                 f"`{other.gate_cmd}`). A fix or review is scored on that step's scope, and by "
+                                 f"the time it runs a later phase has usually left the rest of the tree red -- "
+                                 f"give it `gate_cmd: {other.gate_cmd}` in the sidecar unless you meant this.")
+            elif step.fixes:
+                fail(f"{step.slug}: fixes {step.fixes!r}, which is not a step title in the plan; copy the "
+                     f"fixed step's `title:` verbatim into the sidecar `fixes:`")
+            elif re.match(r"(fix|polish|repair)-", step.slug) and not step.judges:
+                # The check above can only compare what the sidecar declares, and finding W
+                # was a plan that declared NOTHING for fix-1: it silently inherited
+                # `defaults.gate_cmd` and blocked a correct seven-commit fix three times.
+                # A fix step with no `fixes:` is that same plan, so refuse it here.
+                fail(f"{step.slug}: looks like a fix step but declares no `fixes:` in the sidecar, so nothing "
+                     f"checks its gate command against the step it repairs -- it inherits `{step.gate_cmd}`, "
+                     f"which a later phase leaves red by design (finding W, 2026-09-03). Add `fixes: \"<exact "
+                     f"title of the step it repairs>\"` and that step's own `gate_cmd:`; if it really spans "
+                     f"several steps, name the one whose scope it is scored on.")
             if not re.search(r"^##\s*Items", text, re.M):
                 fail(f"{step.slug}: brief lacks an `## Items` section; add the numbered work items the executor must do")
             if len(text) > 16000:

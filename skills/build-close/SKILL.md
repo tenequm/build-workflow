@@ -13,10 +13,12 @@ the user to merge. The driver never merges to main.
 
        cat <run>/ledger.md
        python3 -c "import json,sys;[print(json.dumps(json.loads(l))[:200]) for l in open('<run>/runs.jsonl')]"
-       ls <run>/reports/*/report.md <run>/judge/*/blind-review.md
+       ls <run>/reports/*/latest/report.md <run>/judge/*/blind-review.md
 
-   `<run>/reports/<T>/` holds each step's `report.md`, `diff.patch`,
-   `numstat.txt`, `status.txt`; `<run>/judge/<phase T>/` holds `blind-review.md`,
+   `<run>/reports/<T>/<task>-<head>/` holds ONE GATE ATTEMPT's `report.md`,
+   `diff.patch`, `numstat.txt`, `status.txt`, and `latest` symlinks to the newest
+   attempt; several directories under one `<T>` mean the step was retried, and
+   the attempt that merged is the one whose `runs.jsonl` row has `blocked=false`; `<run>/judge/<phase T>/` holds `blind-review.md`,
    `scorecard.md` and the judge worktree `W/`. A `blocked` line in `ledger.md`
    with `do_not_merge=True` is a phase that never merged: its defects are fix
    items, not close items.

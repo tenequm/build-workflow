@@ -6,7 +6,8 @@ description: "Stage 4 of the build workflow: launch and supervise a native Berns
 # build-run
 
 Input: `<run>` = `.agents/build/runs/<slug>`, readiness ledger clean. Output:
-`<run>/runs.jsonl`, `<run>/reports/<T>/{report.md,diff.patch,numstat.txt,status.txt}`,
+`<run>/runs.jsonl`, `<run>/reports/<T>/<task>-<head>/{report.md,diff.patch,numstat.txt,status.txt}`
+(one directory per gate attempt, `latest` a symlink to the newest),
 `<run>/judge/<phase T>/{blind-review.md,scorecard.md}`, `<run>/ledger.md`.
 
 Bernstein spawns its own adapters. There is no herdr pane, no watcher process and
@@ -41,7 +42,18 @@ its worktree before the merge. All commands run from the repo root.
    branch name is useless to a judge because every merge advances it. Fix what
    run-config names and rerun until it exits 0. Use that N below; never assume
    8052.
-3. Launch. `--wait` blocks, so background it and keep the driver free
+3. Point the git hooks somewhere empty, AFTER readiness is READY and never
+   before (readiness fails on a hook that exists, not on the remedy):
+
+       mkdir -p .agents/build/nohooks && git config core.hooksPath .agents/build/nohooks
+
+   Linked worktrees share `.git/hooks`, so a repo hook runs inside every agent
+   worktree AND against Bernstein's salvage commit; one failing there cost
+   phase-2's 20 files (2026-09-03). `core.hooksPath` lives in untracked
+   `.git/config`, so it never reaches an agent's diff, and unlike `LEFTHOOK=0` it
+   survives the adapters' filtered spawn env and a mid-run `lefthook install`.
+   Unset it when the run is over (step 11).
+4. Launch. `--wait` blocks, so background it and keep the driver free
    (`--from-plan` is a different, seed-driven path; do not use it):
 
        BERNSTEIN_SERVER_URL=http://127.0.0.1:<N> \
@@ -58,7 +70,7 @@ its worktree before the merge. All commands run from the repo root.
    FAILS THE TASK AFTER ITS MERGE LANDED (measured 2026-09-03: three retries and
    a DLQ entry on a step that had merged at the first attempt).
 
-4. Watch these, in this order, every 30-60 s:
+5. Watch these, in this order, every 30-60 s:
 
        tail -3 <run>/ledger.md                  # one line per gate
        tail -1 <run>/runs.jsonl                 # one row per gate
@@ -79,7 +91,7 @@ its worktree before the merge. All commands run from the repo root.
    AND the board shows no runnable task (`bernstein status`). Until all three,
    keep watching. Ignore the `Elapsed: 0s`; it is wrong. Kill any orphan the run
    leaves behind, or the next `run-config` refuses.
-5. A BLOCKED GATE IS TERMINAL, and this is the path you will actually walk.
+6. A BLOCKED GATE IS TERMINAL, and this is the path you will actually walk.
    `bernstein-herdr gate` exiting 1 is not a retry and not a quarantine: the
    merge is refused, the agent's branch is moved to `salvage/<agent>` (a
    graveyard branch, its work intact), a row lands in
@@ -127,19 +139,25 @@ its worktree before the merge. All commands run from the repo root.
    A MERGED TASK IS NEVER RE-GATED. Bernstein resumes a task whose merge already
    landed (measured: `phase-1a` merged at 22:25:39 and was re-gated `blocked=true`
    at 22:33:56, blocking a step that was done). The gate short-circuits only for a
-   task it has ALREADY SCORED whose sha is both strictly ahead of the frozen
-   `base_sha` and on the integration branch (both from `<run>/bernstein.json`);
-   it then prints
+   task that PASSED, on the sha its pass memo records, and only when that sha is
+   both strictly ahead of the frozen `base_sha` and on the integration branch
+   (both from `<run>/bernstein.json`). A BLOCKED attempt's memo does not count:
+   when it did, the next attempt -- at the branch tip having committed nothing --
+   was waved through and the task went `done` (2026-09-03). It then prints
    `gate: already merged` and exits 0 with no new row and no new archive. Every
    clause is load-bearing: "ancestor of the branch" ALONE is true of the base
    itself, so a step killed before it committed anything was waved through
    unscored and a whole acceptance run produced no `runs.jsonl` (2026-09-03).
    A step that commits NOTHING is scored, and blocks.
 
-   So `runs.jsonl` has AT MOST one gate row per task, and NO row at all for a
-   task whose executor died before the gate ran. A missing row is a dead step,
-   not a clean one: check the board and the spawner log before reading silence
-   as success. Two rows for one task mean the short-circuit did not fire.
+   ONE ROW PER ATTEMPT, not per task. Bernstein retries a task IN PLACE under the
+   same id, and three such retries wrote three rows under one id (2026-09-03).
+   Read `runs.jsonl` as a per-attempt log: no row at all means the executor died
+   before the gate ran -- a dead step, not a clean one -- so check the board and
+   the spawner log before reading silence as success. Each attempt also archives
+   to `<run>/reports/<step>/<task>-<head>/`, with `latest` a symlink to the
+   newest, so a retry no longer overwrites the evidence of the attempt that
+   passed.
 
    The gate archives the diff and writes its row on the blocking path too, so
    the evidence is complete before you look. `bernstein quarantine list` is
@@ -151,7 +169,7 @@ its worktree before the merge. All commands run from the repo root.
    `salvage/<agent>` into a fresh briefed step; or accept the block and change
    the plan. Nothing is automatic, and the driver still does not edit the code
    itself.
-6. THE ROOT CHECKOUT CAN MOVE UNDER YOU. Bernstein pre-creates warm-pool slots
+7. THE ROOT CHECKOUT CAN MOVE UNDER YOU. Bernstein pre-creates warm-pool slots
    with an empty `worktree_path` (core/tasks/task_lifecycle.py:288-297), and a
    spawn that claims one resolves it to `Path("")` = the repo ROOT
    (spawner_core.py:4471-4479): it writes a task CLAUDE.md over yours and
@@ -164,7 +182,7 @@ its worktree before the merge. All commands run from the repo root.
        git status --short                   # a stray CLAUDE.md is the tell
        git checkout <integration branch> && git checkout -- CLAUDE.md
 
-7. A JUDGE STEP NEVER BLOCKS ON FINDINGS. `bernstein-herdr gate` on a step with a
+8. A JUDGE STEP NEVER BLOCKS ON FINDINGS. `bernstein-herdr gate` on a step with a
    sidecar `judges:` exits 1 only on the verdict `do not merge` (or a missing
    `.agents/blind-review.md`); `merge after listed fixes` and any number of
    certain defects exit 0, so the review merges and `fix-N` spawns. The gate row
@@ -173,11 +191,11 @@ its worktree before the merge. All commands run from the repo root.
    (one report commit under `.agents/`, no source change) when it is 0. A
    `do not merge` IS terminal and IS a decision for you: read the review, then
    change the plan.
-8. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
+9. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
    the user as one line with the ledger excerpt and the row; the answer becomes a
    brief edit, a rerun of `/build-ready`, and a re-dispatch.
-9. Never edit `bernstein_herdr` while a run is live. The gate imports it fresh in
+10. Never edit `bernstein_herdr` while a run is live. The gate imports it fresh in
    every worktree, so a mid-run edit changes the gate under a running step.
-10. The driver never edits code. Fixes go to a fresh executor with a brief, a
+11. The driver never edits code. Fixes go to a fresh executor with a brief, a
    file allowlist and a per-item report.
-11. On run end, offer `/build-close <run>`.
+12. On run end: `git config --unset core.hooksPath`, then offer `/build-close <run>`.

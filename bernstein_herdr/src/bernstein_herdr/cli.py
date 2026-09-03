@@ -236,6 +236,29 @@ def merged_ahead(wt: Path, sha: str, base_sha: str, integration: str) -> bool:
     return not ancestor(sha, base_sha) and ancestor(sha, integration)
 
 
+def short_circuit_sha(wt: Path, memo_dir: Path, task_id: str, base_sha: str, integration: str) -> str:
+    """The sha the gate may skip re-scoring on, or "" -- ONLY a PASS memo's sha qualifies.
+
+    The rule used to be "any memo for this task proves the gate scored it", and a BLOCKING
+    memo is a memo: in the 2026-09-03 acceptance phase-1's attempt 2 blocked and wrote one,
+    then attempt 3 -- sitting at the integration branch tip with no commit of its own -- was
+    waved through as `already merged`, with no row, no archive, and the task went `done`
+    (finding S). A blocked attempt is evidence the step is NOT finished.
+
+    The worktree's own HEAD is not a candidate either. It is only ever interesting when the
+    task passed, and then `<task>-merged.json` already names the right sha; a HEAD that
+    merely sits on the merged branch having committed nothing satisfies `merged_ahead`
+    exactly as well as one that did the work, which is the hole that let S through.
+    """
+    import json
+
+    passed = memo_dir / f"{task_id}-merged.json"
+    if not passed.exists():
+        return ""
+    sha = json.loads(passed.read_text()).get("head", "")
+    return sha if merged_ahead(wt, sha, base_sha, integration) else ""
+
+
 def gate(argv: list[str]) -> int:
     """The quality gate, run by Bernstein in the agent worktree before the merge.
 
@@ -294,22 +317,14 @@ def gate(argv: list[str]) -> int:
     integration, base_sha = cfg.get("base_ref") or "", cfg.get("base_sha") or ""
     memo_dir = plan.run_dir / "gate-memo"
     passed = memo_dir / f"{task['id']}-merged.json"
-    prior = json.loads(passed.read_text()) if passed.exists() else {}
-    # A task the gate has never scored is never short-circuited, whatever its HEAD looks
-    # like. Without this, the SECOND executor step of a plan has the same hole finding J
-    # found in the first: its worktree branches from the integration branch after an
-    # earlier step merged, so a HEAD that never moved is already both ahead of the frozen
-    # base and on the branch. Any memo file for this task is proof the gate scored it.
-    gated_before = any(memo_dir.glob(f"{task['id']}-*.json"))
-    candidates = [head, prior.get("head", "")] if gated_before else []
-    already = next((s for s in candidates if merged_ahead(wt, s, base_sha, integration)), "")
+    already = short_circuit_sha(wt, memo_dir, task["id"], base_sha, integration)
     if already:
         # A resumed session commits again in the same worktree, so its HEAD is new and the
         # per-head memo misses; without this the step is re-scored against a tree that has
         # already merged, and the second row blocks a task that is done (measured
         # 2026-09-02: `phase-1a` merged at 22:25:39, re-gated blocked=true at 22:33:56).
-        print(f"gate: already merged -- {already[:12]} for task {task['id']} is ahead of the frozen "
-              f"base and on {integration}; nothing to re-score. No new row, no new archive.")
+        print(f"gate: already merged -- task {task['id']} passed at {already[:12]}, which is ahead of the "
+              f"frozen base and on {integration}; nothing to re-score. No new row, no new archive.")
         ledger.note(plan.run_dir, f"gate {step.slug} already merged at {already[:12]} on {integration}")
         return 0
     memo = memo_dir / f"{task['id']}-{head[:12]}.json"
@@ -350,12 +365,22 @@ def gate(argv: list[str]) -> int:
         return remember(row, 1 if blocked else 0)
 
     blocked, f = score(wt, task["title"])
-    dest = plan.run_dir / "reports" / step.slug
+    # ONE ARCHIVE PER ATTEMPT. Keyed by step slug alone, a later attempt overwrote the
+    # earlier one's evidence: after a green 14-file gate, `diff.patch` and `numstat.txt`
+    # were 0 bytes because a third attempt that had committed nothing wrote over them
+    # (finding T, 2026-09-03). Bernstein retries a task IN PLACE under the same id, so the
+    # key needs the HEAD too. `latest` is a symlink kept pointing at the newest attempt so
+    # a reader still has one stable path.
+    dest = plan.run_dir / "reports" / step.slug / f"{task['id']}-{head[:12]}"
     stats = ledger.archive(wt, step.base, dest)
+    link = dest.parent / "latest"
+    link.unlink(missing_ok=True)
+    link.symlink_to(dest.name)
     report = wt / step.report_rel
     if report.exists():
         shutil.copy(report, dest / "report.md")
     row = {**common, "gate": "scorer", "blocked": blocked, **stats, "gate_rc": f["gate"]["rc"],
+           "archive": str(dest.relative_to(plan.run_dir)), "commits": f["commits"],
            "allowlist_violations": f["allowlist_violations"], "report_present": report.exists()}
     ledger.row(plan.run_dir, row)
     ledger.note(plan.run_dir, f"gate {step.slug} scorer blocked={blocked} rc={f['gate']['rc']} files={stats['files']}")

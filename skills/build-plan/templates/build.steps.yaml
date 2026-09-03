@@ -53,9 +53,22 @@ steps:
   # fix-1 always runs: the judge's verdict routes and does not block, so this step exists
   # whatever the review said and completes as a no-op (a report commit and nothing else)
   # when the review declares `Certain: 0`. See fix-brief.md.
+  #
+  # `fixes:` names the step it repairs. It is read by readiness only, and it is what makes
+  # the gate-command check below possible.
+  #
+  # GIVE IT THE FIXED STEP'S `gate_cmd`. A fix step runs LAST, after phase-2 has left the
+  # rest of the tree red on purpose, and it is scored on phase-1's files. Inheriting
+  # `defaults.gate_cmd` blocked a correct fix three times over a module it never touched
+  # (2026-09-03: under phase-1's own command every package was ok and golangci-lint
+  # reported 0 issues). Readiness NOTEs any mismatch.
   "fix-1: judge findings on phase-1":
     brief: .agents/build/plans/<slug>/fix-1.md
     report: .agents/fix-1.md
+    fixes: "phase-1a: <what>"
+    gate_cmd: just check-<phase-1's package>   # the SAME command phase-1a runs
   "polish-1: cleanliness and docs on phase-1 files":
     brief: .agents/build/plans/<slug>/polish-1.md
     report: .agents/polish-1.md
+    fixes: "phase-1a: <what>"
+    gate_cmd: just check-<phase-1's package>

@@ -44,11 +44,25 @@ place, a line in `<run>/ledger.md`.
      `.git/hooks`, so a repo-level `pre-commit` runs inside every agent worktree
      AND against Bernstein's salvage commit; when it failed there on 2026-09-03,
      14 files of finished work survived only as a patch under
-     `.sdd/runtime/salvage/`, with no `salvage/*` branch to cherry-pick. The fix
-     readiness prints is to point `core.hooksPath` at an empty directory for the
-     run and unset it after -- it lives in untracked `.git/config`, so it never
-     reaches an agent's diff, and unlike `LEFTHOOK=0`/`HUSKY=0` it survives the
-     adapters' filtered spawn env.
+     `.sdd/runtime/salvage/`, with no `salvage/*` branch to cherry-pick. An
+     executable hook FAILS readiness. A hook-manager config (lefthook, husky,
+     pre-commit) with no hook installed is a NOTE, because `lefthook install`
+     puts them back at any moment -- a brief that told an executor to run the
+     repo's `just setup` did exactly that mid-run and cost phase-2's 20 files.
+     So: NEVER let a brief tell an executor to run a setup recipe that installs
+     hooks, and once readiness is READY, before launching the run:
+
+         mkdir -p .agents/build/nohooks
+         git config core.hooksPath .agents/build/nohooks     # unset after the run
+
+     `core.hooksPath` lives in untracked `.git/config`, so it never reaches an
+     agent's diff, and unlike `LEFTHOOK=0`/`HUSKY=0` it survives both the
+     adapters' filtered spawn env and a mid-run reinstall. Readiness accepts a
+     configured empty hooks path as PASS, so re-running it after this is safe.
+   - a `fix-N`/`polish-N` step's gate command must match the step it `fixes:`,
+     and a `judge-N`'s the step it `judges:`. Readiness NOTEs a mismatch: the
+     whole-tree `defaults.gate_cmd` is red by design once a later phase lands,
+     and it blocked a correct fix three times (2026-09-03).
 
    Two things it now only WARNS about, printing `NOTE` and leaving the run READY:
    a brief with no `## Report` section (Codex skips the report file on roughly half

@@ -76,10 +76,22 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
    it), fix steps `$TPL/fix-brief.md`. Length cap 16k. Every brief needs an
    `## Items` heading, a `## Validation` heading with a fenced command block, and
    a `## Report` heading whose text names Deviations; readiness fails without
-   them.
+   them. NO brief may tell an executor to run a repo setup recipe (`just setup`,
+   `make bootstrap`, `lefthook install`): those reinstall hooks into the SHARED
+   `.git/hooks` mid-run, under every worktree, and one did (2026-09-03, phase-2's
+   20 files). List the exact build/test commands instead.
 7. Set each sidecar step's `brief:` and `report:` explicitly rather than relying
    on the `<T>` default. `report:` is relative to the executor's worktree root
-   and is copied to `<run>/reports/<T>/report.md` by the gate. Codex has twice
+   and is copied to `<run>/reports/<T>/<task>-<head>/report.md` by the gate
+   (one directory per ATTEMPT; `latest` is a symlink to the newest).
+   A `fix-N` or `polish-N` step also needs `fixes: "<exact title of the step it
+   repairs>"` and that step's OWN `gate_cmd:`. It runs last, after a later phase
+   has deliberately left the rest of the tree red, and it is scored on the fixed
+   step's files: inheriting `defaults.gate_cmd` blocked a correct seven-commit
+   fix three times over a module it never touched (2026-09-03). Readiness NOTEs
+   the mismatch, and FAILS both a `fixes:` that names no step and a `fix-`/
+   `polish-` step that declares no `fixes:` at all -- the plan that caused this
+   declared nothing, which is why silence cannot be the passing case. Codex has twice
    exited without writing its report (`report_mismatch: ["no report file"]`,
    non-blocking): keep the Report section short and make it the last item.
 8. Record the plan and brief hashes in `<run>/ledger.md`:

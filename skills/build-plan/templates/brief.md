@@ -42,7 +42,7 @@ Report each command, its exit code and the last 30 lines of output.
 Write `<report path>` in the worktree root: per item DONE / DEVIATED / SKIPPED
 with file:line; Validation (per command); Deviations (with the alternative
 rejected and why); Open (walls hit, out-of-allowlist needs). The gate archives
-this file to `<run>/reports/<step>/report.md` and scores its claims against the
+this file to `<run>/reports/<step>/<task>-<head>/report.md` and scores its claims against the
 measured gate, so a claim you did not measure is a block.
 
 Then commit and exit:

@@ -11,7 +11,8 @@ Sidecar shape:
     steps:
       "<step title>": {brief: briefs/<step>.md, report: .agents/<step>.md, base: <ref>,
                        gate_cmd: <command>, cli: codex|claude|agy, shadow: agy|null,
-                       judges: "<phase title>", judge: required|optional|none}
+                       judges: "<phase title>", fixes: "<phase title>",
+                       judge: required|optional|none}
 
 `cli` is the authoritative executor choice: Bernstein only warns on a per-step `cli:` in
 the plan (its schema has no such key), so the adapter reads it from here.
@@ -75,6 +76,7 @@ class Step:
     cli: str | None
     shadow: str | None
     judges: str | None
+    fixes: str | None
     judge: str
     run_dir: Path
     plan_path: Path
@@ -126,7 +128,11 @@ class Plan:
             gate_cmd=s.get("gate_cmd", d.get("gate_cmd", "just check")),
             cli=s.get("cli", d.get("cli")),
             shadow=s.get("shadow", d.get("shadow")),
-            judges=s.get("judges"), judge=s.get("judge", d.get("judge", "optional")),
+            judges=s.get("judges"),
+            # Read by readiness only: a fix step must carry the SCOPED gate command of the
+            # step it fixes, not the whole-tree default a later phase leaves red.
+            fixes=s.get("fixes"),
+            judge=s.get("judge", d.get("judge", "optional")),
             run_dir=self.run_dir, plan_path=self.path, raw=raw,
         )
 
