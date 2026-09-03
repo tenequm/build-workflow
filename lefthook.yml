@@ -4,3 +4,9 @@ pre-commit:
       run: gitleaks protect --staged --redact -v
     plugin-manifest-sync:
       run: test "$(jq -r '.name,.version' plugin.json)" = "$(jq -r '.name,.version' .claude-plugin/plugin.json)" || (echo "plugin.json and .claude-plugin/plugin.json disagree on name/version" >&2; exit 1)
+    template-validation-fence:
+      glob: "skills/build-plan/templates/*.md"
+      run: sh skills/build-plan/scripts/plan-lint.sh --templates
+    shellcheck:
+      glob: "*.sh"
+      run: shellcheck {staged_files}

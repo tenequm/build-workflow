@@ -1,3 +1,14 @@
+# Everything the pre-commit hooks check, on demand.
+check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gitleaks git --redact -v
+    test "$(jq -r '.name,.version' plugin.json)" = "$(jq -r '.name,.version' .claude-plugin/plugin.json)"
+    sh skills/build-plan/scripts/plan-lint.sh --templates
+    shellcheck skills/build-plan/scripts/*.sh
+    claude plugin validate . --strict
+    echo "check: clean"
+
 # Bump the patch version in both plugin manifests, commit, and push.
 # Plugin consumers only receive updates when the version changes.
 ship:

@@ -51,8 +51,17 @@ whether there is anything to do.
 4. FIX PATH -- a legal verdict, counts declared, `certain` 1 or more. Fix every
    defect the review labels certain, in the review's order, each with a test that
    fails before and passes after. Treat a plausible defect as an item only when
-   the review gives a reproduction. Same allowlist as <phase>. Validation as in
-   <phase>'s brief.
+   the review gives a reproduction. Same allowlist as <phase>.
+
+## Validation (exactly, from the worktree root)
+
+```
+<copy the exact commands from <phase>'s brief's Validation block>
+```
+
+Readiness rejects any brief whose `## Validation` is prose without a fenced
+block, so the generator must fill the fence above, never replace it with a
+sentence.
 
 ## Report
 

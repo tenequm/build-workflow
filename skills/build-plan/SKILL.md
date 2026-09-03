@@ -212,7 +212,12 @@ Bootstrap: anything the repo tracks (skills, lock, symlinks) arrives via the
 branch. Copy into the workspace, never committing, only the gitignored local
 state the templates need. With user-scope skills nothing needs copying; for a
 project-scope install, copy `.agents/skills/` and `skills-lock.json` when
-untracked (template paths must resolve from the workspace root).
+untracked (template paths must resolve from the workspace root). Run this
+copy ONCE, at workspace creation, and never again: a primary-to-workspace
+copy after CUT artifacts or briefs were edited in the workspace reverts
+those edits (a near-miss on 2026-09-03 was stopped only by a failed `cd`).
+The primary may also move under an active build - other sessions commit to
+it - so never resync from it mid-build; the workspace branch is the truth.
 
 Permissions live in the PRIMARY checkout, not the workspace: Claude Code reads
 `.claude/settings*.json` from the main checkout's root for every worktree of
@@ -237,8 +242,20 @@ to start a session in the absolute workspace path and stop.
 
 If `bernstein-herdr` is not on PATH, stop and hand the operator the install
 commands from this repo's README (the patched Bernstein clone plus
-`bernstein_herdr`); never install it yourself. Then from the workspace root
-run:
+`bernstein_herdr`); never install it yourself.
+
+Preflight, before the first readiness pass (each item here otherwise costs a
+full readiness rerun):
+
+- If the repo has active git hooks (lefthook, husky, anything in
+  `.git/hooks/`), apply the hooks remedy NOW: point `core.hooksPath` at an
+  empty repo-local directory. Do not wait for readiness to fail on it.
+- Run the mechanical lint from this skill's `scripts/plan-lint.sh` against
+  the briefs directory and fix every FAIL: it checks the 16,000-char brief
+  cap, the fenced `## Validation` block in executor and fix briefs, and the
+  hooks state, in seconds.
+
+Then from the workspace root run:
 
     bernstein-herdr ready --plan .agents/build/plans/<slug>.yaml
 
@@ -248,8 +265,7 @@ evidence. Treat unexpected RED as a brief error unless the brief names that red
 window. Read every printed gate command and replace the `just check` fallback
 with the discovered whole-tree command. Keep step-specific gates scoped.
 
-If commit hooks exist, follow the printed remedy: point `core.hooksPath` at an
-empty repo-local directory and rerun readiness. Preserve the dispatch guards:
+Preserve the dispatch guards:
 Codex effort must be high, every role needs a `role_model_policy`, fast-path
 titles must be reworded, parallel tasks must not share a role, judge fields must
 be exact, and fix gates must match the step they repair.

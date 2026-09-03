@@ -55,7 +55,11 @@ all and is a decision for the driver, not a fix list.
 
 ## Original brief
 
-<paste of the phase brief, verbatim>
+<paste of the phase brief, verbatim. When the judged phase has sibling briefs
+(a 1a/1b split), embed only the brief of the step this judge reviews and name
+the sibling by its tracked path instead of embedding it. The whole judge brief
+must stay under the 16,000-char readiness cap; trim the embed before trimming
+anything else>
 
 ## Judge prompt
 
