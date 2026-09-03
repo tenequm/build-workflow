@@ -8,10 +8,12 @@
 # (`analyst`, `adversary`); give bulk steps inside one already-decided package a role that
 # resolves to codex (`resolver`).
 defaults:
-  # Pin discovery here. `doc` is the plan document. Omit `design` when the repo has no
-  # product spec. Readiness resolves PLAN citations against doc and DESIGN citations
-  # against design; pinned_hashes hashes doc as its `spec` compatibility key.
-  doc: <discovered plan document path>
+  # Pin discovery here. `doc` is plan.md and `spec` is spec.md in the plan directory.
+  # Omit `design` when the repo has no product spec. Readiness resolves PLAN citations
+  # against doc, SPEC citations against spec, DESIGN citations against design;
+  # pinned_hashes hashes doc as its `spec` compatibility key and spec as `build_spec`.
+  doc: <plan dir>/plan.md
+  spec: <plan dir>/spec.md
   design: <discovered product spec path; omit this key when none>
   # The workspace branch, not a sha: a step's diff, its allowlist check and its archive
   # are all `git diff <base>`, and after an earlier step merges, a fixed sha shows that

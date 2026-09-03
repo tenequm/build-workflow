@@ -25,7 +25,8 @@ part of the reviewed step, and outside the brief's allowlist, is out of scope:
 name it as excluded and say which commit brought it. Never exclude a whole
 step's file list on the assumption that it ran concurrently.
 
-The sidecar's `defaults.doc` is the plan document in this worktree; its optional
+The sidecar's `defaults.doc` is plan.md and `defaults.spec` is spec.md, the build
+spec whose numbered outcomes the witness tests are named after; its optional
 `defaults.design` is the product spec. The brief and executor report are under
 `.agents/`. Your role is `adversary`, which is not in Bernstein's role
 tool allowlist: you have the full tool set, Write and Edit included, and nothing
