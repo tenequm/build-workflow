@@ -76,8 +76,26 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
 5. Judge nodes: `judge-N` depends on every `phase-N` sibling stage; `fix-N`
    depends on `judge-N` (plain `depends_on` -- Bernstein's plan schema has no
    per-stage condition or retry field, so a clean verdict makes fix-N a no-op,
-   which its brief must say); dependents depend on `phase-N` only. `polish-N` optional, non-blocking, files restricted to
-   phase-N's. Three hard requirements on a judge step, all silent if missed:
+   which its brief must say); dependents depend on `phase-N` only, so
+   `phase-N+1` starts while `judge-N` runs. `polish-N` optional, non-blocking,
+   files restricted to phase-N's.
+
+   THE fix-N / phase-N+1 EDGE. `fix-N` reuses phase-N's allowlist, and
+   `phase-N+1` normally builds on the same seam files, so the two stages have
+   intersecting allowlists and no dependency between them. Bernstein file-locks
+   declared files, so whichever claims second sits in `HTTP 409 File ownership
+   conflict` backoff (300 s a time) until the other releases: a wait, not a
+   hang, and sometimes 40 minutes of one. Choose per phase, and say which in the
+   plan comment: either (a) `phase-N+1` also `depends_on: [fix-N]` -- serialized,
+   the fix is in the tree before its consumer is built, at the cost of the whole
+   judge round on the critical path; or (b) leave them concurrent and add a
+   final `regress-N` step depending on BOTH, carrying the whole-tree gate
+   command, so a seam fix that lands after phase-N+1's tests passed is still
+   rechecked. Do NOT invert the edge (`fix-N` depending on `phase-N+1`): the
+   repair then lands after its consumer was verified, and fix-N's scoped
+   `gate_cmd` never rechecks that consumer.
+
+   Three hard requirements on a judge step, all silent if missed:
    its sidecar entry carries `judges: "<exact phase title>"` (that field, not
    the title, selects the verdict gate); its `report:` is exactly
    `.agents/blind-review.md` (the verdict parser reads that path and nothing

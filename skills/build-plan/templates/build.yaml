@@ -63,6 +63,16 @@
 #             that count is 0. See fix-brief.md.
 #   polish-N  depends on judge-N, optional: cleanliness and docs on phase-N's files only
 #
+# fix-N AND phase-N+1 OVERLAP BY CONSTRUCTION: fix-N reuses phase-N's allowlist and
+# phase-N+1 normally builds on the same seam files. Bernstein file-locks declared files, so
+# the second claimant waits in `HTTP 409 File ownership conflict` backoff (300 s a time)
+# until the first releases -- expected, and once ~40 min of it. Pick one shape per phase:
+# add `fix-N` to phase-N+1's `depends_on` (serialized; the fix precedes its consumer, at
+# the cost of the judge round on the critical path), or keep them concurrent and add a
+# final `regress-N` stage depending on both, with the whole-tree gate command. Never the
+# inverse edge (fix-N depending on phase-N+1): the repair then lands after its consumer was
+# verified and fix-N's scoped gate never rechecks it.
+#
 # TITLES ARE ROUTED ON. Bernstein's L0 fast path matches `f"{title} {description}".lower()`
 # against `lint|format|autofix|sort imports|rename X to Y` (core/quality/fast_path.py:108-125)
 # and hands the task to `ruff` instead of an executor -- on a non-Python repo it dies as
