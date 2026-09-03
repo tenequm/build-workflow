@@ -16,8 +16,7 @@ primary caused a stop-and-verify incident on 2026-09-03. Land unrelated work
 before the build starts or after it ends.
 
 The three skills are self-contained: a skill never invokes another skill
-(no `/polish`, `/grill-me`, or any other slash command) and never reads a
-file from a sibling skill's directory. Each skill carries its own
+or slash command and never reads a file from a sibling skill's directory. Each skill carries its own
 `templates/`; a template two skills need is copied into both. Consumers
 install the skills one at a time, and a skill that reaches outside itself
 breaks for them.

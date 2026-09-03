@@ -32,7 +32,7 @@ grep -q 'model_reasoning_effort = "high"' ~/.codex/config.toml \
    tests and contracts as code, generates machine artifacts and briefs,
    probes every brief, runs readiness, and presents `report.md` in spec
    terms. Sized by tier: S about 15 minutes, M about 40, L about 90.
-2. `/build-run <plan dir>` (or bare, inside the workspace) - execute the DAG unattended, polish and
+2. `/build-run <plan dir>` (or bare, inside the workspace) - execute the DAG unattended, review and
    blind-judge the whole branch, dispatch fixes, run the whole-tree gate, end
    local, and ask whether to open a PR.
 3. `/build-close <plan dir>` (or bare, inside the workspace) - land through an approved PR or local
