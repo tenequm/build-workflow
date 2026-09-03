@@ -26,18 +26,28 @@ grep -q 'model_reasoning_effort = "high"' ~/.codex/config.toml \
 
 ## Pipeline
 
-1. `/build-plan` - design -> cut -> workspace -> ready. Accept an idea, an
-   existing plan document path, or nothing. Discover repo conventions, write
-   the plan document, generate machine artifacts and briefs, create the
-   workspace, run readiness, and end stopped.
-2. `/build-run <path_to_plan_doc>` - execute the DAG, polish and blind-judge the
-   whole branch, dispatch fixes, run the whole-tree gate, end local, and ask
-   whether to open a PR.
-3. `/build-close <path_to_plan_doc>` - land through an approved PR or local
-   merge, run discovered release ceremonies, preserve evidence, and clean up.
+1. `/build-plan` - intake -> discover -> workspace -> witness -> derive ->
+   cut -> ready -> report. Accept an idea, a plan directory, or nothing. The
+   human signs off `spec.md`; the machine derives `plan.md`, lands acceptance
+   tests and contracts as code, generates machine artifacts and briefs,
+   probes every brief, runs readiness, and presents `report.md` in spec
+   terms. Sized by tier: S about 15 minutes, M about 40, L about 90.
+2. `/build-run <plan dir>` (or bare, inside the workspace) - execute the DAG unattended, polish and
+   blind-judge the whole branch, dispatch fixes, run the whole-tree gate, end
+   local, and ask whether to open a PR.
+3. `/build-close <plan dir>` (or bare, inside the workspace) - land through an approved PR or local
+   merge, run discovered release ceremonies, regenerate `report.md` with the
+   outcome, preserve evidence, and clean up.
 
-Starting `/build-run` is an explicit paid decision. Opening a PR and merging
-both require explicit user consent.
+Starting `/build-run` is an explicit paid decision, and the last one until
+the DAG ends. Opening a PR and merging both require explicit user consent.
+
+The plan stage carries two layers with ownership by file: `spec.md` is the
+human's (problem, outcomes, approaches, scope, constraints, delegation) and
+is frozen by sign-off; `plan.md`, `facts.md` and `report.md` are the
+machine's and regenerable. Findings route through one rule: brief defects are
+fixed, delegated decisions are recorded and shown, spec conflicts are
+escalated in a batch. Nothing is escalated after the run starts.
 
 ## What runs where
 
@@ -82,7 +92,11 @@ catalog personas; see the comments in `bernstein.yaml` and
 ## Target repo layout
 
 ```text
-<plans_dir>/<date>-<slug>.md       plan document, tracked; directory discovered from repo instructions
+<plans_dir>/<date>-<slug>/        plan directory, tracked; discovered from repo instructions
+  spec.md                         human-owned build spec, frozen by sign-off
+  plan.md                         machine-owned plan: decisions, witnesses, phases, surface block
+  facts.md                        repo facts `claim | path:line | needle`, script-verified
+  report.md                       checkpoint and final outcome, in spec terms
 .agents/build/plans/              generated machine artifacts plus ACTIVE, tracked
 .agents/build/plans/<slug>.yaml   Bernstein plan; sidecar beside it
 .agents/build/plans/<slug>/       tracked executor and judge briefs
@@ -91,8 +105,20 @@ catalog personas; see the comments in `bernstein.yaml` and
 .sdd/                             Bernstein runtime and executor worktrees
 ```
 
-The sidecar pins the plan document as `defaults.doc`, the optional product spec
-as `defaults.design`, and the repo's whole-tree command as `defaults.gate_cmd`.
+The sidecar pins plan.md as `defaults.doc`, spec.md as `defaults.spec`, the
+optional product spec as `defaults.design`, and the repo's whole-tree command
+as `defaults.gate_cmd`. Briefs cite `SPEC <n>`, `PLAN <n>` and `DESIGN <n>`.
+
+Unattended runs need an environment that will not die under them. Before
+readiness: at least 40 GB free on the volume holding the workspace (a Go
+build with the race detector in a fresh worktree is a full rebuild, and the
+Go cache grows one copy per worktree path unless the repo exports
+`GOFLAGS=-trimpath`), every module a brief names downloaded, hooks
+redirected. Readiness replays each distinct validation command once per
+base, in the workspace itself when it is checked out at that base. `skills/build-plan/scripts/`
+holds `plan-lint.sh` (brief cap, fenced validation, hooks) and
+`plan-check.py` (facts verifier, surface check); both run in seconds and
+replace critic rounds that used to find the same defects.
 
 ## Commands
 
