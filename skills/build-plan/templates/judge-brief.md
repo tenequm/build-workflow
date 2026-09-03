@@ -50,6 +50,8 @@ all and is a decision for the driver, not a fix list.
    The counts are read by the gate and written into `<run>/judge/<phase>/verdict.json`;
    `fix-N` routes on `Certain` alone (0 = it completes as a no-op). Count DEFECTS,
    not the times you used the word. Both counts are required even when they are 0.
+   The judge prompt below lists the three uniqueness rules the parser needs and
+   the two commands that check them; follow them before you commit.
 
 ## Original brief
 
