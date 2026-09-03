@@ -16,8 +16,8 @@ Sidecar shape:
                        judges: "<phase title>", fixes: "<phase title>",
                        judge: required|optional|none}
 
-`cli` is the authoritative executor choice: Bernstein only warns on a per-step `cli:` in
-the plan (its schema has no such key), so the adapter reads it from here.
+Dispatch is `role:` + `role_model_policy` in bernstein.yaml; a sidecar `cli` is legacy
+and not read by anything that survives a retry.
 """
 
 from __future__ import annotations

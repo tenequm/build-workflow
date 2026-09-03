@@ -46,8 +46,8 @@ whether there is anything to do.
    Do not fix anything and do not take the no-op path. Write `<report path>`
    with `blocked_on_dependency`, the exact `verdict.json` contents, and one line
    saying the judge must be re-run; commit it as above so the report exists, and
-   say the same in the first line of your final message. The driver decides what
-   happens next.
+   say the same in the first line of your final message. The gate recognizes the
+   receipt and parks this step as failed; the driver decides what happens next.
 4. FIX PATH -- a legal verdict, counts declared, `certain` 1 or more. Fix every
    defect the review labels certain, in the review's order, each with a test that
    fails before and passes after. Treat a plausible defect as an item only when

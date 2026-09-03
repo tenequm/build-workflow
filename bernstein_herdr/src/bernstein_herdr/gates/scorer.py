@@ -114,8 +114,12 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
         mismatch.append("no report file")
     f["report_mismatch"] = mismatch
 
+    # A refusal receipt in the report parks the step as failed instead of merging it as a
+    # silent success: a refused step used to pass (gate green on an untouched tree, report
+    # committed) and the missing work surfaced only at branch validation (retro item 8).
+    f["refusal"] = claims.get("refusal")
     blocked = (rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0
-               or bool(deleted) or f["commits"] == 0)
+               or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]))
     f["blocked"] = blocked
     ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-scorer", "step": step.slug, "gate": "scorer", "evidence": "verified", **{k: v for k, v in f.items() if k != "gate"}, "gate_rc": rc})
     return blocked, f

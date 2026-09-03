@@ -409,6 +409,15 @@ def main() -> int:
         blocked, f = score(Path.cwd(), _arg(rest, "--step") or "")
         print(f)
         return 1 if blocked else 0
+    if cmd == "watch":
+        from bernstein_herdr.plan import load_plan, repo_root
+        from bernstein_herdr.watch import watch
+        root = repo_root(Path.cwd())
+        plan = load_plan(root=root)
+        return watch(root, plan.run_dir,
+                     interval=float(_arg(rest, "--interval", "10") or 10),
+                     stall_minutes=float(_arg(rest, "--stall", "25") or 25),
+                     until_stall="--until-stall" in rest)
     if cmd == "judge-verdict":
         from bernstein_herdr.judge import record_verdict
         from bernstein_herdr.plan import load_plan, repo_root

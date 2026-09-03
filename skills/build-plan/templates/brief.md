@@ -69,7 +69,8 @@ git add -A && git add -f <report path> && git commit -m "<type>(<scope>): <what>
 
 A refusal (`scope_exceeded`, `underspecified`, `blocked_on_dependency`,
 `awaiting_operator`) stated in the report is the right answer when the spec does
-not determine the work; do not improvise.
+not determine the work; do not improvise. The gate recognizes the receipt and
+parks the step as failed for the driver -- a refusal never merges as success.
 
 ## Commit convention
 

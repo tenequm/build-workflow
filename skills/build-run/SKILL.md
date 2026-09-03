@@ -139,27 +139,36 @@ the workspace root.
    scanner can fail the task after its merge landed. Set the variable to the
    printed port exactly.
 
-5. Watch every 30-60 seconds in this order.
+5. Watch through the event watcher, not a polling loop.
 
-       tail -3 <run>/ledger.md
+       bernstein-herdr watch --stall 25
+
+   Run it IN THE BACKGROUND from the workspace root right after the launch.
+   It prints one line per event (new runs.jsonl row, ledger line, spawner
+   trouble line), a STALL line when a live run produces nothing for the
+   stall window, and END when no Bernstein process owns this root; it exits
+   on END. Act only on its lines. On STALL apply the stall rule below. Do
+   not run the old manual poll; these commands remain for AD-HOC inspection
+   when a watch line needs context:
+
        tail -1 <run>/runs.jsonl
-       tail -5 <run>/bernstein-run.log
        bernstein status
        tail -20 .sdd/runtime/spawner.log
-       rg -n "liveness_judgment|SIGTERM|Timeout after" .sdd/runtime/spawner.log | tail -5
-       rg -n "409|ownership conflict" .sdd/runtime/spawner.log | tail -5
 
    `bernstein status` has no port option; from the workspace root it reads
    `.sdd/runtime/server.port`. Use `--json` for machine output and
    `--mode expert` for detail.
 
    Check liveness and scope at runtime. `grace_s=` must match the seed.
+   Deadlines come from each step's `scope:` bucket; a healthy session past its
+   bucket is auto-extended while its heartbeat is fresh. Keep
+   `max_agent_runtime_s` at 1800: raising it floors every deadline at the
+   raised value and makes the buckets inert (measured 2026-09-03).
    `Timeout after 1800s` on a large step means the patched engine is not active.
    A 409 ownership conflict is a lock wait with 300-second backoff, not a stall.
    Wait for the owner to release.
 
-   STALL RULE. If `runs.jsonl` gains no row and `.sdd/runtime/spawner.log`
-   no line for 25 minutes while an executor step is open, check the mtime
+   STALL RULE. On the watcher's STALL line, check the mtime
    of that agent's log under `.sdd/`. If it is older than 25 minutes, kill
    that agent session so Bernstein's retry (`max_task_retries`) starts now,
    instead of waiting out the runtime deadline: a silent death otherwise
@@ -216,6 +225,14 @@ the workspace root.
    strictly ahead of frozen `base_sha` and on the workspace branch. A blocked
    memo never qualifies. `gate: already merged` creates no row or archive.
    Doing nothing is still scored and blocks.
+
+   A committed refusal receipt (`scope_exceeded`, `underspecified`,
+   `blocked_on_dependency`, `awaiting_operator` in the report) now BLOCKS the
+   merge by design: the step parks as failed instead of passing silently, the
+   refused branch is in the graveyard, and the driver dispatches the answer as
+   a fix brief or records the failure. A malformed or missing judge review
+   likewise blocks the judge step so the engine retries it; fix-N's refusal
+   path is the fallback, not the norm.
 
    `runs.jsonl` is one row per ATTEMPT. A retry reuses its task id. No row means
    the executor died before the gate; inspect the board and spawner log. Each

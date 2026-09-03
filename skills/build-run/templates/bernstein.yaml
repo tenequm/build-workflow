@@ -162,7 +162,13 @@ tuning:
     # The initial wall-clock kill deadline (core/defaults.py:168, default 1800). It
     # self-extends +600 s/tick only WHILE THE AGENT HEARTBEATS, and Codex spawns
     # `consumes_heartbeat_dir=False`, so for a codex step this value is the whole budget.
-    max_agent_runtime_s: 5400
+    # 1800 = the shipped default. RAISING this floors EVERY deadline at the raised
+    # value (task_lifecycle takes max(bucket, this) once it exceeds 1800), which made
+    # the scope buckets inert for a whole run (measured 2026-09-03: every step got a
+    # 90-min kill deadline). At the default, buckets rule (small 15m / medium 30m /
+    # large 60m / xl 120m) and a session past its bucket with a FRESH heartbeat is
+    # auto-extended +600s up to the 5400 hard cap -- healthy agents are not killed.
+    max_agent_runtime_s: 1800
     stalled_manager_threshold_s: 900
   agent:
     # Codex writes no heartbeat, so liveness rests on the runner log's mtime. DEFAULT 90

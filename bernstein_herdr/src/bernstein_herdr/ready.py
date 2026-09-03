@@ -136,7 +136,7 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                  f"its cli, model and effort would fall back to the seed default")
     if not roles:
         fail("no step in the plan declares a `role:`; dispatch has nothing to resolve -- "
-             "add `role: backend` (or backend2/reviewer) to every step and the matching role_model_policy entry")
+             "add `role: resolver` (or ci-fixer/analyst/adversary) to every step and the matching role_model_policy entry")
 
     # A step whose title (or description -- Bernstein matches both) hits an L0 rule is
     # never spawned at all; the fast path runs `ruff` in its place.
@@ -226,6 +226,22 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         lines.append(f"PASS no commit-time git hooks under {hook_root}"
                      + (f" (core.hooksPath={configured})" if configured else ""))
 
+    # The workflow requires the PATCHED Bernstein clone; prose alone cannot stop a stock
+    # PyPI install from silently voiding every engine guarantee. The uv tool receipt says
+    # where the installed build came from.
+    receipt = Path.home() / ".local" / "share" / "uv" / "tools" / "bernstein" / "uv-receipt.toml"
+    if receipt.exists():
+        rt = receipt.read_text()
+        if "sipyourdrink-ltd/bernstein" in rt or "pjv/sipyourdrink-ltd" in rt:
+            lines.append("PASS installed bernstein comes from the patched clone (uv tool receipt)")
+        elif "registry" in rt or "pypi" in rt.lower():
+            fail("installed bernstein comes from PyPI per the uv tool receipt; this workflow requires the "
+                 "patched clone -- reinstall per the README (uv tool install ~/pjv/sipyourdrink-ltd/bernstein ...)")
+        else:
+            lines.append("NOTE bernstein uv tool receipt exists but names neither the patched clone nor PyPI; verify the install")
+    else:
+        lines.append("NOTE no uv tool receipt for bernstein; cannot verify the installed engine is the patched clone")
+
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
     ok &= v.returncode == 0
@@ -283,8 +299,44 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         label: _spec_sections(path) if path is not None else set()
         for label, path in citation_sources.items()
     }
+    def _globs_overlap(a: str, b: str) -> bool:
+        """Can one path match both globs? fnmatch either way, else compare the literal
+        path segments before each glob's first wildcard segment: `src/a/**` overlaps
+        `src/a/b/*.go` (one literal prefix extends the other and the shorter glob has a
+        wildcard tail) but `internal/adapter/**` does not overlap `internal/adapters/**`
+        (the segments differ). `fnmatch(a, b)` alone missed `src/*/x` vs `src/a/*`."""
+        if a == b or fnmatch.fnmatch(a, b) or fnmatch.fnmatch(b, a):
+            return True
+        def lit(g: str) -> tuple[list[str], bool]:
+            segs = g.split("/")
+            out = []
+            for s in segs:
+                if re.search(r"[*?\[]", s):
+                    return out, True
+                out.append(s)
+            return out, False
+        la, wa = lit(a)
+        lb, wb = lit(b)
+        shorter, longer, short_wild = (la, lb, wa) if len(la) <= len(lb) else (lb, la, wb)
+        return short_wild and longer[: len(shorter)] == shorter
+
+    # Sibling-overlap check over the WHOLE plan: every glob of every step (the old shape
+    # kept only each step's last glob and compared same-stage pairs only), for every pair
+    # of steps that can be open concurrently (neither stage an ancestor of the other).
+    owned_all = [(st.get("name"), s.get("title"), g)
+                 for st in plan.data.get("stages", []) for s in st.get("steps", [])
+                 for g in (s.get("files") or [])]
+    for i, (sa, ta, ga) in enumerate(owned_all):
+        for sb, tb, gb in owned_all[i + 1:]:
+            if ta == tb:
+                continue
+            concurrent = sa == sb or (sb not in ancestors(sa) and sa not in ancestors(sb))
+            if concurrent and _globs_overlap(ga, gb):
+                fail(f"{ta!r} owns {ga} which concurrently-open step {tb!r} also covers ({gb}); "
+                     f"merges land in an arbitrary order -- split the files so each path has one owner, "
+                     f"or serialize one step behind the other")
+
     for stage in plan.data.get("stages", []):
-        owned: dict[str, str] = {}
         for raw in stage.get("steps", []):
             step = plan.step(raw["title"])
             if not step.brief.exists():
@@ -307,12 +359,6 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
             for g in step.files:
                 if not any(True for _ in plan.root.glob(g)) and not re.search(r"[*?\[]", g) and not (plan.root / g).exists():
                     lines.append(f"NOTE {step.slug}: allowlisted path does not exist yet (new file?): {g}")
-            for g in step.files:
-                for other_title, other_g in owned.items():
-                    if g == other_g or fnmatch.fnmatch(g, other_g) or fnmatch.fnmatch(other_g, g):
-                        fail(f"{step.slug}: owns {g} which sibling step {other_title!r} also owns ({other_g}); "
-                             f"siblings merge in an arbitrary order -- split the files so each path has one owner")
-                owned[step.title] = g
             for label, sec in SECTION_CITE.findall(text):
                 source = citation_sources[label]
                 sections = citation_sections[label]
@@ -394,9 +440,6 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
             lines.append(f"PASS context_files: {c}")
         else:
             fail(f"context_files: {c} is not in base {base}; every worker records it `missing` (run-dir briefs included)")
-    for s in plan.steps():
-        if plan.step(s["title"]).judge == "required" and not s.get("completion_signals"):
-            lines.append(f"NOTE {s['title']}: judge required but no completion_signals (the judge gate runs from bernstein.yaml pipeline)")
     for ref, wt in base_trees.items():
         if wt != plan.root:
             subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=plan.root, capture_output=True, check=False)

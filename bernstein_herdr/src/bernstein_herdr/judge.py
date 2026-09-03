@@ -10,13 +10,8 @@ from pathlib import Path
 from bernstein_herdr import ledger
 from bernstein_herdr.plan import Plan, Step
 
-CERTAIN = re.compile(r"\bcertain\b", re.I)
-PLAUSIBLE = re.compile(r"\bplausible\b", re.I)
-#: The judge brief asks for these two lines verbatim, because counting the WORDS is
-#: unreliable in both directions: "No defect, `certain` or `plausible`, is attributable
-#: to this diff" contains both and means zero, and a review that discusses one defect
-#: over four paragraphs mentions `certain` four times. A declared count is the number;
-#: the word count is the fallback and is marked as such in the row.
+#: The judge brief asks for these two lines verbatim, exactly once, in the file's last
+#: three lines; counting the WORDS was unreliable in both directions and is gone.
 DECLARED = {label: re.compile(rf"^\s*{label}\s*[:=]\s*(\d+)\b", re.I | re.M) for label in ("certain", "plausible")}
 
 VERDICTS = ("do not merge", "merge after listed fixes", "merge as-is")
@@ -52,11 +47,6 @@ def record_verdict(plan: Plan, step: Step, worktree: Path) -> dict:
     return verdict
 
 
-def _declared(text: str, label: str) -> int | None:
-    m = DECLARED[label].search(text)
-    return int(m.group(1)) if m else None
-
-
 def parse_verdict(review: Path) -> dict:
     """The judge's verdict ROUTES the run; only `do not merge` blocks the merge.
 
@@ -70,19 +60,39 @@ def parse_verdict(review: Path) -> dict:
 
     `do not merge` is the one verdict that still blocks: it says the reviewed work should
     not be in the branch, and a review that says so is a driver decision, not a fix item.
+
+    A malformed review also blocks: the judge prompt requires the Certain /
+    Plausible / Verdict block as the LAST three lines, exactly once each. The old
+    parser split on the first word "Verdict" anywhere and fell back to counting
+    the words `certain`/`plausible` in prose, so a duplicated or misplaced block
+    merged as `unclear` and pushed the problem into fix-N's refusal path. Under
+    an unattended run the right move is to refuse the judge merge so the engine
+    retries the judge now (retro validation item 1/8, 2026-09-03).
     """
     if not review.exists():
         return {"review_present": False, "block": True, "verdict": "missing",
                 "certain": 0, "plausible": 0, "counts_declared": False, "reason": "no blind-review.md"}
     text = review.read_text()
-    tail = text.split("Verdict", 1)[-1] if "Verdict" in text else text
-    low = tail.lower()
-    verdict = next((v for v in VERDICTS if v in low), "unclear")
-    certain, plausible = _declared(text, "certain"), _declared(text, "plausible")
-    declared = certain is not None and plausible is not None
+    tail_lines = [l.strip() for l in text.splitlines() if l.strip()][-3:]
+    low = "\n".join(tail_lines).lower()
+    verdict = next((v for v in VERDICTS if v in low), None)
+    certain_all = DECLARED["certain"].findall(text)
+    plausible_all = DECLARED["plausible"].findall(text)
+    problems = []
+    if verdict is None:
+        problems.append("no legal Verdict line in the last three lines")
+    if len(certain_all) != 1:
+        problems.append(f"{len(certain_all)} `Certain:` lines (need exactly 1)")
+    if len(plausible_all) != 1:
+        problems.append(f"{len(plausible_all)} `Plausible:` lines (need exactly 1)")
+    if problems:
+        return {"review_present": True, "verdict": verdict or "unclear",
+                "certain": int(certain_all[0]) if len(certain_all) == 1 else 0,
+                "plausible": int(plausible_all[0]) if len(plausible_all) == 1 else 0,
+                "counts_declared": False, "do_not_merge": False, "merge_as_is": False,
+                "block": True, "reason": "malformed review: " + "; ".join(problems)}
+    certain, plausible = int(certain_all[0]), int(plausible_all[0])
     return {"review_present": True, "verdict": verdict,
-            "certain": certain if certain is not None else len(CERTAIN.findall(tail)),
-            "plausible": plausible if plausible is not None else len(PLAUSIBLE.findall(tail)),
-            "counts_declared": declared,
+            "certain": certain, "plausible": plausible, "counts_declared": True,
             "do_not_merge": verdict == "do not merge", "merge_as_is": verdict == "merge as-is",
             "block": verdict == "do not merge"}
