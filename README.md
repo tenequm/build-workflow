@@ -10,10 +10,10 @@ judge contract, run ledger, and generated-plan templates.
 ## Quickstart
 
 ```sh
-npx -y skills add git@github.com:tenequm/build-workflow.git -y \
+npx -y skills add tenequm/build-workflow -y \
   --skill build-plan --skill build-run --skill build-close
 
-git clone git@github.com:tenequm/bernstein.git ~/pjv/sipyourdrink-ltd/bernstein
+git clone https://github.com/tenequm/bernstein.git ~/pjv/sipyourdrink-ltd/bernstein
 git -C ~/pjv/sipyourdrink-ltd/bernstein checkout fix/warm-pool-empty-worktree
 uv cache clean bernstein
 uv tool install ~/pjv/sipyourdrink-ltd/bernstein \
