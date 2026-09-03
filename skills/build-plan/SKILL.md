@@ -12,6 +12,11 @@ the driver writes every plan document, generated plan, contract, and brief.
 Use absolute paths in commands. Use `fd`, not `find`, and `rg` without `-r`.
 Author ASCII only with a single `-`, never an em dash.
 
+The moment a skill instruction proves wrong, ambiguous, or is deviated
+from - or the user has to intervene where the skill should have sufficed -
+append `- workflow: <what and why>` to `<run>/ledger.md`. These lines are
+the retro's input for improving the workflow after the run.
+
 ## 1. DESIGN
 
 Discover repo facts before designing. Check CLAUDE.md (or the equivalent
@@ -174,11 +179,17 @@ Use absolute paths in the real command. Copy ONLY the untracked run directory:
 
     rsync -a <primary>/<run>/ <workspace>/.agents/build/runs/<slug>/
 
-Bootstrap by copying, never committing, the primary's gitignored local state:
-`.agents/skills/`, `skills-lock.json`, and
+Bootstrap by copying, never committing, the primary's gitignored local state
+into the workspace: `.agents/skills/` and `skills-lock.json` (template paths
+must resolve from the workspace root).
+
+Permissions live in the PRIMARY checkout, not the workspace: Claude Code reads
+`.claude/settings*.json` from the main checkout's root for every worktree of
+the repo, and a worktree's own settings file is ignored. Copy
 `.agents/skills/build-plan/templates/claude-settings.local.json` to
-`.claude/settings.local.json`. Merge allow lists by hand if settings already
-exist.
+`<primary>/.claude/settings.local.json`, merging allow lists by hand if the
+file exists, and confirm the primary gitignores it. Config reloads on the
+worktree switch, so no session restart is needed.
 
 Copy the build-run `bernstein.yaml` template when the repo has none and set
 `quality_gates.base_ref: <type>/<slug>`. If the repo tracks one, change only

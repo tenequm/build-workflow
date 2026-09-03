@@ -9,6 +9,11 @@ Input: `<path_to_plan_doc>`. Output: a validated local workspace branch,
 `<run>/runs.jsonl`, attempt archives, judge evidence, and `<run>/ledger.md`.
 Never edit application code in the driver session.
 
+The moment a skill instruction proves wrong, ambiguous, or is deviated
+from - or the user has to intervene where the skill should have sufficed -
+append `- workflow: <what and why>` to `<run>/ledger.md`. These lines are
+the retro's input for improving the workflow after the run.
+
 Bernstein spawns its own adapters. There is no herdr pane, watcher, or custom
 adapter in the loop. Executors commit on `agent/...` branches;
 `bernstein-herdr gate` runs in each worktree before merge. Run commands from

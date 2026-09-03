@@ -9,6 +9,11 @@ Input: `<path_to_plan_doc>`. Never edit application code. Send every code fix
 to a fresh executor with a brief and allowlist. Never merge on your own
 judgment; merge only after the user answers.
 
+The moment a skill instruction proves wrong, ambiguous, or is deviated
+from - or the user has to intervene where the skill should have sufficed -
+append `- workflow: <what and why>` to `<run>/ledger.md`. These lines are
+the retro's input for improving the workflow after the run.
+
 ## Preflight
 
 Run inside the workspace `/build-plan` created. Resolve the checkout with
@@ -85,6 +90,9 @@ After either merge path has completed:
 2. If dirty, list every path and ask. Keep the worktree and branch.
 3. If clean, remove the worktree without `--force` from the primary checkout.
 4. Delete the merged branch with `git branch -d <branch>`.
+
+The build allowlist in `<primary>/.claude/settings.local.json` stays; tell the
+user it is there and removable by hand.
 
 Keep the worktree while a PR remains open or when the user chooses to keep it.
 Discard only on the user's explicit request and only after they type
