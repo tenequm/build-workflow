@@ -179,9 +179,10 @@ Use absolute paths in the real command. Copy ONLY the untracked run directory:
 
     rsync -a <primary>/<run>/ <workspace>/.agents/build/runs/<slug>/
 
-Bootstrap by copying, never committing, the primary's gitignored local state
-into the workspace: `.agents/skills/` and `skills-lock.json` (template paths
-must resolve from the workspace root).
+Bootstrap: anything the repo tracks (skills, lock, symlinks) arrives via the
+branch. Copy into the workspace, never committing, only the gitignored local
+state the templates need: `.agents/skills/` and `skills-lock.json` when
+untracked (template paths must resolve from the workspace root).
 
 Permissions live in the PRIMARY checkout, not the workspace: Claude Code reads
 `.claude/settings*.json` from the main checkout's root for every worktree of
