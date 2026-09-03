@@ -1,13 +1,37 @@
 ---
 name: build-run
-description: "Execute and validate a ready three-stage build. Use /build-run <path_to_plan_doc> inside the workspace created by /build-plan to run the Bernstein DAG, resolve concrete defects through executors, perform whole-branch validation, and optionally open a PR."
+description: "Execute and validate a ready three-stage build unattended. Use /build-run <plan dir>, or /build-run alone inside a workspace, to run the Bernstein DAG, resolve concrete defects through executors, perform whole-branch validation, and optionally open a PR."
 ---
 
 # build-run
 
-Input: `<path_to_plan_doc>`. Output: a validated local workspace branch,
-`<run>/runs.jsonl`, attempt archives, judge evidence, and `<run>/ledger.md`.
-Never edit application code in the driver session.
+Input: `<plan dir>`, the directory `/build-plan` produced, or nothing. Output:
+a validated local workspace branch, `<run>/runs.jsonl`, attempt archives,
+judge evidence, and `<run>/ledger.md`. Never edit application code in the
+driver session.
+
+Resolving the input:
+
+- `<plan dir>` given: the plan document is `<plan dir>/plan.md`; accept a
+  path to `plan.md` itself as the same thing.
+- nothing given, inside a workspace (git dir differs from the common dir and
+  `<run>/workspace.json` exists for the ACTIVE plan): use the ACTIVE plan and
+  its sidecar's `defaults.doc`.
+- nothing given, in a primary checkout: list `.claude/worktrees/*` that hold
+  an `.agents/build/runs/<slug>/workspace.json`. Exactly one: tell the user
+  its path and enter it with the native EnterWorktree tool in path mode, then
+  continue. Several: ask which. None: there is no ready build; say so and
+  point at `/build-plan`.
+- anything else missing on the way (no ACTIVE, no sidecar, no `report.md`,
+  readiness not READY): name the missing piece and the `/build-plan` stage
+  that produces it, and stop. Never improvise a plan here.
+
+The run is unattended by design. Every decision a human could be asked for
+was made in the plan stage: the spec is signed off, witnesses and contracts
+are in the tree, every brief was probed. From launch until the DAG ends, do
+not ask the user anything; record what you could not resolve in the ledger
+and report it at the end. A question that turns out to be necessary mid-run
+is a plan-stage defect: log it as `- workflow:` so the retro moves it there.
 
 The moment a skill instruction proves wrong, ambiguous, or is deviated
 from - or the user has to intervene where the skill should have sufficed -
@@ -31,10 +55,10 @@ the workspace root.
    they are equal. Require an empty
    `git rev-parse --show-superproject-working-tree` result and an attached HEAD.
 
-   Resolve the machine plan from the input document: select the sidecar whose
-   `defaults.doc` equals `<path_to_plan_doc>`, or use ACTIVE only when its plan
-   pins the same document. Refuse missing, multiple, or disagreeing matches.
-   Derive `<slug>` and `<run>` from that plan.
+   Resolve the machine plan from the plan document: select the sidecar whose
+   `defaults.doc` equals `<plan dir>/plan.md`, or use ACTIVE only when its plan
+   pins the same document. Refuse multiple or disagreeing matches. Derive
+   `<slug>` and `<run>` from that plan.
 
    Read `<run>/workspace.json`. Require exactly `path`, `branch`, `base`,
    `base_branch`, and `primary`; require the current absolute root to equal
@@ -46,7 +70,9 @@ the workspace root.
 
    Doctor findings are advisory. Read readiness output and require READY.
    `bernstein.yaml` from the build-run template must be committed, Codex effort
-   must be high, and every role needs a role policy.
+   must be high, and every role needs a role policy. Require the plan
+   directory's `report.md` to exist and its `## Escalations` to list no open
+   question; an open escalation means the plan stage did not finish.
 
 2. Write run config.
 
@@ -209,13 +235,16 @@ the workspace root.
    defects. Missing, unclear, or undeclared results require a fresh judge.
    Read every fix report; a committed refusal report can itself pass its gate.
 
-9. Apply bounded autonomy.
+9. Apply full autonomy.
 
    Handle mechanically a refusal whose retry the engine already scheduled, and
    a fix brief to a fresh executor when a gate or judge names a concrete defect.
-   Ask the user only when the same step fails twice, a fix would touch outside
-   plan allowlists, or the DAG is blocked with no mechanical move left. Include
-   the ledger excerpt and gate row. Full autonomy is the goal after MVP testing.
+   When the same step fails twice, a fix would touch outside plan allowlists,
+   or a step is blocked with no mechanical move left: mark that step failed
+   in the ledger with the gate row and the graveyard ref, let every step that
+   does not depend on it continue, and carry the failure into the end report.
+   Never wait on the user mid-run. A witness test still red at the final
+   `regress` step is a failed outcome, reported by its SPEC 2 number.
 
 10. Never edit `bernstein_herdr` while a run is live. Every gate imports it
     fresh, so a mid-run edit changes the gate under running work.
@@ -280,6 +309,8 @@ the workspace root.
 
     Finally run the sidecar's exact `defaults.gate_cmd` on the workspace branch
     and require exit 0. Record every round and command in `<run>/ledger.md`.
+    When the plan has witnesses (PLAN 9), list each SPEC 2 outcome with its
+    witness tests' final state in the ledger; that list is the run's result.
 
 13. End local.
 

@@ -1,11 +1,13 @@
 ---
 name: build-close
-description: "Land a validated three-stage build and run its release ceremonies. Use /build-close <path_to_plan_doc> after /build-run, whether the workspace branch has a PR or remains local."
+description: "Land a validated three-stage build and run its release ceremonies. Use /build-close <plan dir>, or /build-close alone inside the workspace, after /build-run, whether the workspace branch has a PR or remains local."
 ---
 
 # build-close
 
-Input: `<path_to_plan_doc>`. Never edit application code. Send every code fix
+Input: `<plan dir>` or nothing, resolved exactly as `/build-run` resolves
+it (the plan document is `<plan dir>/plan.md`; with no argument, the ACTIVE
+plan of the workspace you are in). Never edit application code. Send every code fix
 to a fresh executor with a brief and allowlist. Never merge on your own
 judgment; merge only after the user answers.
 
@@ -26,7 +28,7 @@ Run inside the workspace `/build-plan` created. Resolve the checkout with
 `git rev-parse --show-superproject-working-tree`. Refuse when git dir equals
 common dir, the superproject result is non-empty, or HEAD is detached.
 
-Resolve the sidecar whose `defaults.doc` equals the input plan document. Fall
+Resolve the sidecar whose `defaults.doc` equals `<plan dir>/plan.md`. Fall
 back to `.agents/build/plans/ACTIVE` only when exactly that ACTIVE plan pins the
 same document. Refuse disagreement. Derive `<slug>` and `<run>` from the selected
 machine plan.
@@ -105,7 +107,13 @@ Discard only on the user's explicit request and only after they type
 
 ## Handoff
 
-Finish by writing `<run>/handoff.md` in ASCII with these headings exactly and
+Regenerate `report.md` in the plan directory: keep its Traceability,
+Decisions, Escalations and Restatement sections, and rewrite `## Run` as
+`## Outcome` with each SPEC 2 outcome marked delivered or not by its witness
+tests' final state, plus every `owner: user` item and its status. Commit it
+on the branch before merging so the record lands with the code.
+
+Then write `<run>/handoff.md` in ASCII with these headings exactly and
 no others:
 
     ## Outcome
