@@ -57,11 +57,33 @@ Write these sections in order:
    the driver does not. Omit this section when the repo has no product spec.
 4. Optional `## Release requirements`, for `/build-close`.
 
-Validate with one fresh critic subagent on your own model. Keep it read-only.
-Give it the whole document and touched code and ask: "contradictions, undefined
-terms, invariants with no check, uncut dependencies; blocking findings only;
-write no files". Edit the document yourself and rerun fresh critics until a
-round warrants no edits. Commit the plan document with a conventional commit.
+Validate with fresh critic subagents on your own model, read-only, "write no
+files". The first round is three critics launched in one message, one lens
+each:
+
+- compile surface: every signature, schema or contract change against its
+  out-of-phase call sites and each phase's allowlist; a change whose gate
+  cannot pass inside its allowlist is a blocker.
+- spec conformance: contradictions with the product spec, undefined terms,
+  invariants with no check, seams with no contract or storage home.
+- cut shape: uncut dependencies, role and title collisions, owner rows,
+  amendment-table consistency.
+
+Ask each critic to label every finding BLOCKER (a gate would fail or two
+sections contradict) or NIT (wording, labels, list completeness). Point each
+at the plan document plus the spec sections the plan cites, not the whole
+spec; it may read further itself. Fold all three reports once, then continue
+with single fresh critics. Give later rounds the prior rounds'
+verified-clean lists as "do not re-verify" and the amendments table as "do
+not re-report what it covers".
+
+Stop on severity, not silence: rerun only while a round returns a blocker. A
+round returning only nits: fold them and stop - READY's per-brief critics
+are the confirmation layer. Once a round returns no blockers, start drafting
+CUT in parallel with any round still running; CUT artifacts wait only for
+the final fold before the commit they are cut from (WORKSPACE must branch
+from that commit, so it stays serial). Commit the plan document with a
+conventional commit.
 
 For an old plan, skip DESIGN when its pinned document hash is current or the
 user says the document is current.
@@ -226,12 +248,14 @@ Codex effort must be high, every role needs a `role_model_policy`, fast-path
 titles must be reworded, parallel tasks must not share a role, judge fields must
 be exact, and fix gates must match the step they repair.
 
-Run one fresh critic subagent per brief on your own model, read-only. Give each
-the brief, plan document, optional product spec, and named files. Ask for
-blocking findings only: underspecification, contradictions, validation gaps,
-allowlist gaps, and overlapping claims. Require "write no files". Edit briefs
-yourself, rerun ready so it re-pins, and rerun fresh critics until a whole round
-warrants no edits.
+Run one fresh critic subagent per brief on your own model, read-only,
+launched in parallel batches (the briefs are independent). Give each the
+brief, plan document, optional product spec, and named files. Ask for
+blocking findings only, labeled BLOCKER or NIT: underspecification,
+contradictions, validation gaps, allowlist gaps, and overlapping claims.
+Require "write no files". Edit briefs yourself, rerun ready so it re-pins,
+and rerun fresh critics only on the briefs you edited. A round returning
+only nits ends after the fold.
 
 Record the readiness rounds and final pins in `<run>/ledger.md`. End STOPPED.
 Print exactly:
