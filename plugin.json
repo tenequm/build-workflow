@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "build-workflow",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Three-stage plan/run/close pipeline for multi-phase software builds driven by Bernstein.",
   "author": {
     "name": "Mykhaylo Kolesnik",
