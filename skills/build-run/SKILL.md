@@ -266,14 +266,20 @@ the workspace root.
 
 12. Validate the whole branch after the DAG completes.
 
-    Run `polish-new` against the frozen base in `refs/build/base/<slug>` AND
-    stage the blind whole-branch judge (below) in the same message: both are
-    read-only passes over the same frozen diff, and running them serially
-    cost 3h47 on the 2026-09-01 tail. Merge their findings into one
-    `close-N` set. Apply approved polish fixes through fresh executors, not
-    the driver.
+    One review round is one message that launches, in parallel, the blind
+    whole-branch judge (below) and four read-only review subagents on your
+    own model over the same frozen diff `refs/build/base/<slug>..HEAD`, one
+    lens each: cleanliness (unnecessary constructs, dead code, duplicated
+    helpers), design (departures from the plan document's settled choices),
+    efficiency (measurable cost or a duplicated pass), side effects (reads
+    versus external mutations, gating). Each returns findings with file:line
+    and a proposed edit, "write no files". Running these serially cost 3h47
+    on the 2026-09-01 tail. Merge all findings into one `close-N` set. No
+    step here asks the user anything: a finding is accepted or rejected by
+    the checklist below, and every accepted one goes to a fresh executor,
+    never the driver.
 
-    Before accepting a polish round, verify:
+    Accept a finding only when all of these hold:
 
     - The comparison base is the frozen ref, not a moving branch name.
     - The diff includes every DAG merge and excludes run evidence.
@@ -292,7 +298,7 @@ the workspace root.
         git -C <run>/judge/branch-N/W apply --index <branch diff patch>
 
     Give a fresh subagent on your own model the detached worktree, the plan
-    document, and `skills/build-plan/templates/judge-prompt.md`. Keep it
+    document, and this skill's own `templates/judge-prompt.md`. Keep it
     read-only except for its review evidence. Require blocking findings only
     and no fixes.
 
@@ -311,8 +317,7 @@ the workspace root.
 
     Turn findings into committed `.agents/build/plans/<slug>/close-N.md` briefs
     and dispatch fresh resolver steps with exact allowlists. Rerun affected
-    checks. Repeat polish and blind-judge rounds until a round warrants no
-    edits. Remove detached judge worktrees after archiving evidence.
+    checks. Repeat review rounds until a round warrants no edits. Remove detached judge worktrees after archiving evidence.
 
     For each `close-N` round, record:
 
