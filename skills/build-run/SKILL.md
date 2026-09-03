@@ -116,8 +116,11 @@ the workspace root.
    with `kill -TERM -<wrapper_pid>`; the negative sign kills the process group.
 
    `--wait` IS A BUDGET, NOT A CONSTANT. Set `<budget s>` from this plan: the
-   sum of the `scope:` buckets along the DAG's critical path, doubled. Fixed
-   example numbers have been wrong every time (a 25-minute wait over a run that
+   critical path in measured executor medians (from `<run>/runs.jsonl` of
+   prior runs, or 25 min per executor step, 15 per judge, 10 per fix when
+   none exist), doubled. Not the `scope:` buckets: summing those on the
+   recall plan gives 57 hours, which is no signal at all. Fixed example
+   numbers have been wrong every time (a 25-minute wait over a run that
    took 1h52m). When the budget lapses the WRAPPER exits; the orchestrator does
    not, so keep watching by step 5's rules rather than reading the wrapper's
    exit as the end of the run.
@@ -154,6 +157,15 @@ the workspace root.
    `Timeout after 1800s` on a large step means the patched engine is not active.
    A 409 ownership conflict is a lock wait with 300-second backoff, not a stall.
    Wait for the owner to release.
+
+   STALL RULE. If `runs.jsonl` gains no row and `.sdd/runtime/spawner.log`
+   no line for 25 minutes while an executor step is open, check the mtime
+   of that agent's log under `.sdd/`. If it is older than 25 minutes, kill
+   that agent session so Bernstein's retry (`max_task_retries`) starts now,
+   instead of waiting out the runtime deadline: a silent death otherwise
+   costs the full `max_agent_runtime_s` (90 minutes at the template value),
+   and two of four acceptance runs on 2026-09-02 lost time exactly this way.
+   Record the kill in the ledger.
 
    A `Total tasks / Failed` block is not terminal when the orchestrator is
    already retrying. The run ends only after that block prints, no Bernstein
@@ -254,8 +266,12 @@ the workspace root.
 
 12. Validate the whole branch after the DAG completes.
 
-    Run `polish-new` against the frozen base in `refs/build/base/<slug>`. Apply
-    approved polish fixes through fresh executors, not the driver.
+    Run `polish-new` against the frozen base in `refs/build/base/<slug>` AND
+    stage the blind whole-branch judge (below) in the same message: both are
+    read-only passes over the same frozen diff, and running them serially
+    cost 3h47 on the 2026-09-01 tail. Merge their findings into one
+    `close-N` set. Apply approved polish fixes through fresh executors, not
+    the driver.
 
     Before accepting a polish round, verify:
 
