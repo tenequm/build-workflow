@@ -161,7 +161,8 @@ def active_plan_name(root: Path) -> str | None:
     if len(lines) != 1 or not lines[0] or lines[0] != lines[0].strip():
         raise RuntimeError(f"invalid {active}: expected one bare <slug>.yaml file name")
     name = lines[0]
-    if Path(name).name != name or not name.endswith(".yaml") or name.endswith(".steps.yaml"):
+    if (Path(name).name != name or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.yaml", name)
+            or name.endswith(".steps.yaml")):
         raise RuntimeError(f"invalid {active}: expected one bare <slug>.yaml file name, got {name!r}")
     return name
 
