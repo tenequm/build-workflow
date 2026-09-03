@@ -40,6 +40,15 @@ place, a line in `<run>/ledger.md`.
      is one session, not two, and the DAG's parallel half is a fiction. Give one of
      them another `KNOWN_ROLES` name with its own policy entry (`ci-fixer` is the
      second codex role in the template for exactly this).
+   - the repo must run NO git hook on commit. Linked worktrees share
+     `.git/hooks`, so a repo-level `pre-commit` runs inside every agent worktree
+     AND against Bernstein's salvage commit; when it failed there on 2026-09-03,
+     14 files of finished work survived only as a patch under
+     `.sdd/runtime/salvage/`, with no `salvage/*` branch to cherry-pick. The fix
+     readiness prints is to point `core.hooksPath` at an empty directory for the
+     run and unset it after -- it lives in untracked `.git/config`, so it never
+     reaches an agent's diff, and unlike `LEFTHOOK=0`/`HUSKY=0` it survives the
+     adapters' filtered spawn env.
 
    Two things it now only WARNS about, printing `NOTE` and leaving the run READY:
    a brief with no `## Report` section (Codex skips the report file on roughly half

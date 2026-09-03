@@ -71,10 +71,14 @@ its worktree before the merge. All commands run from the repo root.
                                                 # for everything.
        tail -20 .sdd/runtime/spawner.log        # the argv of every spawn
 
-   The run is over when the log prints its `Total tasks / Failed` block and no
-   `bernstein` process still names this root (`pgrep -fl bernstein`). Ignore the
-   `Elapsed: 0s` in that block; it is wrong. Kill any orphan the run leaves
-   behind, or the next `run-config` refuses.
+   THE `Total tasks / Failed` BLOCK IS NOT THE END OF THE RUN. The wrapper
+   printed it and exited on the FIRST task failure while the orchestrator went on
+   spawning a retry that later merged (measured 2026-09-03: the block at 00:30:06
+   read `Done: 0, Failed: 1`, real work ran until 00:35:57). The run is over when
+   the block has printed AND `pgrep -f bernstein` names no process for this root
+   AND the board shows no runnable task (`bernstein status`). Until all three,
+   keep watching. Ignore the `Elapsed: 0s`; it is wrong. Kill any orphan the run
+   leaves behind, or the next `run-config` refuses.
 5. A BLOCKED GATE IS TERMINAL, and this is the path you will actually walk.
    `bernstein-herdr gate` exiting 1 is not a retry and not a quarantine: the
    merge is refused, the agent's branch is moved to `salvage/<agent>` (a
@@ -122,13 +126,20 @@ its worktree before the merge. All commands run from the repo root.
 
    A MERGED TASK IS NEVER RE-GATED. Bernstein resumes a task whose merge already
    landed (measured: `phase-1a` merged at 22:25:39 and was re-gated `blocked=true`
-   at 22:33:56, blocking a step that was done). The gate now checks
-   `git merge-base --is-ancestor` of this worktree's HEAD -- and of the sha this
-   task passed on, recorded in `<run>/gate-memo/<task>-merged.json` -- against the
-   integration branch from `<run>/bernstein.json`, and on a hit prints
-   `gate: already merged` and exits 0 with no new row and no new archive. So
-   `runs.jsonl` has exactly one gate row per task; a second row for one task means
-   the check did not fire and is worth reading.
+   at 22:33:56, blocking a step that was done). The gate short-circuits only for a
+   task it has ALREADY SCORED whose sha is both strictly ahead of the frozen
+   `base_sha` and on the integration branch (both from `<run>/bernstein.json`);
+   it then prints
+   `gate: already merged` and exits 0 with no new row and no new archive. Every
+   clause is load-bearing: "ancestor of the branch" ALONE is true of the base
+   itself, so a step killed before it committed anything was waved through
+   unscored and a whole acceptance run produced no `runs.jsonl` (2026-09-03).
+   A step that commits NOTHING is scored, and blocks.
+
+   So `runs.jsonl` has AT MOST one gate row per task, and NO row at all for a
+   task whose executor died before the gate ran. A missing row is a dead step,
+   not a clean one: check the board and the spawner log before reading silence
+   as success. Two rows for one task mean the short-circuit did not fire.
 
    The gate archives the diff and writes its row on the blocking path too, so
    the evidence is complete before you look. `bernstein quarantine list` is

@@ -10,6 +10,8 @@ a fake executor that tried to do the work would be a bad model, not a plumbing t
 A sidecar `fake_write: {<path>: <literal content>}` on the step replaces the placeholder for
 those paths. That is how the judge path is exercised without a model: a plumbing test of the
 JUDGE needs a diff with a real, reviewable defect in it, and the fake cannot invent one.
+A sidecar `fake_noop: true` writes and commits NOTHING -- the shape of an executor reaped
+before its first commit, which is the case the gate's short-circuit must not wave through.
 """
 
 from __future__ import annotations
@@ -39,7 +41,11 @@ from bernstein_herdr.plan import load_plan, repo_root
 wt, prompt = Path(sys.argv[1]), sys.argv[2]
 plan = load_plan(root=repo_root(wt))
 step = plan.step_from_prompt(prompt)
-scripted = plan.sidecar.get("steps", {}).get(step.title, {}).get("fake_write") or {}
+opts = plan.sidecar.get("steps", {}).get(step.title, {})
+scripted = opts.get("fake_write") or {}
+if opts.get("fake_noop"):
+    time.sleep(float(sys.argv[3]))
+    raise SystemExit(0)
 for g in step.files:
     p = wt / g
     p.parent.mkdir(parents=True, exist_ok=True)

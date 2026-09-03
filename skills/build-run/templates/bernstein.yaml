@@ -116,10 +116,46 @@ quality_gates:
 # is set by `bernstein-herdr run-config`, which writes {"merge_strategy": "direct"}. On the
 # default "pr" the approval gate pushes to origin and skips the merge-back entirely.
 
+# Reaper tuning. EVERY key below is a real field on a real section: `_parse_tuning`
+# (core/config/seed_parser.py:1345-1359) hands each `tuning.<section>` to
+# `defaults.override()` (core/defaults.py:956-986), which raises AttributeError on an
+# unknown field -- caught and logged as `tuning.<section>: ...`. A run whose logs carry no
+# such warning applied all of it. The defaults killed the 2026-09-03 acceptance TWICE, in
+# two independent places, on a Codex step that was working the whole time.
 tuning:
   orchestrator:
-    max_agent_runtime_s: 3600
+    # DEFAULT 900 (core/defaults.py:117) released a healthy Codex agent at 16 min with all
+    # 14 files written and uncommitted. The canonical eval step is 1500 s and a step that
+    # also writes tests and reruns a suite is a multiple of that, so the default cannot fit
+    # the workload it was bought for. 5400 = Bernstein's own wall-clock hard cap, so the
+    # stale-claim release can never fire before the reaper that carries a real reason.
+    stale_claim_timeout_s: 5400
+    # Must stay strictly ABOVE stale_claim_timeout_s (the reasoning at
+    # core/defaults.py:129-136 is why 1800 sits above the default 900); raising one without
+    # the other lets the run declare itself stalled before the claim is ever released.
+    stalled_run_grace_s: 7200
+    # The initial wall-clock kill deadline (core/defaults.py:168, default 1800). It
+    # self-extends +600 s/tick only WHILE THE AGENT HEARTBEATS, and Codex spawns
+    # `consumes_heartbeat_dir=False`, so for a codex step this value is the whole budget.
+    max_agent_runtime_s: 5400
     stalled_manager_threshold_s: 900
+  agent:
+    # Codex writes no heartbeat, so liveness rests on the runner log's mtime. DEFAULT 90
+    # did not suppress at `log_age_s=141.7` and `escalation_sigterm_s` (default 120) SIGTERMed
+    # a healthy agent 318 s in. Ten minutes of log silence is a normal long model turn.
+    liveness_grace_s: 600
+    # How long that grace may keep deferring (default 900). Above the starting timeout,
+    # below the 5400 s wall-clock cap, so a genuinely stalled agent still stops.
+    liveness_suppression_cap_s: 3600
+    # First-turn window (default 300): a cold codex step with a large brief exceeds it.
+    heartbeat_starting_timeout_s: 900
+    # The escalation ladder is seconds of HEARTBEAT silence, and a no-heartbeat adapter is
+    # silent by construction; only the liveness grace above stands between it and these.
+    # Keep the order warn < sigusr1 < sigterm < sigkill and every tier above the grace.
+    escalation_warn_s: 600
+    escalation_sigusr1_s: 900
+    escalation_sigterm_s: 1200
+    escalation_sigkill_s: 1500
 
 # internal_llm_provider: Bernstein otherwise preflights an openrouter_free provider for
 # its own internal LLM calls and warns on every run; we drive every model through the

@@ -210,6 +210,32 @@ def wall_seconds(task: dict, wt: Path, base: str) -> tuple[int, str]:
     return 0, "unknown (no claimed_at, no commit)"
 
 
+def merged_ahead(wt: Path, sha: str, base_sha: str, integration: str) -> bool:
+    """`sha` carries work of this run AND is already on the integration branch.
+
+    "Ancestor of the integration branch" ALONE is the wrong test, and it cost the
+    2026-09-03 acceptance the whole run: the frozen base is trivially an ancestor of the
+    branch it was frozen from, so a worktree whose HEAD is still the base -- an executor
+    killed before it committed anything -- looked merged. Both dead attempts printed
+    `already merged` and exited 0 with no row, no archive and no scorer; `runs.jsonl` was
+    never created and 14 files of finished work were discarded unscored.
+
+    A worktree at, or behind, the frozen base has done NOTHING, and doing nothing is a
+    normal gate call: it must be SCORED, where an empty diff blocks it honestly. So the
+    short-circuit also demands `sha` be strictly AHEAD of `base_sha`. With no `base_sha`
+    recorded there is nothing to be ahead of and the short-circuit is off.
+    """
+    import subprocess
+
+    def ancestor(a: str, b: str) -> bool:
+        return subprocess.run(["git", "merge-base", "--is-ancestor", a, b], cwd=wt,
+                              capture_output=True, check=False).returncode == 0
+
+    if not (integration and base_sha and sha):
+        return False
+    return not ancestor(sha, base_sha) and ancestor(sha, integration)
+
+
 def gate(argv: list[str]) -> int:
     """The quality gate, run by Bernstein in the agent worktree before the merge.
 
@@ -265,25 +291,25 @@ def gate(argv: list[str]) -> int:
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=wt, capture_output=True, text=True, check=False).stdout.strip()
     cfg_path = plan.run_dir / "bernstein.json"
     cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {}
-    integration = cfg.get("base_ref") or ""
-
-    def merged(sha: str) -> bool:
-        """`sha` is already on the integration branch."""
-        return bool(integration) and sha != "" and subprocess.run(
-            ["git", "merge-base", "--is-ancestor", sha, integration],
-            cwd=wt, capture_output=True, check=False).returncode == 0
-
+    integration, base_sha = cfg.get("base_ref") or "", cfg.get("base_sha") or ""
     memo_dir = plan.run_dir / "gate-memo"
     passed = memo_dir / f"{task['id']}-merged.json"
     prior = json.loads(passed.read_text()) if passed.exists() else {}
-    already = head if merged(head) else (prior.get("head", "") if merged(prior.get("head", "")) else "")
+    # A task the gate has never scored is never short-circuited, whatever its HEAD looks
+    # like. Without this, the SECOND executor step of a plan has the same hole finding J
+    # found in the first: its worktree branches from the integration branch after an
+    # earlier step merged, so a HEAD that never moved is already both ahead of the frozen
+    # base and on the branch. Any memo file for this task is proof the gate scored it.
+    gated_before = any(memo_dir.glob(f"{task['id']}-*.json"))
+    candidates = [head, prior.get("head", "")] if gated_before else []
+    already = next((s for s in candidates if merged_ahead(wt, s, base_sha, integration)), "")
     if already:
         # A resumed session commits again in the same worktree, so its HEAD is new and the
         # per-head memo misses; without this the step is re-scored against a tree that has
         # already merged, and the second row blocks a task that is done (measured
         # 2026-09-02: `phase-1a` merged at 22:25:39, re-gated blocked=true at 22:33:56).
-        print(f"gate: already merged -- {already[:12]} for task {task['id']} is an ancestor of "
-              f"{integration}; nothing to re-score. No new row, no new archive.")
+        print(f"gate: already merged -- {already[:12]} for task {task['id']} is ahead of the frozen "
+              f"base and on {integration}; nothing to re-score. No new row, no new archive.")
         ledger.note(plan.run_dir, f"gate {step.slug} already merged at {already[:12]} on {integration}")
         return 0
     memo = memo_dir / f"{task['id']}-{head[:12]}.json"

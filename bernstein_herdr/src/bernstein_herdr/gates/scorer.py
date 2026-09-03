@@ -5,7 +5,8 @@ From the task worktree, resolved through the plan sidecar by task title:
    else `just check`) on a clean lint cache
 2. allowlist: changed files vs the step's `files` globs
 3. new `nolint` directives without a reason line; non-ASCII in added authored lines
-4. test files: none deleted without replacement (count of test files non-decreasing)
+4. the step committed something at all, and no test file was deleted without replacement
+   (count of test files non-decreasing)
 5. report accuracy: the report's claimed exit codes and issue counts vs the measured gate;
    a claim of clean with a red gate, or a missing lint mention, is `report_mismatch`
 Details are one JSON line; the same line is appended to <run>/runs.jsonl as a gate row.
@@ -84,6 +85,15 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     deleted = [l for l in _sh(f"git diff --diff-filter=D --name-only {step.base}", worktree)[1].splitlines() if TEST_FILE.search(l)]
     f["deleted_test_files"] = deleted
 
+    # An executor reaped before its first commit leaves a worktree at its base. Every other
+    # signal here is clean for it -- the tree is the base, so the gate command is green, the
+    # allowlist is empty and nothing was deleted -- and a run once merged two such steps as
+    # successes (2026-09-03). Zero commits is the block. It is COMMITS, not changed files:
+    # the fix-N no-op path legitimately commits only its report under `.agents/`, which is
+    # excluded from every diff above, and must still pass.
+    commits = _sh(f"git rev-list --count {step.base}..HEAD", worktree)[1].strip()
+    f["commits"] = int(commits) if commits.isdigit() else -1
+
     f["lint_expected"] = (worktree / "go.mod").exists() or bool(LINT_RUN.search(out))
     claims = ledger.report_claims(worktree / step.report_rel)
     mismatch = []
@@ -100,7 +110,8 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
         mismatch.append("no report file")
     f["report_mismatch"] = mismatch
 
-    blocked = rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0 or bool(deleted)
+    blocked = (rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0
+               or bool(deleted) or f["commits"] == 0)
     f["blocked"] = blocked
     ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-scorer", "step": step.slug, "gate": "scorer", "evidence": "verified", **{k: v for k, v in f.items() if k != "gate"}, "gate_rc": rc})
     return blocked, f

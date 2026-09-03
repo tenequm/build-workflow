@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -173,6 +174,37 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                      f"between their stages ({stage_a!r}, {stage_b!r}), so Bernstein batches them into ONE spawn "
                      f"and one session -- give one of them a different role from KNOWN_ROLES (with its own "
                      f"role_model_policy entry), or make one depend on the other")
+
+    # LINKED WORKTREES SHARE .git/hooks, so a repo-level pre-commit hook runs inside every
+    # agent worktree. It ran in the 2026-09-03 acceptance and failed Bernstein's SALVAGE
+    # commit twice ("salvage step 2/4 FAILED"), leaving 14 files of finished work as a
+    # patch under .sdd/runtime/salvage/ with `branch=None` and no `salvage/*` branch to
+    # cherry-pick. An executor's own commit meets the same hook. Fail here, not there.
+    hooks_dir = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=plan.root,
+                               capture_output=True, text=True, check=False).stdout.strip()
+    configured = subprocess.run(["git", "config", "--get", "core.hooksPath"], cwd=plan.root,
+                                capture_output=True, text=True, check=False).stdout.strip()
+    hook_root = plan.root / (configured or f"{hooks_dir or '.git'}/hooks")
+    live_hooks = [n for n in ("pre-commit", "commit-msg", "prepare-commit-msg", "pre-push")
+                  if (hook_root / n).is_file() and os.access(hook_root / n, os.X_OK)]
+    managers = [f for f in ("lefthook.yml", "lefthook.yaml", ".lefthook.yml", "lefthook.toml",
+                            "lefthook.json", ".pre-commit-config.yaml", ".husky")
+                if (plan.root / f).exists()]
+    if live_hooks or (managers and configured):
+        fail(f"this repo runs git hooks on commit ({', '.join(live_hooks) or 'via ' + ', '.join(managers)}"
+             f"{'; core.hooksPath=' + configured if configured else ''}). Linked worktrees share them, so "
+             f"they run inside every agent worktree and against Bernstein's salvage commit -- a hook that "
+             f"fails there loses the whole step's work (measured 2026-09-03). Point the hooks somewhere "
+             f"empty for the run and put it back after:\n"
+             f"  mkdir -p .agents/build/nohooks && git -C {plan.root} config core.hooksPath .agents/build/nohooks\n"
+             f"  # after the run: git -C {plan.root} config --unset core.hooksPath\n"
+             f"core.hooksPath lives in .git/config, which is untracked, so it never reaches an agent's diff. "
+             f"An env switch (LEFTHOOK=0, HUSKY=0) is NOT enough: adapters spawn under a filtered env.")
+    elif managers:
+        lines.append(f"NOTE hook manager config present ({', '.join(managers)}) but no executable hook is "
+                     f"installed; nothing fires on commit")
+    else:
+        lines.append(f"PASS no commit-time git hooks under {hook_root}")
 
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
