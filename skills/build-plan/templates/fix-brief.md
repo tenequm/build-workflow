@@ -40,9 +40,12 @@ whether there is anything to do.
    check, so the gate sees zero changed files and passes. Do not touch a source
    file to "have something to show"; do not open the phase diff looking for work
    the judge did not report.
-3. REFUSAL PATH -- `verdict` is `missing` or `unclear`, or `counts_declared` is
-   `false`. The review either never landed or cannot be trusted to route this
-   step, and a `certain: 0` on that path is a parser fallback, not a finding.
+3. REFUSAL PATH (defensive fallback -- a malformed or missing review normally
+   blocks the judge step itself, so this step never spawns; you reach here only
+   if `verdict.json` is unreadable or inconsistent from your worktree) --
+   `verdict` is `missing` or `unclear`, or `counts_declared` is `false`. The
+   review cannot be trusted to route this step, and a `certain: 0` on that
+   path is a parser fallback, not a finding.
    Do not fix anything and do not take the no-op path. Write `<report path>`
    with `blocked_on_dependency`, the exact `verdict.json` contents, and one line
    saying the judge must be re-run; commit it as above so the report exists, and

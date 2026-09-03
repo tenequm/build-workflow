@@ -42,6 +42,32 @@ def _spec_sections(spec: Path) -> set[str]:
     return {m.group(1) for m in re.finditer(r"^#+\s*(\d+(?:\.\d+)*)\b", spec.read_text(), re.M)}
 
 
+
+def globs_overlap(a: str, b: str) -> bool:
+    """Can one path match both globs? fnmatch either way, else compare the literal
+    path segments before each glob's first wildcard segment: `src/a/**` overlaps
+    `src/a/b/*.go` (one literal prefix extends the other and the shorter glob has a
+    wildcard tail) but `internal/adapter/**` does not overlap `internal/adapters/**`
+    (the segments differ). `fnmatch(a, b)` alone missed `src/*/x` vs `src/a/*`.
+    An empty literal prefix (`*.go`, `**/testdata/**`) proves nothing, so it never
+    counts as containment on its own."""
+    if a == b or fnmatch.fnmatch(a, b) or fnmatch.fnmatch(b, a):
+        return True
+
+    def lit(g: str) -> tuple[list[str], bool]:
+        out: list[str] = []
+        for s in g.split("/"):
+            if re.search(r"[*?\[]", s):
+                return out, True
+            out.append(s)
+        return out, False
+
+    la, wa = lit(a)
+    lb, wb = lit(b)
+    shorter, longer, short_wild = (la, lb, wa) if len(la) <= len(lb) else (lb, la, wb)
+    return short_wild and len(shorter) > 0 and longer[: len(shorter)] == shorter
+
+
 def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     lines: list[str] = []
     ok = True
@@ -170,13 +196,19 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         reach[name] = out
         return out
 
+    def concurrent(stage_a: str, stage_b: str) -> bool:
+        """Two stages can hold open tasks at the same time: same stage, or no
+        dependency path between them in either direction."""
+        if stage_a == stage_b:
+            return True
+        return stage_b not in ancestors(stage_a) and stage_a not in ancestors(stage_b)
+
     placed = [(st.get("name"), s) for st in stages for s in st.get("steps", [])]
     for i, (stage_a, a) in enumerate(placed):
         for stage_b, b in placed[i + 1:]:
             if not a.get("role") or a.get("role") != b.get("role"):
                 continue
-            related = stage_a == stage_b or stage_b in ancestors(stage_a) or stage_a in ancestors(stage_b)
-            if stage_a == stage_b or not related:
+            if concurrent(stage_a, stage_b):
                 fail(f"{a.get('title')!r} and {b.get('title')!r} both have role {a['role']!r} and no dependency "
                      f"between their stages ({stage_a!r}, {stage_b!r}), so Bernstein batches them into ONE spawn "
                      f"and one session -- give one of them a different role from KNOWN_ROLES (with its own "
@@ -226,19 +258,27 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         lines.append(f"PASS no commit-time git hooks under {hook_root}"
                      + (f" (core.hooksPath={configured})" if configured else ""))
 
-    # The workflow requires the PATCHED Bernstein clone; prose alone cannot stop a stock
-    # PyPI install from silently voiding every engine guarantee. The uv tool receipt says
-    # where the installed build came from.
-    receipt = Path.home() / ".local" / "share" / "uv" / "tools" / "bernstein" / "uv-receipt.toml"
+    # The workflow requires a LOCALLY BUILT Bernstein (the patched clone); prose alone
+    # cannot stop a stock PyPI install from silently voiding every engine guarantee. A
+    # registry install's receipt requirement has no source key at all (verified across
+    # eight receipts, 2026-09-04), so "path-like source present" is the check -- not a
+    # string match on this machine's clone path.
+    tool_dir = subprocess.run(["uv", "tool", "dir"], capture_output=True, text=True, check=False).stdout.strip()
+    receipt = (Path(tool_dir) if tool_dir else Path.home() / ".local" / "share" / "uv" / "tools") / "bernstein" / "uv-receipt.toml"
     if receipt.exists():
-        rt = receipt.read_text()
-        if "sipyourdrink-ltd/bernstein" in rt or "pjv/sipyourdrink-ltd" in rt:
-            lines.append("PASS installed bernstein comes from the patched clone (uv tool receipt)")
-        elif "registry" in rt or "pypi" in rt.lower():
-            fail("installed bernstein comes from PyPI per the uv tool receipt; this workflow requires the "
-                 "patched clone -- reinstall per the README (uv tool install ~/pjv/sipyourdrink-ltd/bernstein ...)")
+        import tomllib
+        try:
+            reqs = tomllib.loads(receipt.read_text()).get("tool", {}).get("requirements", [])
+        except tomllib.TOMLDecodeError:
+            reqs = None
+        req = next((r for r in reqs or [] if isinstance(r, dict) and r.get("name") == "bernstein"), None)
+        if reqs is None or req is None:
+            lines.append(f"NOTE unparseable or bernstein-less uv receipt at {receipt}; verify the install by hand")
+        elif any(k in req for k in ("directory", "editable", "path", "git")):
+            lines.append(f"PASS installed bernstein is a local/source build ({ {k: req[k] for k in ('directory', 'editable', 'path', 'git') if k in req} })")
         else:
-            lines.append("NOTE bernstein uv tool receipt exists but names neither the patched clone nor PyPI; verify the install")
+            fail("installed bernstein comes from a registry per the uv tool receipt; this workflow requires the "
+                 "patched clone -- reinstall per the README (uv tool install <patched clone> --with bernstein_herdr ...)")
     else:
         lines.append("NOTE no uv tool receipt for bernstein; cannot verify the installed engine is the patched clone")
 
@@ -258,15 +298,11 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     base_tmp: list[tempfile.TemporaryDirectory] = []
 
     def tree_for(ref: str) -> Path:
+        # Always a detached worktree, never the live workspace: brief commands are
+        # arbitrary (generators, formatters) and must not mutate the real checkout.
+        # With a path-independent build cache the isolation costs seconds, not minutes.
         if ref in base_trees:
             return base_trees[ref]
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=plan.root, capture_output=True, text=True, check=False).stdout.strip()
-        want = subprocess.run(["git", "rev-parse", ref], cwd=plan.root, capture_output=True, text=True, check=False).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=plan.root, capture_output=True, text=True, check=False).stdout.strip()
-        if head and head == want and not dirty:
-            base_trees[ref] = plan.root
-            lines.append(f"PASS validation replays for base {ref} run in the workspace itself (HEAD is the base, tree clean)")
-            return plan.root
         tmp = tempfile.TemporaryDirectory()
         base_tmp.append(tmp)
         wt = Path(tmp.name) / "base"
@@ -282,169 +318,160 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         replay_memo[key] = r.returncode
         return r.returncode, False
 
-    defaults = plan.sidecar.get("defaults", {})
-    plan_doc = defaults.get("doc")
-    design_doc = defaults.get("design")
-    build_spec = defaults.get("spec")
-    design_path = plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md"
-    # SPEC is the build spec (spec.md beside plan.md) when the sidecar pins one; the
-    # lowercase legacy form and an unpinned SPEC still mean the product spec.
-    citation_sources = {
-        "PLAN": plan.root / plan_doc if plan_doc else None,
-        "DESIGN": design_path,
-        "SPEC": plan.root / build_spec if build_spec else design_path,
-        "spec": design_path,
-    }
-    citation_sections = {
-        label: _spec_sections(path) if path is not None else set()
-        for label, path in citation_sources.items()
-    }
-    def _globs_overlap(a: str, b: str) -> bool:
-        """Can one path match both globs? fnmatch either way, else compare the literal
-        path segments before each glob's first wildcard segment: `src/a/**` overlaps
-        `src/a/b/*.go` (one literal prefix extends the other and the shorter glob has a
-        wildcard tail) but `internal/adapter/**` does not overlap `internal/adapters/**`
-        (the segments differ). `fnmatch(a, b)` alone missed `src/*/x` vs `src/a/*`."""
-        if a == b or fnmatch.fnmatch(a, b) or fnmatch.fnmatch(b, a):
-            return True
-        def lit(g: str) -> tuple[list[str], bool]:
-            segs = g.split("/")
-            out = []
-            for s in segs:
-                if re.search(r"[*?\[]", s):
-                    return out, True
-                out.append(s)
-            return out, False
-        la, wa = lit(a)
-        lb, wb = lit(b)
-        shorter, longer, short_wild = (la, lb, wa) if len(la) <= len(lb) else (lb, la, wb)
-        return short_wild and longer[: len(shorter)] == shorter
-
-    # Sibling-overlap check over the WHOLE plan: every glob of every step (the old shape
-    # kept only each step's last glob and compared same-stage pairs only), for every pair
-    # of steps that can be open concurrently (neither stage an ancestor of the other).
-    owned_all = [(st.get("name"), s.get("title"), g)
-                 for st in plan.data.get("stages", []) for s in st.get("steps", [])
-                 for g in (s.get("files") or [])]
-    for i, (sa, ta, ga) in enumerate(owned_all):
-        for sb, tb, gb in owned_all[i + 1:]:
-            if ta == tb:
-                continue
-            concurrent = sa == sb or (sb not in ancestors(sa) and sa not in ancestors(sb))
-            if concurrent and _globs_overlap(ga, gb):
+    # Worktrees are created lazily inside the loop below; any exception between
+    # creation and the end of the pass must still remove them, or .git/worktrees
+    # accumulates dangling entries (the try/finally the memo rewrite dropped).
+    try:
+        defaults = plan.sidecar.get("defaults", {})
+        plan_doc = defaults.get("doc")
+        design_doc = defaults.get("design")
+        build_spec = defaults.get("spec")
+        design_path = plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md"
+        # SPEC is the build spec (spec.md beside plan.md) when the sidecar pins one; the
+        # lowercase legacy form and an unpinned SPEC still mean the product spec.
+        citation_sources = {
+            "PLAN": plan.root / plan_doc if plan_doc else None,
+            "DESIGN": design_path,
+            "SPEC": plan.root / build_spec if build_spec else design_path,
+            "spec": design_path,
+        }
+        citation_sections = {
+            label: _spec_sections(path) if path is not None else set()
+            for label, path in citation_sources.items()
+        }
+        # Sibling-overlap check over the WHOLE plan: every glob of every step (the old shape
+        # kept only each step's last glob and compared same-stage pairs only), for every pair
+        # of steps that can be open concurrently (neither stage an ancestor of the other).
+        owned_all = [(st.get("name"), s.get("title"), g)
+                     for st in plan.data.get("stages", []) for s in st.get("steps", [])
+                     for g in (s.get("files") or [])]
+        for i, (sa, ta, ga) in enumerate(owned_all):
+            for sb, tb, gb in owned_all[i + 1:]:
+                if ta == tb:
+                    continue
+                if not concurrent(sa, sb) or not globs_overlap(ga, gb):
+                    continue
+                # A repair step (sidecar `fixes:`) overlaps its target phase BY DESIGN --
+                # fix-N and polish-N both own phase-N's files, and the engine's file locks
+                # serialize concurrent writers. Only plain sibling steps are a defect.
+                if plan.step(ta).fixes or plan.step(tb).fixes:
+                    lines.append(f"NOTE {ta!r} and {tb!r} share {ga} / {gb}; allowed, one is a repair step "
+                                 f"(engine file locks serialize them)")
+                    continue
                 fail(f"{ta!r} owns {ga} which concurrently-open step {tb!r} also covers ({gb}); "
                      f"merges land in an arbitrary order -- split the files so each path has one owner, "
                      f"or serialize one step behind the other")
 
-    for stage in plan.data.get("stages", []):
-        for raw in stage.get("steps", []):
-            step = plan.step(raw["title"])
-            if not step.brief.exists():
-                fail(f"{step.slug}: brief missing at {step.brief}; write it, and note that a `brief:` under "
-                     f".agents/ must be TRACKED -- an untracked brief does not exist inside the agent's worktree")
-                continue
-            text = step.brief.read_text()
-            lines.append(f"PASS {step.slug}: brief {step.brief.relative_to(plan.root)} ({len(text)} chars, under the 16k cap)"
-                         if len(text) <= 16000 else f"NOTE {step.slug}: brief over cap, see below")
-            # An executor step with no `files:` has no allowlist, so the scorer cannot tell
-            # its work from a stray edit and the merge cannot be scoped. Judge steps own
-            # nothing by design (they only write their review).
-            if step.judges:
-                lines.append(f"PASS {step.slug}: judge step, no allowlist expected (judges {step.judges!r})")
-            elif not step.files:
-                fail(f"{step.slug}: no `files:` allowlist in the plan step; the scorer has nothing to check a "
-                     f"changed file against -- list every path the step may touch under `files:`")
-            else:
-                lines.append(f"PASS {step.slug}: allowlist {step.files}")
-            for g in step.files:
-                if not any(True for _ in plan.root.glob(g)) and not re.search(r"[*?\[]", g) and not (plan.root / g).exists():
-                    lines.append(f"NOTE {step.slug}: allowlisted path does not exist yet (new file?): {g}")
-            for label, sec in SECTION_CITE.findall(text):
-                source = citation_sources[label]
-                sections = citation_sections[label]
-                if source is None:
-                    fail(f"{step.slug}: cites {label} {sec}, but the sidecar pins no source for it (defaults.doc / defaults.spec)")
-                elif not source.exists():
-                    fail(f"{step.slug}: cites {label} {sec}, but citation source {source} does not exist")
-                elif sec not in sections and sec.split(".")[0] not in sections:
-                    fail(f"{step.slug}: cites {label} {sec} which does not exist in {source}; "
-                         f"fix the citation or add the section (sections present: {sorted(sections)[:8]})")
-            # A NOTE, never a fail. The report is evidence, not the work: Codex skips
-            # writing one on roughly half its steps whatever the brief says (measured
-            # 2026-09-02, `report_mismatch: ["no report file"]` on a step that otherwise
-            # held its allowlist and passed), and blocking readiness on the brief's wording
-            # buys nothing the scorer does not already record per run.
-            if not re.search(r"^##\s*Report", text, re.M) or "Deviations" not in text:
-                lines.append(f"NOTE {step.slug}: brief does not require a report file with a Deviations rule; "
-                             f"the gate records `report_present` either way -- add a `## Report` section naming "
-                             f"{step.report_rel} if you want the evidence")
-            else:
-                lines.append(f"PASS {step.slug}: brief requires a report at {step.report_rel} with Deviations")
-            lines.append(f"PASS {step.slug}: judge step, gate is the verdict parser, no gate command"
-                         if step.judges else
-                         f"PASS {step.slug}: gate command `{step.gate_cmd}` (base {step.base})")
-            # A fix step runs LAST, after a later phase has reddened the tree, and it is
-            # scored on the files of the step it fixes. Inheriting `defaults.gate_cmd`
-            # there blocked a correct fix three times over a module it never touched
-            # (finding W, 2026-09-03: every package ok and golangci-lint 0 issues under
-            # the phase's own command). The same argument holds for a judge step whose
-            # brief replays a Validation block.
-            target = step.fixes or step.judges
-            if target and target in {s.get("title") for s in plan.steps()}:
-                other = plan.step(target)
-                if other.gate_cmd != step.gate_cmd:
-                    lines.append(f"NOTE {step.slug}: gate command `{step.gate_cmd}` DIFFERS from the command of "
-                                 f"the step it {'fixes' if step.fixes else 'judges'} ({other.slug}: "
-                                 f"`{other.gate_cmd}`). A fix or review is scored on that step's scope, and by "
-                                 f"the time it runs a later phase has usually left the rest of the tree red -- "
-                                 f"give it `gate_cmd: {other.gate_cmd}` in the sidecar unless you meant this.")
-            elif step.fixes:
-                fail(f"{step.slug}: fixes {step.fixes!r}, which is not a step title in the plan; copy the "
-                     f"fixed step's `title:` verbatim into the sidecar `fixes:`")
-            elif re.match(r"(fix|polish|repair)-", step.slug) and not step.judges:
-                # The check above can only compare what the sidecar declares, and finding W
-                # was a plan that declared NOTHING for fix-1: it silently inherited
-                # `defaults.gate_cmd` and blocked a correct seven-commit fix three times.
-                # A fix step with no `fixes:` is that same plan, so refuse it here.
-                fail(f"{step.slug}: looks like a fix step but declares no `fixes:` in the sidecar, so nothing "
-                     f"checks its gate command against the step it repairs -- it inherits `{step.gate_cmd}`, "
-                     f"which a later phase leaves red by design (finding W, 2026-09-03). Add `fixes: \"<exact "
-                     f"title of the step it repairs>\"` and that step's own `gate_cmd:`; if it really spans "
-                     f"several steps, name the one whose scope it is scored on.")
-            if not re.search(r"^##\s*Items", text, re.M):
-                fail(f"{step.slug}: brief lacks an `## Items` section; add the numbered work items the executor must do")
-            if len(text) > 16000:
-                fail(f"{step.slug}: brief is {len(text)} chars, over the 16k cap (length hurts resolve rate); "
-                     f"cut it or split the step")
-            if run_validation:
-                m = re.search(r"##\s*Validation.*?```\n(.*?)```", text, re.S)
-                if not m:
-                    fail(f"{step.slug}: brief has no `## Validation` fenced code block; add the exact commands "
-                         f"the executor must run, one per line, so they can be replayed on the base")
+        for stage in plan.data.get("stages", []):
+            for raw in stage.get("steps", []):
+                step = plan.step(raw["title"])
+                if not step.brief.exists():
+                    fail(f"{step.slug}: brief missing at {step.brief}; write it, and note that a `brief:` under "
+                         f".agents/ must be TRACKED -- an untracked brief does not exist inside the agent's worktree")
+                    continue
+                text = step.brief.read_text()
+                lines.append(f"PASS {step.slug}: brief {step.brief.relative_to(plan.root)} ({len(text)} chars, under the 16k cap)"
+                             if len(text) <= 16000 else f"NOTE {step.slug}: brief over cap, see below")
+                # An executor step with no `files:` has no allowlist, so the scorer cannot tell
+                # its work from a stray edit and the merge cannot be scoped. Judge steps own
+                # nothing by design (they only write their review).
+                if step.judges:
+                    lines.append(f"PASS {step.slug}: judge step, no allowlist expected (judges {step.judges!r})")
+                elif not step.files:
+                    fail(f"{step.slug}: no `files:` allowlist in the plan step; the scorer has nothing to check a "
+                         f"changed file against -- list every path the step may touch under `files:`")
                 else:
-                    for cmd in [c for c in m.group(1).splitlines() if c.strip() and not c.startswith("#")]:
-                        rc, reused = replay(step.base, cmd)
-                        lines.append(f"{'PASS' if rc == 0 else 'RED '} {step.slug} on base {step.base}: `{cmd[:80]}` rc={rc}"
-                                     + (" (memoised)" if reused else ""))
-            if step.judges and step.judges not in {s["title"] for s in plan.steps()}:
-                fail(f"{step.slug}: judges {step.judges!r} which is not a step title in the plan; "
-                     f"copy the reviewed step's `title:` verbatim into the sidecar `judges:`")
-    # Bernstein content-addresses plan-level `context_files` against the worker's
-    # WORKTREE at spawn, before the adapter writes anything into it -- measured
-    # 2026-09-02: a brief listed here came back `{"reason_code": "missing"}` in the run
-    # journal's context.files_attached for both workers. Only a path in the base tree
-    # reaches a worker, so anything else is a silent no-op and fails here.
-    for c in plan.data.get("context_files") or []:
-        in_base = subprocess.run(["git", "cat-file", "-e", f"{base}:{c}"], cwd=plan.root, capture_output=True, check=False).returncode == 0
-        if in_base:
-            lines.append(f"PASS context_files: {c}")
-        else:
-            fail(f"context_files: {c} is not in base {base}; every worker records it `missing` (run-dir briefs included)")
-    for ref, wt in base_trees.items():
-        if wt != plan.root:
-            subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=plan.root, capture_output=True, check=False)
-    for tmp in base_tmp:
-        tmp.cleanup()
+                    lines.append(f"PASS {step.slug}: allowlist {step.files}")
+                for g in step.files:
+                    if not any(True for _ in plan.root.glob(g)) and not re.search(r"[*?\[]", g) and not (plan.root / g).exists():
+                        lines.append(f"NOTE {step.slug}: allowlisted path does not exist yet (new file?): {g}")
+                for label, sec in SECTION_CITE.findall(text):
+                    source = citation_sources[label]
+                    sections = citation_sections[label]
+                    if source is None:
+                        fail(f"{step.slug}: cites {label} {sec}, but the sidecar pins no source for it (defaults.doc / defaults.spec)")
+                    elif not source.exists():
+                        fail(f"{step.slug}: cites {label} {sec}, but citation source {source} does not exist")
+                    elif sec not in sections and sec.split(".")[0] not in sections:
+                        fail(f"{step.slug}: cites {label} {sec} which does not exist in {source}; "
+                             f"fix the citation or add the section (sections present: {sorted(sections)[:8]})")
+                # A NOTE, never a fail. The report is evidence, not the work: Codex skips
+                # writing one on roughly half its steps whatever the brief says (measured
+                # 2026-09-02, `report_mismatch: ["no report file"]` on a step that otherwise
+                # held its allowlist and passed), and blocking readiness on the brief's wording
+                # buys nothing the scorer does not already record per run.
+                if not re.search(r"^##\s*Report", text, re.M) or "Deviations" not in text:
+                    lines.append(f"NOTE {step.slug}: brief does not require a report file with a Deviations rule; "
+                                 f"the gate records `report_present` either way -- add a `## Report` section naming "
+                                 f"{step.report_rel} if you want the evidence")
+                else:
+                    lines.append(f"PASS {step.slug}: brief requires a report at {step.report_rel} with Deviations")
+                lines.append(f"PASS {step.slug}: judge step, gate is the verdict parser, no gate command"
+                             if step.judges else
+                             f"PASS {step.slug}: gate command `{step.gate_cmd}` (base {step.base})")
+                # A fix step runs LAST, after a later phase has reddened the tree, and it is
+                # scored on the files of the step it fixes. Inheriting `defaults.gate_cmd`
+                # there blocked a correct fix three times over a module it never touched
+                # (finding W, 2026-09-03: every package ok and golangci-lint 0 issues under
+                # the phase's own command). The same argument holds for a judge step whose
+                # brief replays a Validation block.
+                target = step.fixes or step.judges
+                if target and target in {s.get("title") for s in plan.steps()}:
+                    other = plan.step(target)
+                    if other.gate_cmd != step.gate_cmd:
+                        lines.append(f"NOTE {step.slug}: gate command `{step.gate_cmd}` DIFFERS from the command of "
+                                     f"the step it {'fixes' if step.fixes else 'judges'} ({other.slug}: "
+                                     f"`{other.gate_cmd}`). A fix or review is scored on that step's scope, and by "
+                                     f"the time it runs a later phase has usually left the rest of the tree red -- "
+                                     f"give it `gate_cmd: {other.gate_cmd}` in the sidecar unless you meant this.")
+                elif step.fixes:
+                    fail(f"{step.slug}: fixes {step.fixes!r}, which is not a step title in the plan; copy the "
+                         f"fixed step's `title:` verbatim into the sidecar `fixes:`")
+                elif re.match(r"(fix|polish|repair)-", step.slug) and not step.judges:
+                    # The check above can only compare what the sidecar declares, and finding W
+                    # was a plan that declared NOTHING for fix-1: it silently inherited
+                    # `defaults.gate_cmd` and blocked a correct seven-commit fix three times.
+                    # A fix step with no `fixes:` is that same plan, so refuse it here.
+                    fail(f"{step.slug}: looks like a fix step but declares no `fixes:` in the sidecar, so nothing "
+                         f"checks its gate command against the step it repairs -- it inherits `{step.gate_cmd}`, "
+                         f"which a later phase leaves red by design (finding W, 2026-09-03). Add `fixes: \"<exact "
+                         f"title of the step it repairs>\"` and that step's own `gate_cmd:`; if it really spans "
+                         f"several steps, name the one whose scope it is scored on.")
+                if not re.search(r"^##\s*Items", text, re.M):
+                    fail(f"{step.slug}: brief lacks an `## Items` section; add the numbered work items the executor must do")
+                if len(text) > 16000:
+                    fail(f"{step.slug}: brief is {len(text)} chars, over the 16k cap (length hurts resolve rate); "
+                         f"cut it or split the step")
+                if run_validation:
+                    m = re.search(r"##\s*Validation.*?```\n(.*?)```", text, re.S)
+                    if not m:
+                        fail(f"{step.slug}: brief has no `## Validation` fenced code block; add the exact commands "
+                             f"the executor must run, one per line, so they can be replayed on the base")
+                    else:
+                        for cmd in [c.strip() for c in m.group(1).splitlines() if c.strip() and not c.strip().startswith("#")]:
+                            rc, reused = replay(step.base, cmd)
+                            lines.append(f"{'PASS' if rc == 0 else 'RED '} {step.slug} on base {step.base}: `{cmd[:80]}` rc={rc}"
+                                         + (" (memoised)" if reused else ""))
+                if step.judges and step.judges not in {s["title"] for s in plan.steps()}:
+                    fail(f"{step.slug}: judges {step.judges!r} which is not a step title in the plan; "
+                         f"copy the reviewed step's `title:` verbatim into the sidecar `judges:`")
+        # Bernstein content-addresses plan-level `context_files` against the worker's
+        # WORKTREE at spawn, before the adapter writes anything into it -- measured
+        # 2026-09-02: a brief listed here came back `{"reason_code": "missing"}` in the run
+        # journal's context.files_attached for both workers. Only a path in the base tree
+        # reaches a worker, so anything else is a silent no-op and fails here.
+        for c in plan.data.get("context_files") or []:
+            in_base = subprocess.run(["git", "cat-file", "-e", f"{base}:{c}"], cwd=plan.root, capture_output=True, check=False).returncode == 0
+            if in_base:
+                lines.append(f"PASS context_files: {c}")
+            else:
+                fail(f"context_files: {c} is not in base {base}; every worker records it `missing` (run-dir briefs included)")
+    finally:
+        for ref, wt in base_trees.items():
+            if wt != plan.root:
+                subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=plan.root, capture_output=True, check=False)
+        for tmp in base_tmp:
+            tmp.cleanup()
     return ok, lines
 
 

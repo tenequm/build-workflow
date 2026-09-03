@@ -309,9 +309,10 @@ wall per step. With witnesses landed, shared files already exist, so siblings
 split naturally by package; write a driver-owned interface contract only for
 a seam WITNESS did not cover. Split more than about eight files or two
 independent packages into disjoint `phase-Na`, `phase-Nb` siblings. Give
-shared files to one sibling or a small predecessor. Readiness compares only
-same-stage last globs and is not a real intersection test, so guarantee
-sibling disjointness yourself.
+shared files to one sibling or a small predecessor. Readiness checks every
+glob of every concurrently-open step pair (repair steps exempt) with a
+segment-aware overlap test; it still cannot prove true glob disjointness,
+so guarantee sibling disjointness yourself.
 
 Use one step per stage and make stage name equal step name. Carry the DAG in
 `depends_on`. Bernstein batches concurrently open tasks with the same role into

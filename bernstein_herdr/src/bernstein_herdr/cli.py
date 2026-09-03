@@ -5,6 +5,7 @@
   bernstein-herdr gate                                     THE quality gate: run by Bernstein from the agent worktree
   bernstein-herdr scorer --step "<title>"                  scorer gate in the current worktree; exit 0/1
   bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the verdict is `do not merge`
+  bernstein-herdr watch [--interval N] [--stall M] [--until-stall]   event lines for a live run; exits on run end
 """
 
 from __future__ import annotations
@@ -45,35 +46,7 @@ def free_port(preferred: int) -> int:
         return int(s.getsockname()[1])
 
 
-def stale_bernstein_pids(root: Path) -> list[tuple[int, str]]:
-    """Live `bernstein` processes belonging to this repo, by argv or by cwd.
-
-    A killed run does not take its orchestrator and watchdog with it. They keep ticking
-    against `.sdd/` under the same root and respawn tasks into the NEXT run's
-    directories -- the 2026-09-02 replay lost a whole run to two orphans from the
-    previous one. The port refusal above only sees the task server, which is a different
-    process and may already be gone, so match on the repo instead: the root in the argv,
-    or the root (or a path under it) as the process cwd.
-    """
-    import os
-    import subprocess
-
-    listing = subprocess.run(["pgrep", "-fl", "bernstein"], capture_output=True, text=True, check=False).stdout
-    hits: list[tuple[int, str]] = []
-    for line in listing.splitlines():
-        pid_s, _, cmd = line.partition(" ")
-        if not pid_s.isdigit() or int(pid_s) == os.getpid():
-            continue
-        pid = int(pid_s)
-        if str(root) in cmd:
-            hits.append((pid, cmd[:120]))
-            continue
-        cwd = subprocess.run(["lsof", "-p", str(pid), "-a", "-d", "cwd", "-Fn"], capture_output=True, text=True, check=False).stdout
-        for l in cwd.splitlines():
-            if l.startswith("n") and (l[1:] == str(root) or l[1:].startswith(f"{root}/")):
-                hits.append((pid, cmd[:120]))
-                break
-    return hits
+from bernstein_herdr.proc import stale_bernstein_pids  # noqa: E402  (re-export; run-config and gate call it)
 
 
 def run_config(root: Path, plan_path: Path | None = None) -> int:
@@ -414,10 +387,12 @@ def main() -> int:
         from bernstein_herdr.watch import watch
         root = repo_root(Path.cwd())
         plan = load_plan(root=root)
-        return watch(root, plan.run_dir,
-                     interval=float(_arg(rest, "--interval", "10") or 10),
-                     stall_minutes=float(_arg(rest, "--stall", "25") or 25),
-                     until_stall="--until-stall" in rest)
+        kw = {}
+        if _arg(rest, "--interval"):
+            kw["interval"] = float(_arg(rest, "--interval"))
+        if _arg(rest, "--stall"):
+            kw["stall_minutes"] = float(_arg(rest, "--stall"))
+        return watch(root, plan.run_dir, until_stall="--until-stall" in rest, **kw)
     if cmd == "judge-verdict":
         from bernstein_herdr.judge import record_verdict
         from bernstein_herdr.plan import load_plan, repo_root

@@ -10,8 +10,8 @@ past `pinned: <sha>`; a FAIL is a stale or wrong fact.
 surface: every line of the fenced `surface` block in plan.md,
 `<phase> :: <allowlist globs> :: <rg regex>`, is run as `rg -l` over the repo; a hit
 outside the phase's globs is a FAIL, because that phase's gate cannot pass inside its
-allowlist. Only source files count: paths under the plan directory, `.agents/`,
-`.sdd/` and `docs/` are ignored.
+allowlist. Only source files count: paths under `.agents/`, `.sdd/`, `.claude/` and
+`docs/` (which holds the plan directory) are ignored.
 """
 from __future__ import annotations
 
@@ -100,7 +100,9 @@ def check_surface(plan: Path, repo: Path) -> int:
         r = subprocess.run(["rg", "-l", "-e", regex, "."], cwd=repo, capture_output=True, text=True, check=False)
         hits = [h[2:] if h.startswith("./") else h for h in r.stdout.splitlines()]
         hits = [h for h in hits if not h.startswith(IGNORED)]
-        outside = [h for h in hits if not any(fnmatch.fnmatch(h, g) or fnmatch.fnmatch(h, g.rstrip("*") + "*") for g in globs)]
+        # Plain fnmatch, the same rule the merge gate's scorer enforces, so one
+        # allowlist string means one thing across the toolchain.
+        outside = [h for h in hits if not any(fnmatch.fnmatch(h, g) for g in globs)]
         if outside:
             print(f"FAIL surface {phase}: `{regex}` matches outside its allowlist: {', '.join(outside[:8])}"
                   + (f" (+{len(outside) - 8})" if len(outside) > 8 else ""))

@@ -68,14 +68,16 @@ The counts never decide the exit code. Do not soften a verdict to get work
 merged, and do not harden one to stop it -- `do not merge` means the reviewed
 work should not be in the branch at all, and is a decision for the driver.
 
-The parser is not anchored to the end of the file, so keep the block unique:
+The parser reads ONLY the last three non-blank lines for the verdict and
+requires exactly one `Certain:` and one `Plausible:` line in the whole file
+(fenced code blocks are stripped first, so quoted material does not count).
+A malformed review BLOCKS this step and the engine re-runs the judge, so:
 
-- the word `Verdict` appears nowhere but that last line (parsing starts at its
-  FIRST occurrence, case-sensitive);
-- the three verdict strings appear nowhere in prose (`do not merge` is tested
-  first, so one prose mention turns any verdict into the blocking one);
-- no other line begins with `Certain:` or `Plausible:` (the first such line in
-  the file is the count that is read).
+- the verdict line is one of the last three non-blank lines of the file;
+- exactly one line in the file begins with `Certain:` and one with
+  `Plausible:` -- put any other mention inside a fenced code block;
+- the three verdict strings appear nowhere in the last three lines except
+  the verdict line itself (`do not merge` is matched first there).
 
 Check before you commit. The first command must print `3`; every hit of the
 second must be one of the last three lines:

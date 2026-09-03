@@ -2,7 +2,7 @@
 
 From the task worktree, resolved through the plan sidecar by task title:
 1. the project gate command (sidecar per-step `gate_cmd`, else `defaults.gate_cmd`,
-   else `just check`) on a clean lint cache
+   else `just check`) with a per-run lint cache
 2. allowlist: changed files vs the step's `files` globs
 3. new `nolint` directives without a reason line; non-ASCII in added authored lines
 4. the step committed something at all, and no test file was deleted without replacement
@@ -48,7 +48,7 @@ def _sh(cmd: str, cwd: Path, env: dict[str, str] | None = None) -> tuple[int, st
     return p.returncode, (p.stdout + p.stderr)[-6000:]
 
 
-def lint_env(worktree: Path, run_dir: Path | None = None) -> dict[str, str]:
+def lint_env(worktree: Path, run_dir: Path) -> dict[str, str]:
     """A lint cache private to this run, shared by its worktrees.
 
     golangci-lint's shared default cache is what let a report claim a clean run over
@@ -57,9 +57,9 @@ def lint_env(worktree: Path, run_dir: Path | None = None) -> dict[str, str]:
     against 1.4s warm, about five minutes over a thirty-worktree run. The cache is
     content-addressed with atomic renames, so one cache per run is safe under concurrent
     gates and warm after the first; it keeps other repos and other runs out, which was
-    the point. Falls back to the worktree-local cache when no run dir is known.
+    the point.
     """
-    cache = (run_dir / "lintcache") if run_dir else (worktree / ".sdd" / "lintcache")
+    cache = run_dir / "lintcache"
     cache.mkdir(parents=True, exist_ok=True)
     return {"GOLANGCI_LINT_CACHE": str(cache)}
 

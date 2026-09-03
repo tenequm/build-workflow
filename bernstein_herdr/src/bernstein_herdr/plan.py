@@ -12,7 +12,7 @@ Sidecar shape:
                shadow: null, judge: required|optional|none}
     steps:
       "<step title>": {brief: briefs/<step>.md, report: .agents/<step>.md, base: <ref>,
-                       gate_cmd: <command>, cli: codex|claude, shadow: null,
+                       gate_cmd: <command>, shadow: null,
                        judges: "<phase title>", fixes: "<phase title>",
                        judge: required|optional|none}
 
@@ -75,7 +75,6 @@ class Step:
     report_rel: str
     base: str
     gate_cmd: str
-    cli: str | None
     shadow: str | None
     judges: str | None
     fixes: str | None
@@ -128,7 +127,6 @@ class Plan:
             # intersection of what all of them can pass when one command serves them all
             # (measured 2026-09-02); a step whose own scope is green gets its own command.
             gate_cmd=s.get("gate_cmd", d.get("gate_cmd", "just check")),
-            cli=s.get("cli", d.get("cli")),
             shadow=s.get("shadow", d.get("shadow")),
             judges=s.get("judges"),
             # Read by readiness only: a fix step must carry the SCOPED gate command of the

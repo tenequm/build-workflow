@@ -53,30 +53,29 @@ def test_report_claims_refusal(tmp_path):
 
 
 def test_glob_overlap_predicate():
-    from bernstein_herdr.ready import check  # noqa: F401  (import side-effect free)
-    import bernstein_herdr.ready as ready
-    import inspect
-    src = inspect.getsource(ready.check)
-    assert "_globs_overlap" in src
-    # exercise the closure logic through a tiny reimplementation-free harness:
-    import fnmatch as _f, re as _re
-    def lit(g):
-        out = []
-        for s in g.split("/"):
-            if _re.search(r"[*?\[]", s):
-                return out, True
-            out.append(s)
-        return out, False
-    def overlap(a, b):
-        if a == b or _f.fnmatch(a, b) or _f.fnmatch(b, a):
-            return True
-        la, wa = lit(a); lb, wb = lit(b)
-        shorter, longer, sw = (la, lb, wa) if len(la) <= len(lb) else (lb, la, wb)
-        return sw and longer[: len(shorter)] == shorter
-    assert overlap("src/*/x", "src/a/*")
-    assert overlap("pkg/core/**", "pkg/core/engine/facts.go")
-    assert not overlap("internal/adapter/**", "internal/adapters/**")
-    assert not overlap("a/b.go", "a/c.go")
+    from bernstein_herdr.ready import globs_overlap
+
+    assert globs_overlap("src/*/x", "src/a/*")
+    assert globs_overlap("pkg/core/**", "pkg/core/engine/facts.go")
+    assert globs_overlap("a/b/**", "a/b/c/*.go")
+    assert not globs_overlap("internal/adapter/**", "internal/adapters/**")
+    assert not globs_overlap("a/b.go", "a/c.go")
+    # an empty literal prefix proves nothing: these must NOT overlap everything
+    assert not globs_overlap("*.go", "docs/**")
+    assert not globs_overlap("**/testdata/**", "internal/api/api.go")
+    assert globs_overlap("x.go", "x.go")
+
+
+def test_fenced_declarations_do_not_count(tmp_path):
+    body = (
+        "The required format is:\n\n```\nCertain: <n>\nPlausible: <n>\nVerdict: ...\n```\n\n"
+        "and a diff hunk:\n\n```\n+Certain: 9\n```\n\n"
+        "Certain: 1\nPlausible: 0\nVerdict: merge after listed fixes\n"
+    )
+    f = tmp_path / "blind-review.md"
+    f.write_text(body)
+    v = parse_verdict(f)
+    assert v["counts_declared"] and v["certain"] == 1 and not v["block"]
 
 
 def test_refusal_prose_mention_is_not_a_receipt(tmp_path):

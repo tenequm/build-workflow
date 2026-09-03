@@ -125,6 +125,7 @@ replace critic rounds that used to find the same defects.
 ```text
 bernstein-herdr ready [--plan <yaml>]          readiness, citations, dispatch, and source pins
 bernstein-herdr run-config [--plan <yaml>]     run config, port, base checks, and frozen base sha
+bernstein-herdr watch [--stall <min>]          one line per run event, STALL on quiet, exits on run end
 bernstein-herdr gate                           pre-merge gate in the executor worktree
 bernstein-herdr scorer --step "<title>"         scorer alone in a worktree
 bernstein-herdr judge-verdict --step "<title>"  verdict alone in a judge worktree

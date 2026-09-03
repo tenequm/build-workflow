@@ -262,7 +262,7 @@ the workspace root.
    carry verdict, certain, plausible, and counts_declared. `fix-N` takes the
    no-op path only for a legal verdict, declared counts, and zero certain
    defects. Missing, unclear, or undeclared results require a fresh judge.
-   Read every fix report; a committed refusal report can itself pass its gate.
+   Read every fix report; a committed refusal receipt blocks its own gate and parks the step.
 
 9. Apply full autonomy.
 

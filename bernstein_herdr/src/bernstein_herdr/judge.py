@@ -61,7 +61,13 @@ def parse_verdict(review: Path) -> dict:
     `do not merge` is the one verdict that still blocks: it says the reviewed work should
     not be in the branch, and a review that says so is a driver decision, not a fix item.
 
-    A malformed review also blocks: the judge prompt requires the Certain /
+    A malformed review also blocks, and that is safe where blocking on FINDINGS was
+    not: a findings block punished the judge for doing its job, with no retry that
+    could ever pass. A malformed block punishes a formatting failure that a fresh
+    judge attempt fixes, and the alternative -- merging as `unclear` -- now dies one
+    step later anyway at fix-N's refusal receipt, after a wasted spawn.
+
+    The judge prompt requires the Certain /
     Plausible / Verdict block as the LAST three lines, exactly once each. The old
     parser split on the first word "Verdict" anywhere and fell back to counting
     the words `certain`/`plausible` in prose, so a duplicated or misplaced block
@@ -72,7 +78,10 @@ def parse_verdict(review: Path) -> dict:
     if not review.exists():
         return {"review_present": False, "block": True, "verdict": "missing",
                 "certain": 0, "plausible": 0, "counts_declared": False, "reason": "no blind-review.md"}
-    text = review.read_text()
+    raw = review.read_text()
+    # Fenced code blocks are quoted material (a review may quote the required format or
+    # a diff hunk containing `Certain:`); they never carry the review's own declaration.
+    text = re.sub(r"```.*?```", "", raw, flags=re.S)
     tail_lines = [l.strip() for l in text.splitlines() if l.strip()][-3:]
     low = "\n".join(tail_lines).lower()
     verdict = next((v for v in VERDICTS if v in low), None)
