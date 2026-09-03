@@ -39,13 +39,14 @@ tracked: `/build-design`, `/build-plan .agents/build/runs/<slug>`, then
 | readiness, run config | `bernstein-herdr ready` / `run-config` | the repo root, before the run | none |
 | orchestrator | `bernstein run --port N` | the repo root, backgrounded | none |
 | executor step, role `resolver` | `codex exec` spawned by Bernstein | `.sdd/worktrees/resolver-<id>/`, branch `agent/resolver-<id>` | `gpt-5.6-sol`, effort from `~/.codex/config.toml` |
+| executor step, role `ci-fixer` | `codex exec` spawned by Bernstein | its own worktree and `agent/...` branch; a second codex role so parallel codex steps batch separately | `gpt-5.6-sol`, same config |
 | executor step, role `analyst` | `claude -p` spawned by Bernstein | its own worktree and `agent/...` branch | `claude-opus-5`, `--effort high` |
 | judge step, role `adversary` | `claude -p` spawned by Bernstein | a worktree branched from the integration branch after the phase merged | `claude-opus-5`, `--effort high` |
 | shadow, role `visionary` | `agy` spawned by Bernstein | its own worktree, out of the chain | `gemini-3.7-flash-high` |
 | the gate | `bernstein-herdr gate` | inside the step's worktree, once per task, BEFORE the merge | none |
 | readiness / plan critics | Opus subagents of the driver | the driver session, read-only | opus |
 
-Roles, not `cli:`, are the dispatch key, and the four names are chosen to dodge
+Roles, not `cli:`, are the dispatch key, and the five names are chosen to dodge
 Bernstein's catalog personas; see `bernstein.yaml`'s comment and
 `docs/2609-02-persona-prefix.md`. Bernstein's own generic role prompt (1-3 KB
 from its shipped skill pack) still prefixes every prompt; the 10.7 KB catalog
