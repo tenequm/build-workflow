@@ -68,10 +68,11 @@ place, a line in `<run>/ledger.md`.
      agent's diff, and unlike `LEFTHOOK=0`/`HUSKY=0` it survives both the
      adapters' filtered spawn env and a mid-run reinstall. Readiness accepts a
      configured empty hooks path as PASS, so re-running it after this is safe.
-   - a `fix-N`/`polish-N` step's gate command must match the step it `fixes:`,
-     and a `judge-N`'s the step it `judges:`. Readiness NOTEs a mismatch: the
-     whole-tree `defaults.gate_cmd` is red by design once a later phase lands,
-     and it blocked a correct fix three times (2026-09-03).
+   - a `fix-N`/`polish-N` step's gate command must match the step it `fixes:`.
+     Readiness NOTEs a mismatch: the whole-tree `defaults.gate_cmd` is red by
+     design once a later phase lands, and it blocked a correct fix three times
+     (2026-09-03). A judge step has no gate command at all -- its gate is the
+     verdict parser -- so ignore the NOTE readiness still prints against one.
 
    Two things it now only WARNS about, printing `NOTE` and leaving the run READY:
    a brief with no `## Report` section (Codex skips the report file on roughly half
