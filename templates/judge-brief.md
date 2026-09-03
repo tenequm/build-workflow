@@ -1,1 +1,0 @@
-../skills/build-plan/templates/judge-brief.md
