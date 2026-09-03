@@ -18,9 +18,9 @@ from pathlib import Path
 import yaml
 
 from bernstein_herdr import ledger
-from bernstein_herdr.plan import Plan, load_plan, pinned_hashes
+from bernstein_herdr.plan import Plan, active_plan_name, load_plan, pinned_hashes
 
-SECTION_CITE = re.compile(r"\b(?:DESIGN|spec)\s+(\d+(?:\.\d+)*)\b")
+SECTION_CITE = re.compile(r"\b(PLAN|DESIGN|SPEC|spec)\s+(\d+(?:\.\d+)*)\b")
 CODE_BLOCK = re.compile(r"```\n(.*?)```", re.S)
 
 #: Bernstein's L0 fast-path rules, copied verbatim from `core/quality/fast_path.py:108-125`
@@ -51,6 +51,30 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         nonlocal ok
         ok = False
         lines.append(f"FAIL {msg}")
+
+    plans_dir = plan.root / ".agents" / "build" / "plans"
+    ignored = subprocess.run(
+        ["git", "check-ignore", "-q", ".agents/build/plans"],
+        cwd=plan.root, capture_output=True, check=False,
+    ).returncode == 0
+    if ignored:
+        fail(".agents/build/plans is gitignored; generated plans and briefs would not reach executor worktrees")
+    else:
+        lines.append("PASS .agents/build/plans is not gitignored")
+
+    try:
+        active = active_plan_name(plan.root)
+    except RuntimeError as exc:
+        fail(str(exc))
+    else:
+        if active is None:
+            lines.append("PASS .agents/build/plans/ACTIVE is absent")
+        elif active != plan.path.name:
+            fail(f".agents/build/plans/ACTIVE names {active!r}, not selected plan {plan.path.name!r}")
+        elif not (plans_dir / active).is_file():
+            fail(f".agents/build/plans/ACTIVE names missing plan file {active!r}")
+        else:
+            lines.append(f"PASS .agents/build/plans/ACTIVE selects {active}")
 
     # A symlinked agent-instruction file at the root makes Bernstein's
     # `validate_worktree_isolation` refuse the repo ("points into parent repo mutable
@@ -223,7 +247,19 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")
     ok &= v.returncode == 0
 
-    sections = _spec_sections(plan.root / "docs" / "spec.md")
+    defaults = plan.sidecar.get("defaults", {})
+    plan_doc = defaults.get("doc")
+    design_doc = defaults.get("design")
+    citation_sources = {
+        "PLAN": plan.root / plan_doc if plan_doc else None,
+        "DESIGN": plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md",
+        "SPEC": plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md",
+        "spec": plan.root / design_doc if design_doc else plan.root / "docs" / "spec.md",
+    }
+    citation_sections = {
+        label: _spec_sections(path) if path is not None else set()
+        for label, path in citation_sources.items()
+    }
     for stage in plan.data.get("stages", []):
         owned: dict[str, str] = {}
         for raw in stage.get("steps", []):
@@ -254,9 +290,15 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
                         fail(f"{step.slug}: owns {g} which sibling step {other_title!r} also owns ({other_g}); "
                              f"siblings merge in an arbitrary order -- split the files so each path has one owner")
                 owned[step.title] = g
-            for sec in SECTION_CITE.findall(text):
-                if sections and sec not in sections and sec.split(".")[0] not in sections:
-                    fail(f"{step.slug}: cites spec section {sec} which does not exist in docs/spec.md; "
+            for label, sec in SECTION_CITE.findall(text):
+                source = citation_sources[label]
+                sections = citation_sections[label]
+                if source is None:
+                    fail(f"{step.slug}: cites {label} {sec}, but sidecar defaults.doc is not set")
+                elif not source.exists():
+                    fail(f"{step.slug}: cites {label} {sec}, but citation source {source} does not exist")
+                elif sec not in sections and sec.split(".")[0] not in sections:
+                    fail(f"{step.slug}: cites {label} {sec} which does not exist in {source}; "
                          f"fix the citation or add the section (sections present: {sorted(sections)[:8]})")
             # A NOTE, never a fail. The report is evidence, not the work: Codex skips
             # writing one on roughly half its steps whatever the brief says (measured

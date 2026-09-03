@@ -7,10 +7,11 @@ step title. Both files are tracked under `.agents/build/plans/`; the run directo
 worktree.
 
 Sidecar shape:
-    defaults: {base: <ref>, gate_cmd: just check, shadow: null, judge: required|optional|none}
+    defaults: {base: <ref>, doc: <plan doc>, design: <product spec>, gate_cmd: just check,
+               shadow: null, judge: required|optional|none}
     steps:
       "<step title>": {brief: briefs/<step>.md, report: .agents/<step>.md, base: <ref>,
-                       gate_cmd: <command>, cli: codex|claude|agy, shadow: agy|null,
+                       gate_cmd: <command>, cli: codex|claude, shadow: null,
                        judges: "<phase title>", fixes: "<phase title>",
                        judge: required|optional|none}
 
@@ -150,14 +151,38 @@ class Plan:
         raise KeyError("no plan step title found in prompt")
 
 
+def active_plan_name(root: Path) -> str | None:
+    """Return the plan file named by ACTIVE, or None when ACTIVE is absent."""
+    active = root / ".agents" / "build" / "plans" / "ACTIVE"
+    if not active.exists():
+        return None
+    raw = active.read_text()
+    lines = raw.splitlines()
+    if len(lines) != 1 or not lines[0] or lines[0] != lines[0].strip():
+        raise RuntimeError(f"invalid {active}: expected one bare <slug>.yaml file name")
+    name = lines[0]
+    if Path(name).name != name or not name.endswith(".yaml") or name.endswith(".steps.yaml"):
+        raise RuntimeError(f"invalid {active}: expected one bare <slug>.yaml file name, got {name!r}")
+    return name
+
+
 def load_plan(path: Path | None = None, root: Path | None = None) -> Plan:
     root = root or repo_root()
     if path is None:
-        plans = sorted((root / ".agents" / "build" / "plans").glob("*.yaml"))
-        plans = [p for p in plans if not p.name.endswith(".steps.yaml")]
-        if len(plans) != 1:
-            raise RuntimeError(f"expected one plan under .agents/build/plans, found {len(plans)}; pass --plan")
-        path = plans[0]
+        name = active_plan_name(root)
+        if name is not None:
+            path = root / ".agents" / "build" / "plans" / name
+            if not path.is_file():
+                raise RuntimeError(f"ACTIVE names missing plan file {path}")
+        else:
+            plans = sorted((root / ".agents" / "build" / "plans").glob("*.yaml"))
+            plans = [p for p in plans if not p.name.endswith(".steps.yaml")]
+            if len(plans) != 1:
+                raise RuntimeError(
+                    f"expected one plan under .agents/build/plans, found {len(plans)}; pass --plan "
+                    "or write the plan file name to .agents/build/plans/ACTIVE"
+                )
+            path = plans[0]
     data = yaml.safe_load(path.read_text()) or {}
     sidecar_path = path.with_name(path.name.removesuffix(".yaml") + ".steps.yaml")
     sidecar = yaml.safe_load(sidecar_path.read_text()) if sidecar_path.exists() else {}
@@ -165,7 +190,10 @@ def load_plan(path: Path | None = None, root: Path | None = None) -> Plan:
 
 
 def pinned_hashes(plan: Plan) -> dict[str, str]:
-    h = {"spec": sha256(plan.root / "docs" / "spec.md"), "plan": sha256(plan.path)}
+    defaults = plan.sidecar.get("defaults", {})
+    doc = defaults.get("doc")
+    spec_path = plan.root / doc if doc else plan.root / "docs" / "spec.md"
+    h = {"spec": sha256(spec_path), "plan": sha256(plan.path)}
     for s in plan.steps():
         st = plan.step(s["title"])
         h[f"brief:{st.slug}"] = sha256(st.brief)
