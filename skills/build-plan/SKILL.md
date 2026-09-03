@@ -44,8 +44,10 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
    `cli:`**: it is not in Bernstein's plan schema, it won the first spawn and was
    LOST on the retry (measured 2026-09-02). Give two parallel siblings different
    ROLES that resolve to different clis -- `resolver` (codex) and `analyst`
-   (claude). Readiness fails any role with no policy entry. The four roles are
-   `resolver`, `analyst`, `adversary` (judge) and `visionary` (shadow): the
+   (claude). Readiness fails any role with no policy entry. The five roles are
+   `resolver` and `ci-fixer` (the two codex names, so two concurrent codex steps
+   are not batched into one), `analyst`, `adversary` (judge) and
+   `visionary` (shadow): the
    obvious names (`backend`, `reviewer`) each pull a 10 KB irrelevant catalog
    persona onto the front of the prompt with no way to switch it off, and
    anything outside Bernstein's role enum fails `plan validate`. Do not rename
@@ -75,8 +77,10 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
    touching code: its brief must forbid editing anything but its review file.
 5. Judge nodes: `judge-N` depends on every `phase-N` sibling stage; `fix-N`
    depends on `judge-N` (plain `depends_on` -- Bernstein's plan schema has no
-   per-stage condition or retry field, so a clean verdict makes fix-N a no-op,
-   which its brief must say); dependents depend on `phase-N` only, so
+   per-stage condition or retry field, so fix-N always runs: a clean review -- a
+   legal verdict, both counts declared, `Certain: 0` -- makes it a no-op, and a
+   missing or malformed one makes it refuse, and its brief must say both);
+   dependents depend on `phase-N` only, so
    `phase-N+1` starts while `judge-N` runs. `polish-N` optional, non-blocking,
    files restricted to phase-N's.
 
@@ -99,7 +103,9 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
    its sidecar entry carries `judges: "<exact phase title>"` (that field, not
    the title, selects the verdict gate); its `report:` is exactly
    `.agents/blind-review.md` (the verdict parser reads that path and nothing
-   else); its plan `files:` is `[]`.
+   else, so unlike an executor's report it cannot be moved -- a sandbox that
+   refuses `.agents/` cannot host a judge step at all); its plan `files:` is
+   `[]`.
 6. Write the plan and sidecar from `$TPL/build.yaml` and `$TPL/build.steps.yaml`;
    replace every `<...>` placeholder and delete the sibling/judge/fix/polish
    stanzas the phase does not use. Briefs from `$TPL/brief.md` into

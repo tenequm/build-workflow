@@ -272,8 +272,10 @@ its worktree before the merge. All commands run from the repo root.
    `blocked_on_dependency` and the judge is yours to re-run. The parser does not
    enforce that: a missing review parses as `verdict: missing, certain: 0` and a
    malformed one as `unclear` with word-count fallbacks, and neither blocks the
-   merge, so the brief's routing is the only guard. A `do not merge` IS terminal
-   and IS a decision for you: read the review, then change the plan.
+   merge, so the brief's routing is the only guard. Read fix-N's report on every
+   run: a refusal is a committed report like any other, so its gate PASSES and
+   nothing else raises it. A `do not merge` IS terminal and IS a decision for
+   you: read the review, then change the plan.
 9. Relay: `underspecified` / `awaiting_operator` refusals and blocked gates go to
    the user as one line with the ledger excerpt and the row; the answer becomes a
    brief edit, a rerun of `/build-ready`, and a re-dispatch.
