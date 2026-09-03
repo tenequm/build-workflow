@@ -82,6 +82,24 @@ its worktree before the merge. All commands run from the repo root.
                                                 # machine-readable dump, `--mode expert`
                                                 # for everything.
        tail -20 .sdd/runtime/spawner.log        # the argv of every spawn
+       rg -n "liveness_judgment|SIGTERM|Timeout after" .sdd/runtime/spawner.log | tail -5
+       rg -n "409|ownership conflict" .sdd/runtime/spawner.log | tail -5
+
+   THE TWO `rg` LINES ARE THE EVENTS THAT COST THE MOST WALL AND ARE INVISIBLE
+   EVERYWHERE ELSE until they surface as a blocked gate:
+
+   - `grace_s=` in a `liveness_judgment` line must show the value
+     `bernstein.yaml` configures, and `Timeout after <n>s` must match the step's
+     `scope:` bucket (small 900 / medium 1800 / large 3600). A `grace_s=90` or a
+     `Timeout after 1800s` on a `scope: large` step means the tuning never
+     reached the kill paths -- an engine not installed from the patched clone --
+     and healthy agents will be SIGTERMed mid-turn (2026-09-03: a judge killed
+     13 min into a review it had already finished measuring).
+   - `HTTP 409 File ownership conflict` is a LOCK WAIT, not a stall. Bernstein
+     file-locks a step's declared files, so a step whose allowlist intersects a
+     concurrently open step's backs off (300 s) and retries until the other
+     releases; `fix-N` against `phase-N+1` is the usual pair. Expected. Do not
+     kill the run over it; if the wait is long, say so and wait.
 
    THE `Total tasks / Failed` BLOCK IS NOT THE END OF THE RUN. The wrapper
    printed it and exited on the FIRST task failure while the orchestrator went on

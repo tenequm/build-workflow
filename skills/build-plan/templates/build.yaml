@@ -66,6 +66,18 @@
 # and hands the task to `ruff` instead of an executor -- on a non-Python repo it dies as
 # `Failed to spawn: ruff` and takes every dependent with it (a run lost in 25 s,
 # 2026-09-02). Readiness fails any step that matches.
+#
+# `scope:` IS THE KILL DEADLINE, and it defaults to `medium`. Bernstein arms the adapter
+# watchdog from the step's scope bucket -- small 15m, medium 30m, large 60m, and `large`
+# plus `complexity: high` = xl 120m (core/defaults.py:294-303,
+# core/tasks/task_lifecycle.py:_batch_timeout_seconds) -- so an unscoped step is killed at
+# 30 minutes of wall no matter what `tuning.orchestrator.max_agent_runtime_s` says in
+# bernstein.yaml; a batch takes the LARGEST scope among its tasks. The schema's own
+# description ("small <30min, medium 30-90min, large 90min+") matches none of those
+# numbers; the buckets above are what the code uses. RULE: any step whose expected
+# executor wall exceeds ~20 min gets `scope: large`, and so does every judge step over a
+# multi-file phase. This is the lever that held when the `tuning:` keys did not: a
+# `scope: large` on phase-2 was the edit that stopped the 30-minute kills (2026-09-03).
 name: <slug>
 description: <one line>
 cli: codex
@@ -89,6 +101,7 @@ stages:
     steps:
       - title: "phase-1a: <what>"
         role: resolver
+        scope: <small|medium|large>
         description: |
           Read .agents/build/plans/<slug>/phase-1a.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -99,6 +112,7 @@ stages:
     steps:
       - title: "phase-1b: <what else>"
         role: analyst
+        scope: <small|medium|large>
         description: |
           Read .agents/build/plans/<slug>/phase-1b.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -110,6 +124,7 @@ stages:
     steps:
       - title: "judge-1: blind review of phase-1"
         role: adversary
+        scope: large        # a blind review of a multi-file phase does not fit 30 min
         description: |
           Read .agents/build/plans/<slug>/judge-1.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -123,6 +138,7 @@ stages:
     steps:
       - title: "phase-2: <what>"
         role: ci-fixer
+        scope: <small|medium|large>
         description: |
           Read .agents/build/plans/<slug>/phase-2.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -133,6 +149,7 @@ stages:
     steps:
       - title: "fix-1: judge findings on phase-1"
         role: analyst
+        scope: <small|medium|large>
         description: |
           Read .agents/build/plans/<slug>/fix-1.md in this worktree and execute it
           fully; commit your work on your branch when done.
@@ -144,6 +161,7 @@ stages:
     steps:
       - title: "polish-1: cleanliness and docs on phase-1 files"
         role: resolver
+        scope: <small|medium|large>
         priority: 4
         description: |
           Read .agents/build/plans/<slug>/polish-1.md in this worktree and execute it

@@ -119,9 +119,32 @@ quality_gates:
 # Reaper tuning. EVERY key below is a real field on a real section: `_parse_tuning`
 # (core/config/seed_parser.py:1345-1359) hands each `tuning.<section>` to
 # `defaults.override()` (core/defaults.py:956-986), which raises AttributeError on an
-# unknown field -- caught and logged as `tuning.<section>: ...`. A run whose logs carry no
-# such warning applied all of it. The defaults killed the 2026-09-03 acceptance TWICE, in
-# two independent places, on a Codex step that was working the whole time.
+# unknown field -- caught and logged as `tuning.<section>: ...`. The defaults killed the
+# 2026-09-03 acceptance TWICE, in two independent places, on a Codex step that was working
+# the whole time.
+#
+# A SILENT PARSE IS NOT PROOF THE VALUES APPLIED. No warning means only that the key names
+# are real fields; whether the value reaches the code that kills an agent depends on the
+# ENGINE BUILD. A module that did `from bernstein.core.defaults import ORCHESTRATOR` holds
+# a permanent snapshot of the shipped defaults, because `override()` rebinds the module
+# attribute instead of mutating the frozen instance -- so the run below recorded
+# `liveness_grace_s: 600` and `max_agent_runtime_s: 5400` in
+# .sdd/runtime/config_snapshot.json and still logged `grace_s=90 verdict=DEAD` and
+# `Timeout after 1800s` (2026-09-03: a healthy judge SIGTERMed 13 min into its review).
+# The patched clone the README mandates (github.com/tenequm/bernstein, branch
+# fix/warm-pool-empty-worktree) reads those singletons THROUGH the module on every call;
+# an engine installed any other way -- PyPI 3.19.0 included -- ignores this whole section
+# at the kill paths, and no `tuning:` value can make such a run safe.
+#
+# VERIFY AT RUNTIME, from the log and not from the absence of a warning:
+#
+#   rg -n "liveness_judgment|SIGTERM|Timeout after" .sdd/runtime/spawner.log | tail -5
+#
+# `grace_s=` must show the value configured below. A `Timeout after 1800s` on a step the
+# plan scoped `large` means the same thing from the other side: the kill deadline came off
+# the scope bucket, not from here. The adapter watchdog arms from the step's plan `scope:`
+# (small 15m / medium 30m / large 60m; large + `complexity: high` = xl 120m), NOT from
+# `max_agent_runtime_s` below -- see build.yaml's `scope:` comment.
 tuning:
   orchestrator:
     # DEFAULT 900 (core/defaults.py:117) released a healthy Codex agent at 16 min with all

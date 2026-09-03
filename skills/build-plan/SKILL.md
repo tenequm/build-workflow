@@ -26,7 +26,14 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
 
 1. Decompose by dependency graph, not by file list: independent subtasks run in
    parallel stages; a seam split gets a driver-written interface contract first.
-   Phase length target 15-30 min of executor wall; split longer ones.
+   Phase length target 15-30 min of executor wall; split longer ones. Then give
+   every step a `scope:`, because the adapter watchdog arms from that bucket and
+   nothing else: small 15m, medium 30m, large 60m, `large` + `complexity: high`
+   120m, DEFAULT medium. A step expected to run past ~20 min gets `scope: large`
+   -- the default kills it at 30 minutes of wall whatever `tuning:` says in
+   `bernstein.yaml`, and those keys reach the kill paths only on the patched
+   engine the README installs. Judge steps over a multi-file phase are always
+   `large`.
 2. One step per stage, stage name = step name, `depends_on` carries the DAG.
    Bernstein batches concurrently-open same-role tasks into ONE session
    (`max_tasks_per_agent` defaults to 2 and no seed key, `tuning:` section or run
