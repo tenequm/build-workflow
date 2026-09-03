@@ -25,7 +25,7 @@ from bernstein.core.quality.gate_plugins import GatePlugin
 from bernstein.core.quality.gate_runner import GateResult
 
 from bernstein_herdr import ledger
-from bernstein_herdr.plan import load_plan, repo_root
+from bernstein_herdr.plan import frozen_plan, load_plan, repo_root
 
 LINT_RUN = re.compile(r"golangci|\bruff\b|eslint|clippy|\blint(ing|er)?\b", re.I)
 NOLINT = re.compile(r"^\+.*//\s*nolint\b(?!.*\s//\s*\S)", re.M)
@@ -66,8 +66,16 @@ def lint_env(worktree: Path, run_dir: Path) -> dict[str, str]:
 
 def score(worktree: Path, task_title: str, changed_files: list[str] | None = None) -> tuple[bool, dict]:
     plan = load_plan(root=repo_root(worktree))
+    # Once run-config froze refs/build/base/<slug>, gate_cmd, allowlist and base come
+    # from the FROZEN plan files, not the working copies an executor (or an earlier
+    # step's merge) can rewrite. Pre-run and in tests the ref is absent and the
+    # working copies stand.
+    frozen = frozen_plan(plan, worktree)
+    if frozen is not None:
+        plan = frozen
     step = plan.step(task_title)
-    f: dict = {"step": step.slug, "gate_cmd": step.gate_cmd}
+    f: dict = {"step": step.slug, "gate_cmd": step.gate_cmd,
+               "plan_source": "frozen_base" if frozen is not None else "worktree"}
 
     rc, out = _sh(step.gate_cmd, worktree, lint_env(worktree, step.run_dir))
     f["gate"] = {"rc": rc, "tail": out[-1200:]}

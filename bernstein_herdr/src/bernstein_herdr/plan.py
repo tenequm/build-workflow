@@ -189,6 +189,36 @@ def load_plan(path: Path | None = None, root: Path | None = None) -> Plan:
     return Plan(path=path, slug=data.get("name", path.stem), root=root, data=data, sidecar=sidecar or {})
 
 
+def frozen_plan(plan: Plan, git_cwd: Path) -> Plan | None:
+    """The plan and sidecar as frozen under `refs/build/base/<slug>`, or None pre-run.
+
+    The gate runs inside a tree the executor controls, and a merged (or root-level)
+    edit to the tracked plan files can widen an allowlist or soften a gate command
+    before the gate reads them. `run-config` froze the branch tip as a git ref, so
+    when that ref exists the gate re-reads both files out of it and the working
+    copies stop being an input. Missing ref (readiness, tests, pre-run scorer
+    calls) keeps the working-copy behavior.
+    """
+    ref = f"refs/build/base/{plan.slug}"
+    if subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref], cwd=git_cwd,
+                      capture_output=True, check=False).returncode != 0:
+        return None
+
+    def show(path: Path) -> str | None:
+        rel = path.relative_to(plan.root).as_posix()
+        r = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=git_cwd,
+                           capture_output=True, text=True, check=False)
+        return r.stdout if r.returncode == 0 else None
+
+    raw = show(plan.path)
+    if raw is None:
+        return None
+    side_raw = show(plan.path.with_name(plan.path.name.removesuffix(".yaml") + ".steps.yaml"))
+    return Plan(path=plan.path, slug=plan.slug, root=plan.root,
+                data=yaml.safe_load(raw) or {},
+                sidecar=(yaml.safe_load(side_raw) if side_raw is not None else {}) or {})
+
+
 def pinned_hashes(plan: Plan) -> dict[str, str]:
     defaults = plan.sidecar.get("defaults", {})
     doc = defaults.get("doc")

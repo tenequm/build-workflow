@@ -82,8 +82,12 @@ the workspace root.
    task server or process for this root, verifies
    `quality_gates.base_ref == <type>/<slug>`, and prints `run with: --port N`.
    It freezes the workspace branch tip in `<run>/bernstein.json` and
-   `refs/build/base/<slug>`. Fix only what it names and rerun. Never assume port
-   8052.
+   `refs/build/base/<slug>`. From that point every scorer gate re-reads the
+   plan and sidecar out of that frozen ref - gate command, allowlist, and base
+   come from the frozen copies, never from working copies a merge could have
+   rewritten - and records which it used as `plan_source` (`frozen_base` after
+   run-config, `worktree` before) in the gate row. Fix only what it names and
+   rerun. Never assume port 8052.
 
 3. Disable shared hooks before launch.
 
