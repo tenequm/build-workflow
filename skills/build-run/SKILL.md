@@ -109,25 +109,45 @@ its worktree before the merge. All commands run from the repo root.
    AND the board shows no runnable task (`bernstein status`). Until all three,
    keep watching. Ignore the `Elapsed: 0s`; it is wrong. Kill any orphan the run
    leaves behind, or the next `run-config` refuses.
-6. A BLOCKED GATE IS TERMINAL, and this is the path you will actually walk.
-   `bernstein-herdr gate` exiting 1 is not a retry and not a quarantine: the
-   merge is refused, the agent's branch is moved to `salvage/<agent>` (a
-   graveyard branch, its work intact), a row lands in
-   `.sdd/runtime/refused_merges.jsonl`, and the run ends UNHEALTHY. It is
-   terminal only because the template sets `gate_repair_enabled: false`; on
-   Bernstein's default `true` you instead get one `[GATE-REPAIR] <title>` task
-   on the same branch and worktree, and the block becomes terminal on the second
-   failure. What the driver sees, in the order it appears:
+6. A BLOCKED GATE REFUSES THIS MERGE; WHETHER THE TASK IS OVER IS A SEPARATE
+   QUESTION, and this is the path you will actually walk. `bernstein-herdr gate`
+   exiting 1 is not a quarantine: the merge is refused, the agent's branch is
+   preserved (below), a row lands in `.sdd/runtime/refused_merges.jsonl`, and
+   the run reports UNHEALTHY. `gate_repair_enabled: false` in the template stops
+   ONE thing -- the `[GATE-REPAIR] <title>` task Bernstein would otherwise post
+   on the same branch and worktree. It cannot cancel a retry that another
+   lifecycle path already scheduled: the agent-death path runs
+   `retry_or_fail_task` independently, and in the live run it declared
+   `verdict=retry ... attempt=1/2` BEFORE the gate refused that attempt, so a
+   fresh agent was already running while the block was being written
+   (2026-09-03). TREAT THE TASK AS TERMINAL ONLY WHEN THE BOARD AND THE SPAWNER
+   LOG BOTH SHOW NO RETRY LEFT:
 
        tail -1 <run>/runs.jsonl     # the gate's own row FIRST: blocked=true and why
        cat .sdd/runtime/refused_merges.jsonl
        rg -n "Refusing to merge" <run>/bernstein-run.log .sdd/runtime/spawner.log
-       git branch --list 'salvage/*'
-       git log --oneline <base>..salvage/<agent>   # what the step actually did
+       rg -n "retry_or_fail_task" .sdd/runtime/spawner.log | tail -3   # retry vs permanent_fail
+       bernstein status            # is a task still runnable, is an agent still up
 
-   A `salvage/<agent>` branch alone does NOT mean a block: Bernstein also
-   salvages untracked leftovers after a SUCCESSFUL merge. The block signals are
-   the gate's `blocked=true` row and `refused_merges.jsonl`; check those first.
+   `verdict=retry ... attempt=N/M` means work continues; `verdict=permanent_fail`
+   / `max_retries_exceeded` is the end of that task. Declaring the run over on
+   the first block, or starting recovery then, fights an orchestrator that is
+   healing itself.
+
+   THE REFUSED BRANCH IS IN THE GRAVEYARD, NOT IN `salvage/*`. On the refusal
+   path Bernstein moves the agent branch to `refs/graveyard/<sid>-<ts>` and
+   writes a portable bundle beside it, then deletes `agent/<sid>`:
+
+       git for-each-ref --sort=-creatordate refs/graveyard/
+       git log --oneline <base>..refs/graveyard/<sid>-<ts>    # what the step actually did
+       ls -t .sdd/graveyard/*.bundle                          # survives a gc
+
+   (Legacy: runs from before this engine left a `salvage/<agent>` branch
+   instead; `git branch --list 'salvage/*'` is still worth one look on an old
+   run directory. A `salvage/<agent>` branch alone never meant a block either --
+   Bernstein also salvages untracked leftovers after a SUCCESSFUL merge.) The
+   block signals are the gate's `blocked=true` row and `refused_merges.jsonl`;
+   check those first.
 
    BUT A SALVAGE THAT IS A RENAME OF THE INTEGRATION BRANCH IS A BRANCH-LOSS
    EVENT, and it is silent. Measured 2026-09-02: a resumed session salvaged AT
@@ -179,14 +199,15 @@ its worktree before the merge. All commands run from the repo root.
 
    The gate archives the diff and writes its row on the blocking path too, so
    the evidence is complete before you look. `bernstein quarantine list` is
-   EMPTY after a block -- do not wait for a retry that never comes. The most
-   common cause is an ALLOWLIST VIOLATION: the row's `allowlist_violations`
-   names files the step had to touch and the brief did not grant. THE DRIVER
-   DECIDES: widen the allowlist in the plan `files:` and the brief, commit,
-   `/build-ready`, re-run the step; or cherry-pick the good half out of
-   `salvage/<agent>` into a fresh briefed step; or accept the block and change
-   the plan. Nothing is automatic, and the driver still does not edit the code
-   itself.
+   EMPTY after a block -- the block is not a quarantine, and the retry, when
+   there is one, comes from the lifecycle path above and not from there. The
+   most common cause is an ALLOWLIST VIOLATION: the row's `allowlist_violations`
+   names files the step had to touch and the brief did not grant. Once the
+   retries are spent, THE DRIVER DECIDES: widen the allowlist in the plan
+   `files:` and the brief, commit, `/build-ready`, re-run the step; or
+   cherry-pick the good half out of `refs/graveyard/<sid>-<ts>` into a fresh
+   briefed step; or accept the block and change the plan. Nothing is automatic,
+   and the driver still does not edit the code itself.
 7. THE ROOT CHECKOUT CAN MOVE UNDER YOU. Bernstein pre-creates warm-pool slots
    with an empty `worktree_path` (core/tasks/task_lifecycle.py:288-297), and a
    spawn that claims one resolves it to `Path("")` = the repo ROOT

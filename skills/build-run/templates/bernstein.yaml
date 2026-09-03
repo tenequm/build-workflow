@@ -72,8 +72,10 @@ evolution_enabled: false
 # because a judge step's block is a VERDICT, not a repairable failure: repair re-spawns
 # the judge against the same diff and buys one more Opus run for the same answer. This
 # workflow already has the briefed `fix-N` step for that, fed by the review. With it off,
-# a blocked gate is terminal on the first block, which is what build-run/SKILL.md
-# documents. Turn it on only for a plan with no judge steps.
+# no GATE-REPAIR task is posted -- but it does NOT make a block terminal: the agent-death
+# path's `retry_or_fail_task` schedules retries of its own, and did so before the gate
+# refused the attempt (2026-09-03). See build-run/SKILL.md step 6. Turn it on only for a
+# plan with no judge steps.
 gate_repair_enabled: false
 # No key disables the warm pool. `warm_pool` is accepted as a top-level seed key
 # (seed_parser.py:2322) and NOTHING reads it; the pool is constructed unconditionally at
@@ -93,10 +95,12 @@ quality_gates:
   # (gate_runner.py:1613-1634; measured "status": "skipped" on an empty changed set).
   # `test_command` is therefore not the lever and is deliberately absent.
   #
-  # The gate runs in the agent's worktree, once per task, BEFORE the merge. Exit 1 is
-  # TERMINAL: no retry, no escalation, no quarantine. The branch is moved to
-  # `salvage/<agent>`, a row lands in .sdd/runtime/refused_merges.jsonl and the run ends
-  # unhealthy. `bernstein-herdr gate` archives and writes its ledger row on that path too.
+  # The gate runs in the agent's worktree, once per task, BEFORE the merge. Exit 1 refuses
+  # THAT merge: no escalation, no quarantine, the refused branch is preserved as
+  # `refs/graveyard/<sid>-<ts>` with a bundle under .sdd/graveyard/, a row lands in
+  # .sdd/runtime/refused_merges.jsonl and the run reports unhealthy. `bernstein-herdr gate`
+  # archives and writes its ledger row on that path too. A retry can still be in flight:
+  # see build-run/SKILL.md step 6.
   pipeline:
     - { name: "tests", required: true, condition: "always", command_override: "bernstein-herdr gate" }
     - { name: "run_config", required: true, condition: "always" }

@@ -118,8 +118,11 @@ bernstein-herdr agy-session <db>                Antigravity session decoder
 
 `gate` identifies its step from the worktree directory name (the agent_id) through
 `.sdd/runtime/team.json` and `tasks.jsonl` -- the per-task CLAUDE.md that carries the
-title is deleted before the gates run. Exit 1 is TERMINAL: no retry, no quarantine, the
-branch goes to `salvage/<agent>` and a row lands in `.sdd/runtime/refused_merges.jsonl`.
+title is deleted before the gates run. Exit 1 refuses THAT merge: no quarantine, the
+refused branch is preserved as `refs/graveyard/<sid>-<ts>` plus a bundle under
+`.sdd/graveyard/`, and a row lands in `.sdd/runtime/refused_merges.jsonl`. It is not
+automatically the end of the task -- the agent-death path can already have scheduled a
+retry; `retry_or_fail_task` in the spawner log says which.
 
 `run-config` freezes the integration branch's sha at run start into
 `<run>/bernstein.json` and the git ref `refs/build/base/<slug>`. The judge diffs that
