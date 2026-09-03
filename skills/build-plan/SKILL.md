@@ -104,7 +104,11 @@ Copy the templates from this skill: `TPL=.agents/skills/build-plan/templates`
    replace every `<...>` placeholder and delete the sibling/judge/fix/polish
    stanzas the phase does not use. Briefs from `$TPL/brief.md` into
    `.agents/build/plans/<slug>/<step>.md`: allowlist, items whose done-criterion the Validation
-   block can decide, exact validation commands, report format. Judge steps use
+   block can decide, exact validation commands, report format. Cite spec
+   sections as the literal token `spec N` or `spec N.M` (`spec 4.10`, not
+   "section 4.10" or "docs/spec.md 4.10"): that grammar is what readiness
+   resolves against the spec's headings, and any other phrasing is simply not
+   checked. Judge steps use
    `$TPL/judge-brief.md` (paste the phase brief and `$TPL/judge-prompt.md` into
    it), fix steps `$TPL/fix-brief.md`. Length cap 16k. Every brief needs an
    `## Items` heading, a `## Validation` heading with a fenced command block, and

@@ -78,7 +78,11 @@ place, a line in `<run>/ledger.md`.
    its steps whatever the brief says; the gate records `report_present` per run
    instead), and an allowlisted path that does not exist yet. It also prints, per
    step, the gate command that step will run -- the sidecar's per-step `gate_cmd:`
-   where it has one, else `defaults.gate_cmd`, else `just check`.
+   where it has one, else `defaults.gate_cmd`, else the built-in fallback
+   `just check`. That fallback is not a default worth taking: on a repo with no
+   Justfile it fails for a reason that has nothing to do with the step, so read
+   those printed lines and set `defaults.gate_cmd` to the repo's own whole-tree
+   check.
 
    Ends `READY` (exit 0) or `NOT READY` (exit 1). `--no-validate` skips only the
    base-worktree command runs. There is no `--help`; a bare `bernstein-herdr`

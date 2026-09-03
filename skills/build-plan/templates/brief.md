@@ -1,7 +1,9 @@
 # Brief: <phase> - <one line>
 
 You are an executor in a git worktree of your own, on your own `agent/...`
-branch. Read this whole file, then `docs/spec.md` sections <n, n.m>, then the plan
+branch. Read this whole file, then `docs/spec.md` sections `spec <n>` and
+`spec <n.m>` (cite them in that literal form -- readiness resolves the token
+`spec N` / `spec N.M` and no other phrasing), then the plan
 `.agents/build/plans/<slug>.yaml` (this step). Do the work, write the report,
 then COMMIT on your branch: the commit is how the work reaches the gate and the
 merge, and nothing runs after you exit. Do not ask questions; where something is

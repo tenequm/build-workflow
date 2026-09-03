@@ -124,6 +124,15 @@ refused branch is preserved as `refs/graveyard/<sid>-<ts>` plus a bundle under
 automatically the end of the task -- the agent-death path can already have scheduled a
 retry; `retry_or_fail_task` in the spawner log says which.
 
+The gate's extra heuristics are Go- and TypeScript-shaped; the workflow around them is
+not language-specific, and the gate command itself is whatever the plan sets. Deleted-test
+detection matches `_test.go`, `.test.ts` and `.spec.ts`; the unjustified-suppression check
+matches Go's `//nolint`; "this repo lints" is inferred from a `go.mod` or from lint-shaped
+words in the output. On a Python or Rust repo those three check nothing -- `test_x.py`,
+`#[test]`, `# noqa` and `#[allow(...)]` are all unmatched -- so put those guarantees in the
+repo's own check command, which the gate does measure. The default gate command when a
+plan sets none is `just check`; set `defaults.gate_cmd` in the sidecar instead.
+
 `run-config` freezes the integration branch's sha at run start into
 `<run>/bernstein.json` and the git ref `refs/build/base/<slug>`. The judge diffs that
 ref, never the branch name: every merge advances the branch, so a judge that diffs the

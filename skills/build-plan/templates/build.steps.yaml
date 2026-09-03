@@ -15,12 +15,23 @@ defaults:
   # `bernstein-herdr run-config` writes to <run>/bernstein.json and to the git ref
   # refs/build/base/<slug>. See judge-brief.md.
   base: <integration branch>
-  # The default gate command. ANY step may override it with its own `gate_cmd:` below.
-  # Use the override whenever a later phase leaves a module red on purpose: with one
-  # command for the whole plan, every earlier phase's gate is dragged down to the
-  # intersection of what all of them can pass, and a step that is green in its own scope
-  # blocks on a sibling's unfinished module (failure D, 2026-09-02).
-  gate_cmd: just check
+  # The default gate command: THIS REPO'S whole-tree check, written out. There is no
+  # generic one. Leave the key out and the built-in fallback is `just check`, which on a
+  # repo with no Justfile fails for a reason that has nothing to do with the step, so set
+  # it. ANY step may override it with its own `gate_cmd:` below. Use the override whenever
+  # a later phase leaves a module red on purpose: with one command for the whole plan,
+  # every earlier phase's gate is dragged down to the intersection of what all of them can
+  # pass, and a step that is green in its own scope blocks on a sibling's unfinished
+  # module (failure D, 2026-09-02).
+  gate_cmd: <the repo's whole-tree check command>
+  # LANGUAGE COVERAGE OF THE SCORER, so a plan on a Python or Rust repo knows the gaps.
+  # The gate always measures the exit code of the command above; the extra heuristics are
+  # Go- and TypeScript-shaped. Deleted-test detection matches `_test.go`, `.test.ts` and
+  # `.spec.ts` only (a deleted `test_x.py` or `#[test]` is invisible). The unjustified
+  # suppression check matches Go's `//nolint` only (`# noqa`, `# type: ignore`,
+  # `#[allow(...)]` are not seen). "This repo lints" is inferred from a `go.mod` or from
+  # lint-shaped words in the command output. On a repo outside Go/TS, make the gate command
+  # itself carry those checks.
   judge: optional         # optional = judge-N step after merge; none = no judge
 
 steps:
