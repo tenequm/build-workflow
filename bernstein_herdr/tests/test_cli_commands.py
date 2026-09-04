@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from bernstein_herdr.cli import fix_noop
+from bernstein_herdr.cli import completed_steps, fix_noop
 
 FIX_TITLE = "fix-1: judge findings on phase-1"
 
@@ -117,3 +117,42 @@ def test_fix_noop_refuses_a_non_fix_step(ws: Path, capsys) -> None:
     wt = worktree(ws)
     assert fix_noop(wt, "phase-1: work") == 1
     assert "declares no `fixes:`" in capsys.readouterr().out
+
+
+# --- H9: completed_steps classification ------------------------------------
+
+def row(**kv: object) -> dict:
+    return {"gate": "scorer", "evidence": "verified", "blocked": False, "step": "phase-1", **kv}
+
+
+def test_completed_steps_basic(tmp_path: Path) -> None:
+    rows = [row(archive="reports/phase-1/t1-abc123abc123")]
+    assert completed_steps(rows, tmp_path, lambda sha: True) == {"phase-1"}
+    assert completed_steps(rows, tmp_path, lambda sha: False) == set()
+
+
+def test_completed_steps_blocked_or_unverified_rows_do_not_count(tmp_path: Path) -> None:
+    rows = [row(blocked=True), row(evidence="claimed"), row(gate="judge"),
+            row(step=""), {"gate": "scorer"}]
+    assert completed_steps(rows, tmp_path, lambda sha: True) == set()
+
+
+def test_completed_steps_judge_rows_mark_the_judge_not_the_phase(tmp_path: Path) -> None:
+    rows = [{"gate": "judge_step", "evidence": "verified", "block": False, "step": "phase-1"}]
+    assert completed_steps(rows, tmp_path, lambda sha: True) == {"judge:phase-1"}
+    rows[0]["block"] = True
+    assert completed_steps(rows, tmp_path, lambda sha: True) == set()
+
+
+def test_completed_steps_sha_from_reports_dir(tmp_path: Path) -> None:
+    d = tmp_path / "phase-1" / "t1-deadbeef1234"
+    d.mkdir(parents=True)
+    rows = [row()]  # no archive key on the row itself
+    assert completed_steps(rows, tmp_path, lambda sha: sha == "deadbeef1234") == {"phase-1"}
+    assert completed_steps(rows, tmp_path, lambda sha: False) == set()
+
+
+def test_completed_steps_no_sha_anywhere_completes_without_ancestry(tmp_path: Path) -> None:
+    hits: list[str] = []
+    assert completed_steps([row()], tmp_path, hits.append) == {"phase-1"}
+    assert hits == []

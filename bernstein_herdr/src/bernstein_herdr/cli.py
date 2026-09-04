@@ -1,7 +1,7 @@
 """`bernstein-herdr` CLI.
 
   bernstein-herdr ready [--plan <yaml>] [--no-validate]   readiness checks + pins -> <run>/readiness/
-  bernstein-herdr run-config [--plan <yaml>]                run_config.json, run port, base_ref + base_sha
+  bernstein-herdr run-config [--plan <yaml>] [--resume]     run_config.json, run port, base_ref + base_sha; --resume derives a pruned <slug>-resume plan first
   bernstein-herdr gate                                     THE quality gate: run by Bernstein from the agent worktree
   bernstein-herdr scorer --step "<title>"                  scorer gate in the current worktree; exit 0/1
   bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the verdict is `do not merge`
@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -50,7 +51,94 @@ def free_port(preferred: int) -> int:
 from bernstein_herdr.proc import stale_bernstein_pids  # noqa: E402  (re-export; run-config and gate call it)
 
 
-def run_config(root: Path, plan_path: Path | None = None) -> int:
+SHA_TAIL = re.compile(r"-([0-9a-f]{7,40})$")
+
+
+def completed_steps(rows: list[dict], reports_dir: Path, is_ancestor) -> set[str]:
+    """Completion tokens proven by the ledger, for `run-config --resume`.
+
+    A row completes a step when its gate is `scorer` or `judge_step`, its evidence
+    is `verified`, and it is not blocked. When the row's `archive` key or the
+    reports directory (`<run>/reports/<step>/<task>-<head>/`, `latest` preferred)
+    yields a head sha, that sha must additionally satisfy `is_ancestor` -- work
+    that is no longer on the branch is not complete. Scorer rows yield their step
+    slug; `judge_step` rows carry the JUDGED phase's slug, so they yield
+    `judge:<judged slug>` and mark the judge step, never the phase, complete.
+    """
+    done: set[str] = set()
+    for row in rows:
+        gate = row.get("gate")
+        if gate not in ("scorer", "judge_step") or row.get("evidence") != "verified":
+            continue
+        if row.get("blocked") or row.get("block"):
+            continue
+        slug = row.get("step")
+        if not slug:
+            continue
+        m = SHA_TAIL.search(row.get("archive") or "")
+        sha = m.group(1) if m else ""
+        if not sha and (reports_dir / slug).is_dir():
+            latest = reports_dir / slug / "latest"
+            names = [latest.resolve().name] if latest.is_symlink() else                     sorted(d.name for d in (reports_dir / slug).iterdir() if d.is_dir())
+            for name in names:
+                m = SHA_TAIL.search(name)
+                if m:
+                    sha = m.group(1)
+        if sha and not is_ancestor(sha):
+            continue
+        done.add(f"judge:{slug}" if gate == "judge_step" else slug)
+    return done
+
+
+def _derive_resume(root: Path, plan) -> tuple[object, list[str]] | str:
+    """Write `<slug>-resume` plan + sidecar with completed steps pruned; update ACTIVE.
+
+    Returns (resume Plan, pruned titles) or an error string. Classification is
+    `completed_steps` over `<run>/runs.jsonl`; ancestry is checked against the
+    root's current HEAD, so work stranded off the branch re-runs.
+    """
+    import json
+    import subprocess
+
+    from bernstein_herdr.plan import load_plan
+
+    runs = plan.run_dir / "runs.jsonl"
+    if not runs.exists():
+        return f"refusing --resume: no {runs}; nothing recorded to resume from"
+    rows = [json.loads(l) for l in runs.read_text().splitlines() if l.strip()]
+
+    def is_ancestor(sha: str) -> bool:
+        return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+                              cwd=root, capture_output=True, check=False).returncode == 0
+
+    completed = completed_steps(rows, plan.run_dir / "reports", is_ancestor)
+    pruned: list[str] = []
+    for raw in plan.steps():
+        st = plan.step(raw["title"])
+        token = f"judge:{plan.step(st.judges).slug}" if st.judges else st.slug
+        if token in completed:
+            pruned.append(raw["title"])
+    if not pruned:
+        return "refusing --resume: no step classifies as complete; run the plan as it stands"
+    stages = []
+    for stage in plan.data.get("stages", []):
+        kept = [s for s in stage.get("steps", []) if s.get("title") not in pruned]
+        if kept:
+            stages.append({**stage, "steps": kept})
+    if not stages:
+        return "refusing --resume: every step is complete; there is nothing left to run"
+    live = {st.get("name") for st in stages}
+    stages = [{**st, **({"depends_on": [d for d in st.get("depends_on") or [] if d in live]}
+                        if st.get("depends_on") else {})} for st in stages]
+    name = f"{plan.slug}-resume"
+    plans_dir = root / ".agents" / "build" / "plans"
+    (plans_dir / f"{name}.yaml").write_text(yaml.safe_dump({**plan.data, "name": name, "stages": stages}, sort_keys=False))
+    (plans_dir / f"{name}.steps.yaml").write_text(yaml.safe_dump(plan.sidecar, sort_keys=False))
+    (plans_dir / "ACTIVE").write_text(f"{name}.yaml")
+    return load_plan(plans_dir / f"{name}.yaml", root=root), pruned
+
+
+def run_config(root: Path, plan_path: Path | None = None, resume: bool = False) -> int:
     """Write `.sdd/runtime/run_config.json`, pick this run's port, check base_ref.
 
     Three things that must be true before `bernstein run` and that nothing else checks:
@@ -114,13 +202,23 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
     if declared != branch:
         print(f"refusing: bernstein.yaml quality_gates.base_ref is {declared!r}, not the checked-out {branch!r}; fix and commit it")
         return 1
+    from bernstein_herdr.plan import load_plan
+
+    plan = load_plan(plan_path, root=root)
+    if resume:
+        derived = _derive_resume(root, plan)
+        if isinstance(derived, str):
+            print(derived)
+            return 1
+        plan, pruned = derived
+        print(f"resume: pruned {len(pruned)} completed step(s): " + "; ".join(pruned))
+        print(f"resume: wrote .agents/build/plans/{plan.slug}.yaml + .steps.yaml, ACTIVE now names it; "
+              f"COMMIT both plan files (executor worktrees only see tracked files), rerun readiness, "
+              f"then launch with the plan path below")
     out = root / ".sdd" / "runtime" / "run_config.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(RUN_CONFIG))
     port_file.write_text(f"{port}\n")
-    from bernstein_herdr.plan import load_plan
-
-    plan = load_plan(plan_path, root=root)
     run_dir = plan.run_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     # The integration branch at run start. Every merge advances that branch, so a judge
@@ -134,6 +232,8 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
     subprocess.run(["git", "update-ref", ref, base_sha], cwd=root, capture_output=True, check=False)
     (run_dir / "bernstein.json").write_text(json.dumps({"port": port, "base_ref": branch, "base_sha": base_sha, "base_ref_name": ref}))
     print(f"{out}: {json.dumps(RUN_CONFIG)}\nbase_ref={branch}\nbase_sha={base_sha} ({ref})\nrun with: --port {port}")
+    if resume:
+        print(f"next: bernstein run .agents/build/plans/{plan.slug}.yaml --auto-approve --quiet --fresh --port {port}")
     return 0
 
 
@@ -458,7 +558,7 @@ def main() -> int:
     if cmd == "run-config":
         from bernstein_herdr.plan import repo_root
         plan = _arg(rest, "--plan")
-        return run_config(repo_root(Path.cwd()), Path(plan) if plan else None)
+        return run_config(repo_root(Path.cwd()), Path(plan) if plan else None, resume="--resume" in rest)
     if cmd == "ready":
         from bernstein_herdr.ready import main as ready_main
         return ready_main(rest)

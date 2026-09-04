@@ -132,10 +132,21 @@ the workspace root.
    AN INTERRUPTED RUN IS NOT RESUMED ONTO AN ADVANCED TIP. Neither a plain
    resume nor `--fresh` is safe once merges from this run are in the branch: a
    resume rebuilt the board as newly open tasks on the already-merged tip, and
-   `--fresh` re-runs completed tasks. Two safe moves, and it is the user's call:
-   restore `refs/build/base/<slug>` after archiving merged work and run fresh;
-   or write a new plan with only remaining work and a new slug. Use
-   `<run>/ledger.md` and `runs.jsonl` to identify landed steps.
+   `--fresh` re-runs completed tasks. The first option is now:
+
+       bernstein-herdr run-config --plan .agents/build/plans/<slug>.yaml --resume
+
+   It classifies each step from `<run>/runs.jsonl` (verified unblocked gate
+   rows whose merged head is an ancestor of the current HEAD), writes a pruned
+   `<slug>-resume` plan and sidecar with completed steps removed and their
+   dependency edges dropped, points ACTIVE at it, freezes
+   `refs/build/base/<slug>-resume` at the current tip, and prints what it
+   pruned and the launch command. Commit the resume plan files and rerun
+   readiness before launching. The manual fallback when the classification is
+   wrong stays the user's call: restore `refs/build/base/<slug>` after
+   archiving merged work and run fresh; or write a new plan with only
+   remaining work and a new slug. Use `<run>/ledger.md` and `runs.jsonl` to
+   identify landed steps.
 
    `BERNSTEIN_SERVER_URL` is NOT optional. `--port` moves the server only; the
    URL in agent prompts and Claude hook commands otherwise defaults to 8052.
