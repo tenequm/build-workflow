@@ -323,6 +323,20 @@ def gate(argv: list[str]) -> int:
     print(f"gate: step={step.slug} title={task['title']!r} task={task['id']} worktree={wt} head={head[:12]} wall_s={wall} ({wall_src})")
 
     if step.judges:
+        # A judge's only legitimate diff is its review artifacts. Any other tracked
+        # change vs the step base means the judge edited code, and the review that
+        # sits on top of its own edits is worthless: block before parsing it.
+        violations = judge.judge_worktree_violations(wt, step.base)
+        if violations:
+            row = {**common, "gate": "judge", "blocked": True,
+                   "judge_worktree_violations": violations,
+                   "reason": "the judge edited files beyond its review artifacts"}
+            ledger.row(plan.run_dir, row)
+            ledger.note(plan.run_dir, f"gate {step.slug} judge BLOCKED: edited {violations}")
+            print(f"gate: BLOCKING -- the judge step changed files beyond "
+                  f"{', '.join(judge.JUDGE_ALLOWED)} (the judge edited code): {violations}")
+            print(json.dumps(row, separators=(",", ":")))
+            return remember(row, 1)
         # A judge verdict ROUTES; it does not block. Only `do not merge` (and a missing
         # review) exits 1. Findings are what the judge is for, and its own diff is the
         # review file: blocking on findings fails the judge TASK, and `fix-N` -- which

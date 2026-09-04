@@ -29,9 +29,10 @@ The sidecar's `defaults.doc` is plan.md and `defaults.spec` is spec.md, the buil
 spec whose numbered outcomes the witness tests are named after; its optional
 `defaults.design` is the product spec. The brief and executor report are under
 `.agents/`. Your role is `adversary`, which is not in Bernstein's role
-tool allowlist: you have the full tool set, Write and Edit included, and nothing
-mechanical stops you editing code. You must edit nothing but your two review
-files.
+tool allowlist: you have the full tool set, Write and Edit included -- but the
+gate blocks this step on any tracked change beyond your review artifacts
+(`.agents/blind-review.md`, `.agents/scorecard.md`, `.agents/verdict.json`).
+You must edit nothing but those files.
 
 From this worktree:
 1. Gates, measured, never trusted from a report: the brief's validation

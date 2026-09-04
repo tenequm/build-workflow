@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 from bernstein_herdr import ledger
@@ -15,6 +16,30 @@ from bernstein_herdr.plan import Plan, Step
 DECLARED = {label: re.compile(rf"^\s*{label}\s*[:=]\s*(\d+)\b", re.I | re.M) for label in ("certain", "plausible")}
 
 VERDICTS = ("do not merge", "merge after listed fixes", "merge as-is")
+
+#: The only files a judge step may change: its review, its scorecard, and the
+#: structured verdict beside them.
+JUDGE_ALLOWED = (".agents/blind-review.md", ".agents/scorecard.md", ".agents/verdict.json")
+
+
+def judge_worktree_violations(worktree: Path, base: str) -> list[str]:
+    """Tracked files the judge worktree changed vs `base`, beyond its review artifacts.
+
+    The judge brief used to say "nothing mechanical stops you" editing code; this is
+    the mechanical stop. An explicit diff, without the scorer's `:!.agents` exclusion,
+    because the review files themselves live under `.agents/` and everything else
+    there is exactly what a judge must not touch. Orchestrator writes (the per-task
+    CLAUDE.md, `.sdd/`, `.claude/` runtime) stay out, as they do in the scorer.
+    """
+    from bernstein_herdr import ledger
+
+    r = subprocess.run(["git", "diff", "--name-only", base], cwd=worktree,
+                       capture_output=True, text=True, check=False)
+    return sorted({
+        l for l in r.stdout.splitlines()
+        if l and l not in JUDGE_ALLOWED and l not in ledger.ORCHESTRATOR_FILES
+        and not l.startswith((".sdd/", ".claude/"))
+    })
 
 
 def judged_step(plan: Plan, step: Step) -> Step:
