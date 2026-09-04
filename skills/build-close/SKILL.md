@@ -9,8 +9,9 @@ Input: `<plan dir>` or nothing, resolved exactly as `/build-run` resolves
 it (the plan document is `<plan dir>/plan.md`; with no argument, the ACTIVE
 plan of the workspace you are in). Never edit application code. Send every code fix
 to a fresh executor with a brief and allowlist - build-run's close-round rule:
-one sequential codex `gpt-5.6-sol` (effort high) session through herdr per fix
-list, `claude-opus-5` subagent as the fallback. Never merge on your own
+codex `gpt-5.6-sol` (effort high) through herdr, one session per file-disjoint
+partition of the fix list in parallel, sequential within a partition;
+`claude-opus-5` subagent as the fallback. Never merge on your own
 judgment; merge only after the user answers.
 
 The moment a skill instruction proves wrong, ambiguous, or is deviated

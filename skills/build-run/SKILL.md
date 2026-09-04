@@ -380,11 +380,13 @@ the workspace root.
     - The instruction to write no application files.
 
     Turn findings into committed `.agents/build/plans/<slug>/close-N.md` briefs
-    and dispatch ONE sequential codex `gpt-5.6-sol` (effort high) session
-    through herdr per round with an exact allowlist - the 2026-08-31 evals'
-    fix-list conclusion: one coherent pass, zero introduced defects. When
-    herdr or codex is unavailable, the named fallback is a `claude-opus-5`
-    executor subagent per brief. The DAG is over; Bernstein is not relaunched
+    and dispatch codex `gpt-5.6-sol` (effort high) sessions through herdr:
+    partition the fix list by file overlap, one session per DISJOINT
+    partition in parallel, sequential only within a partition (the
+    2026-08-31 evals: one coherent pass over a coupled list, zero introduced
+    defects; parallel fixers on shared files collide). When herdr or codex
+    is unavailable, the named fallback is a `claude-opus-5` executor
+    subagent per partition. The DAG is over; Bernstein is not relaunched
     for close rounds. Rerun affected
     checks. Repeat review rounds until a round warrants no edits. Remove detached judge worktrees after archiving evidence.
 
