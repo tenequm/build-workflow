@@ -131,10 +131,13 @@ recorded in PLAN 7 or the user says it is current. With no argument, continue th
 directory when it is clear; otherwise ask.
 
 Sign-off is a commit on the primary branch containing only the plan directory
-with spec.md; record its sha in PLAN 7 as `signed-off: <commit sha>`. spec.md
-is current when `git log --format=%H -- spec.md` shows no commit after that
-sha. This is the last commit the plan makes on the primary; everything after
-lands on the workspace branch.
+with spec.md; record its sha in PLAN 7 as `signed-off: <commit sha>`. The same
+sha is ALSO recorded in the machine sidecar at CUT as `defaults.signoff`:
+readiness compares the working spec.md against `git show <sha>:<spec path>`
+and FAILS when they differ, so a spec edited after sign-off cannot reach an
+unattended run. spec.md is current when `git log --format=%H -- spec.md` shows
+no commit after that sha. This is the last commit the plan makes on the
+primary; everything after lands on the workspace branch.
 
 ## 2. DISCOVER
 
@@ -309,6 +312,7 @@ Pin discovery in the sidecar:
     defaults.doc: <plan dir>/plan.md
     defaults.spec: <plan dir>/spec.md
     defaults.design: <product spec path>  # omit when none
+    defaults.signoff: <sign-off commit sha from PLAN 7>
     defaults.gate_cmd: <whole-tree check command>
 
 Decompose by dependency graph, not file list. Target 15-30 minutes of executor
@@ -440,7 +444,10 @@ contradictions, validation gaps, allowlist gaps, overlapping claims. Edit
 briefs yourself, rerun ready so it re-pins, and rerun critics only on the
 briefs you edited. A round returning only nits ends after the fold.
 
-Record the readiness rounds and final pins in `<run>/ledger.md`.
+Readiness also writes `<run>/readiness/manifest.json` (engine source dir and
+HEAD, codex and claude versions, the codex config hash, the seed's
+`role_model_policy`) so the retro can tell what the run actually executed
+with. Record the readiness rounds and final pins in `<run>/ledger.md`.
 
 ## 8. REPORT
 

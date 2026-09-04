@@ -12,7 +12,7 @@ def _write(tmp_path: Path, body: str) -> Path:
 
 
 def test_wellformed_review_routes(tmp_path):
-    v = parse_verdict(_write(tmp_path, "prose about certain things\n\nCertain: 2\nPlausible: 1\nVerdict: merge after listed fixes\n"))
+    v = parse_verdict(_write(tmp_path, "prose about certain things, at pkg/a.go:12 and pkg/b.go:34\n\nCertain: 2\nPlausible: 1\nVerdict: merge after listed fixes\n"))
     assert v == {"review_present": True, "verdict": "merge after listed fixes", "certain": 2,
                  "plausible": 1, "counts_declared": True, "do_not_merge": False,
                  "merge_as_is": False, "block": False}
@@ -70,6 +70,7 @@ def test_fenced_declarations_do_not_count(tmp_path):
     body = (
         "The required format is:\n\n```\nCertain: <n>\nPlausible: <n>\nVerdict: ...\n```\n\n"
         "and a diff hunk:\n\n```\n+Certain: 9\n```\n\n"
+        "the defect is at judge.py:10\n\n"
         "Certain: 1\nPlausible: 0\nVerdict: merge after listed fixes\n"
     )
     f = tmp_path / "blind-review.md"

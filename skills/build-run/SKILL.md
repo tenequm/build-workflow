@@ -35,8 +35,11 @@ is a plan-stage defect: log it as `- workflow:` so the retro moves it there.
 
 The moment a skill instruction proves wrong, ambiguous, or is deviated
 from - or the user has to intervene where the skill should have sufficed -
-append `- workflow: <what and why>` to `<run>/ledger.md`. These lines are
-the retro's input for improving the workflow after the run.
+append `- workflow: <what and why>` to `<run>/ledger.md`. Start every
+`workflow:` line with one tag from {`instruction-wrong`,
+`instruction-ambiguous`, `tooling-gap`, `engine-bug`, `driver-error`,
+`flaky`} so the retro can aggregate. These lines are the retro's input for
+improving the workflow after the run.
 
 Every commit anywhere in this workflow - driver, executor, judge, fix - uses
 Conventional Commits: `type(scope): description` with type in feat, fix,
@@ -82,8 +85,12 @@ the workspace root.
    task server or process for this root, verifies
    `quality_gates.base_ref == <type>/<slug>`, and prints `run with: --port N`.
    It freezes the workspace branch tip in `<run>/bernstein.json` and
-   `refs/build/base/<slug>`. Fix only what it names and rerun. Never assume port
-   8052.
+   `refs/build/base/<slug>`. From that point every scorer gate re-reads the
+   plan and sidecar out of that frozen ref - gate command, allowlist, and base
+   come from the frozen copies, never from working copies a merge could have
+   rewritten - and records which it used as `plan_source` (`frozen_base` after
+   run-config, `worktree` before) in the gate row. Fix only what it names and
+   rerun. Never assume port 8052.
 
 3. Disable shared hooks before launch.
 
@@ -128,10 +135,21 @@ the workspace root.
    AN INTERRUPTED RUN IS NOT RESUMED ONTO AN ADVANCED TIP. Neither a plain
    resume nor `--fresh` is safe once merges from this run are in the branch: a
    resume rebuilt the board as newly open tasks on the already-merged tip, and
-   `--fresh` re-runs completed tasks. Two safe moves, and it is the user's call:
-   restore `refs/build/base/<slug>` after archiving merged work and run fresh;
-   or write a new plan with only remaining work and a new slug. Use
-   `<run>/ledger.md` and `runs.jsonl` to identify landed steps.
+   `--fresh` re-runs completed tasks. The first option is now:
+
+       bernstein-herdr run-config --plan .agents/build/plans/<slug>.yaml --resume
+
+   It classifies each step from `<run>/runs.jsonl` (verified unblocked gate
+   rows whose merged head is an ancestor of the current HEAD), writes a pruned
+   `<slug>-resume` plan and sidecar with completed steps removed and their
+   dependency edges dropped, points ACTIVE at it, freezes
+   `refs/build/base/<slug>-resume` at the current tip, and prints what it
+   pruned and the launch command. Commit the resume plan files and rerun
+   readiness before launching. The manual fallback when the classification is
+   wrong stays the user's call: restore `refs/build/base/<slug>` after
+   archiving merged work and run fresh; or write a new plan with only
+   remaining work and a new slug. Use `<run>/ledger.md` and `runs.jsonl` to
+   identify landed steps.
 
    `BERNSTEIN_SERVER_URL` is NOT optional. `--port` moves the server only; the
    URL in agent prompts and Claude hook commands otherwise defaults to 8052.
@@ -145,9 +163,13 @@ the workspace root.
 
    Run it IN THE BACKGROUND from the workspace root right after the launch.
    It prints one line per event (new runs.jsonl row, ledger line, spawner
-   trouble line), a STALL line when a live run produces nothing for the
-   stall window, and END when no Bernstein process owns this root; it exits
-   on END. Act only on its lines. On STALL apply the stall rule below. Do
+   trouble line - each trouble line is also appended to `<run>/runs.jsonl` as
+   a `spawner_event` row so kills land in the causal ledger), a STALL line
+   when a live run produces nothing for the stall window, ORCH-DEAD when live
+   processes stop answering on the recorded server port for 10+ minutes, DISK
+   / DISK-CRITICAL when free space crosses 10 GB / 2 GB (on DISK-CRITICAL,
+   kill the run before commits start failing), and END when no Bernstein
+   process owns this root; it exits on END. Act only on its lines. On STALL apply the stall rule below. Do
    not run the old manual poll; these commands remain for AD-HOC inspection
    when a watch line needs context:
 
@@ -182,6 +204,15 @@ the workspace root.
    `Elapsed: 0s`. Kill any orphan before another run-config.
 
 6. Handle blocked gates and retries.
+
+   Run `bernstein-herdr triage` first; its verdict routes you. It reads the
+   ledger tail, refused merges, the spawner log, the graveyard, the reflog and
+   live processes, and prints exactly one of: `TRIAGE: RETRYING` (wait, the
+   engine is on it), `TRIAGE: BRANCH-LOSS` (follow the recovery commands it
+   prints), `TRIAGE: DISPATCH-FIX` (write and dispatch a fix brief),
+   `TRIAGE: TERMINAL` (the run is over; act on the evidence), or
+   `TRIAGE: RUNNING` (nothing wrong), with the evidence lines under it. The
+   detail below is the manual fallback when a verdict needs context.
 
    A blocked gate refuses this merge. It writes a row to
    `.sdd/runtime/refused_merges.jsonl` and reports unhealthy, but a lifecycle
@@ -226,9 +257,12 @@ the workspace root.
    memo never qualifies. `gate: already merged` creates no row or archive.
    Doing nothing is still scored and blocks.
 
+   A report that contradicts the measured gate (claimed exit codes or issue
+   counts against the measured result) BLOCKS the merge as `report_mismatch`
+   in the row; only the sole entry "no report file" stays a non-blocking note.
    A committed refusal receipt (`scope_exceeded`, `underspecified`,
-   `blocked_on_dependency`, `awaiting_operator` in the report) now BLOCKS the
-   merge by design: the step parks as failed instead of passing silently, the
+   `blocked_on_dependency`, `awaiting_operator` in the report) likewise BLOCKS
+   the merge by design: the step parks as failed instead of passing silently, the
    refused branch is in the graveyard, and the driver dispatches the answer as
    a fix brief or records the failure. A malformed or missing judge review
    likewise blocks the judge step so the engine retries it; fix-N's refusal
@@ -241,6 +275,12 @@ the workspace root.
 
    `bernstein quarantine list` is empty after a block; the block is not a
    quarantine. The common cause is an allowlist violation named by the row.
+   Any tracked change under `.agents/build/plans/` versus the step base is an
+   automatic block (`plans_dir_edit` in the row): the plan files configure the
+   gate itself and no step may rewrite them. The gate also re-hashes the plan
+   file and the step's brief against `<run>/readiness/pins.json` and blocks on
+   drift (`pin_drift` names the drifted key); after any driver-side brief or
+   plan edit, rerun readiness so the pins move with it.
    Once engine retries are spent, mechanically dispatch a fresh executor only
    when the gate or judge names a concrete defect inside existing allowlists.
    Write and commit a fix brief, rerun readiness, and dispatch the fix. Preserve
@@ -248,8 +288,10 @@ the workspace root.
 
 7. Restore a displaced workspace root.
 
-   A warm-pool slot can run at the root, overwrite CLAUDE.md, and switch HEAD to
-   `agent/<role>-<id>`. The gate refuses that spawn. On every block check:
+   `bernstein-herdr triage` covers the branch-side evidence here too; run it
+   first. A warm-pool slot can run at the root, overwrite CLAUDE.md, and switch
+   HEAD to `agent/<role>-<id>`. The gate refuses that spawn. On every block
+   check:
 
        git symbolic-ref --short HEAD
        git status --short

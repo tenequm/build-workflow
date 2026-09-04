@@ -15,6 +15,10 @@ defaults:
   doc: <plan dir>/plan.md
   spec: <plan dir>/spec.md
   design: <discovered product spec path; omit this key when none>
+  # The sign-off commit sha from PLAN 7. Readiness fails when the working copy of
+  # `spec` differs from `git show <signoff>:<spec>`: a spec edited after sign-off
+  # never reaches an unattended run. Omit only on a plan that predates sign-off.
+  signoff: <sign-off commit sha>
   # The workspace branch, not a sha: a step's diff, its allowlist check and its archive
   # are all `git diff <base>`, and after an earlier step merges, a fixed sha shows that
   # step's files as this one's changes (measured: a scorer blocked on a sibling's file).

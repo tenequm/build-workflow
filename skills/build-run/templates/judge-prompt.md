@@ -29,9 +29,10 @@ The sidecar's `defaults.doc` is plan.md and `defaults.spec` is spec.md, the buil
 spec whose numbered outcomes the witness tests are named after; its optional
 `defaults.design` is the product spec. The brief and executor report are under
 `.agents/`. Your role is `adversary`, which is not in Bernstein's role
-tool allowlist: you have the full tool set, Write and Edit included, and nothing
-mechanical stops you editing code. You must edit nothing but your two review
-files.
+tool allowlist: you have the full tool set, Write and Edit included -- but the
+gate blocks this step on any tracked change beyond your review artifacts
+(`.agents/blind-review.md`, `.agents/scorecard.md`, `.agents/verdict.json`).
+You must edit nothing but those files.
 
 From this worktree:
 1. Gates, measured, never trusted from a report: the brief's validation
@@ -61,6 +62,22 @@ Plausible: <count>
 Verdict: <merge as-is | merge after listed fixes | do not merge>
 ```
 
+Also write `.agents/verdict.json` beside the review, exactly this schema (no
+extra keys, JSON, ASCII):
+
+```
+{"verdict": "<merge as-is | merge after listed fixes | do not merge>",
+ "certain": <N>, "plausible": <N>,
+ "evidence": [{"file": "<path>", "line": <N>, "note": "<one line>"}]}
+```
+
+`evidence` carries EXACTLY `certain` entries, one per certain defect, each with
+the file and line that proves it. The gate cross-checks verdict.json against
+the prose block -- same verdict, same counts -- and BLOCKS this step on any
+schema error or disagreement, so fill both from the same final tally. The
+prose block stays required either way, and a `Certain` above 0 without
+evidence blocks as "counted defects without evidence".
+
 YOUR VERDICT ROUTES, IT DOES NOT GRADE. The gate refuses the merge on
 `do not merge` and on nothing else: `merge after listed fixes` and any number of
 certain defects merge the review and spawn `fix-N`, which routes on `Certain`.
@@ -87,6 +104,7 @@ rg -c '^(Certain|Plausible|Verdict):' .agents/blind-review.md
 rg -n 'Verdict|merge as-is|merge after listed fixes|do not merge' .agents/blind-review.md
 ```
 
-ASCII only. A report's claim is not evidence. Commit both files on your branch;
-`git status` must otherwise be clean of your probes. Reply with a 10-line
-summary.
+ASCII only. A report's claim is not evidence. Commit all three files
+(`.agents/blind-review.md`, `.agents/scorecard.md`, `.agents/verdict.json`) on
+your branch; `git status` must otherwise be clean of your probes. Reply with a
+10-line summary.

@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 from bernstein_herdr import ledger
-from bernstein_herdr.plan import Plan, active_plan_name, load_plan, pinned_hashes
+from bernstein_herdr.plan import Plan, active_plan_name, load_plan, pinned_hashes, sha256
 
 SECTION_CITE = re.compile(r"\b(PLAN|DESIGN|SPEC|spec)\s+(\d+(?:\.\d+)*)\b")
 CODE_BLOCK = re.compile(r"```\n(.*?)```", re.S)
@@ -34,6 +34,83 @@ FAST_PATH = [
     (re.compile(r"\b(sort imports?|isort|import order|organiz\w+ imports?)\b"), "import-sort"),
     (re.compile(r"\brename\s+['\"]?\w+['\"]?\s+(?:to|->|=>)\s+['\"]?\w+['\"]?"), "rename-symbol"),
 ]
+
+
+def engine_receipt() -> Path:
+    """The uv tool receipt for the installed bernstein, whether or not it exists."""
+    tool_dir = subprocess.run(["uv", "tool", "dir"], capture_output=True, text=True, check=False).stdout.strip()
+    return (Path(tool_dir) if tool_dir else Path.home() / ".local" / "share" / "uv" / "tools") / "bernstein" / "uv-receipt.toml"
+
+
+def _cmd_out(*argv: str) -> str | None:
+    """First 200 chars of a command's output, or None; never raises (best effort)."""
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=15, check=False)
+        return (r.stdout + r.stderr).strip()[:200] or None
+    except Exception:
+        return None
+
+
+def manifest_data(plan: Plan) -> dict:
+    """What this run will actually execute with, for the post-run retro.
+
+    Engine identity (source directory from the uv receipt and, when that directory
+    is a git repo, its HEAD), the codex and claude CLI versions, the hash of the
+    per-machine ~/.codex/config.toml the effort lock lives in, and the seed's
+    `role_model_policy` verbatim. Everything best effort: an absent CLI or receipt
+    is recorded as null, never a readiness failure.
+    """
+    engine: dict = {"receipt": str(engine_receipt()), "source": None, "head": None}
+    receipt = engine_receipt()
+    if receipt.exists():
+        import tomllib
+        try:
+            reqs = tomllib.loads(receipt.read_text()).get("tool", {}).get("requirements", [])
+        except tomllib.TOMLDecodeError:
+            reqs = []
+        req = next((r for r in reqs if isinstance(r, dict) and r.get("name") == "bernstein"), {})
+        src = next((req[k] for k in ("directory", "editable", "path", "git") if k in req), None)
+        engine["source"] = src
+        if src and Path(str(src)).is_dir():
+            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=src, capture_output=True, text=True, check=False)
+            engine["head"] = head.stdout.strip() or None
+    seed_path = plan.root / "bernstein.yaml"
+    seed = (yaml.safe_load(seed_path.read_text()) or {}) if seed_path.exists() else {}
+    codex_cfg = Path.home() / ".codex" / "config.toml"
+    return {
+        "ts": ledger.now(),
+        "engine": engine,
+        "codex_version": _cmd_out("codex", "--version"),
+        "claude_version": _cmd_out("claude", "--version"),
+        "codex_config_sha256": sha256(codex_cfg) or None,
+        "role_model_policy": seed.get("role_model_policy"),
+    }
+
+
+def signoff_check(plan: Plan) -> tuple[str, str]:
+    """('skip'|'pass'|'fail', message): the working spec vs its signed-off blob.
+
+    The spec is frozen by sign-off; an edit after it silently re-scopes the whole
+    run. When the sidecar records both `defaults.signoff` (the sign-off commit sha)
+    and `defaults.spec`, `git show <sha>:<spec>` must equal the working copy.
+    Either key absent skips silently: an older plan carries no signoff.
+    """
+    d = plan.sidecar.get("defaults", {})
+    signoff, spec_rel = d.get("signoff"), d.get("spec")
+    if not signoff or not spec_rel:
+        return "skip", ""
+    shown = subprocess.run(["git", "show", f"{signoff}:{spec_rel}"], cwd=plan.root,
+                           capture_output=True, text=True, check=False)
+    if shown.returncode != 0:
+        return "fail", (f"sidecar defaults.signoff {signoff} cannot show {spec_rel} "
+                        f"({shown.stderr.strip()[:120]}); fix the sha or the path")
+    spec_path = plan.root / spec_rel
+    working = spec_path.read_text() if spec_path.exists() else None
+    if working != shown.stdout:
+        return "fail", (f"{spec_rel} differs from its signed-off copy at {signoff}: the spec was "
+                        f"edited after sign-off. Re-sign the spec (a new sign-off commit), update "
+                        f"defaults.signoff, and re-derive plan.md")
+    return "pass", f"{spec_rel} matches its signed-off copy at {signoff}"
 
 
 def _spec_sections(spec: Path) -> set[str]:
@@ -135,6 +212,12 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     else:
         fail(f"sidecar defaults.base is {base!r}, not the checked-out {root_branch!r}; each step's diff and "
              f"allowlist would be taken against the wrong ref -- set `defaults: {{base: {root_branch}}}` in the .steps.yaml")
+
+    signoff_status, signoff_msg = signoff_check(plan)
+    if signoff_status == "fail":
+        fail(signoff_msg)
+    elif signoff_status == "pass":
+        lines.append(f"PASS {signoff_msg}")
 
     # Codex takes no reasoning-effort flag: `codex exec` reads `model_reasoning_effort`
     # from ~/.codex/config.toml (adapters/codex.py:105-125, argv measured 2026-09-02), so
@@ -263,8 +346,7 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     # registry install's receipt requirement has no source key at all (verified across
     # eight receipts, 2026-09-04), so "path-like source present" is the check -- not a
     # string match on this machine's clone path.
-    tool_dir = subprocess.run(["uv", "tool", "dir"], capture_output=True, text=True, check=False).stdout.strip()
-    receipt = (Path(tool_dir) if tool_dir else Path.home() / ".local" / "share" / "uv" / "tools") / "bernstein" / "uv-receipt.toml"
+    receipt = engine_receipt()
     if receipt.exists():
         import tomllib
         try:
@@ -480,6 +562,7 @@ def write(plan: Plan, ok: bool, lines: list[str]) -> Path:
     rd.mkdir(parents=True, exist_ok=True)
     pins = pinned_hashes(plan)
     (rd / "pins.json").write_text(json.dumps(pins, indent=2))
+    (rd / "manifest.json").write_text(json.dumps(manifest_data(plan), indent=2))
     (rd / "ledger.md").write_text(f"# Readiness {ledger.now()} plan={plan.path.name} ok={ok}\n\n" + "\n".join(f"- {l}" for l in lines) + "\n\nPins:\n" + "\n".join(f"- {k}: {v}" for k, v in pins.items()) + "\n")
     ledger.note(plan.run_dir, f"readiness ok={ok} checks={len(lines)} pins={len(pins)}")
     return rd / "ledger.md"

@@ -1,15 +1,19 @@
 """`bernstein-herdr` CLI.
 
   bernstein-herdr ready [--plan <yaml>] [--no-validate]   readiness checks + pins -> <run>/readiness/
-  bernstein-herdr run-config [--plan <yaml>]                run_config.json, run port, base_ref + base_sha
+  bernstein-herdr run-config [--plan <yaml>] [--resume]     run_config.json, run port, base_ref + base_sha; --resume derives a pruned <slug>-resume plan first
   bernstein-herdr gate                                     THE quality gate: run by Bernstein from the agent worktree
   bernstein-herdr scorer --step "<title>"                  scorer gate in the current worktree; exit 0/1
   bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the verdict is `do not merge`
+  bernstein-herdr fix-noop --step "<fix step title>"       write and commit the no-op report when the judge counted 0 certain defects; exit 1 otherwise
   bernstein-herdr watch [--interval N] [--stall M] [--until-stall]   event lines for a live run; exits on run end
+  bernstein-herdr triage                                   one-line verdict on a run's state, with the evidence behind it
 """
 
 from __future__ import annotations
 
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -49,7 +53,94 @@ def free_port(preferred: int) -> int:
 from bernstein_herdr.proc import stale_bernstein_pids  # noqa: E402  (re-export; run-config and gate call it)
 
 
-def run_config(root: Path, plan_path: Path | None = None) -> int:
+SHA_TAIL = re.compile(r"-([0-9a-f]{7,40})$")
+
+
+def completed_steps(rows: list[dict], reports_dir: Path, is_ancestor) -> set[str]:
+    """Completion tokens proven by the ledger, for `run-config --resume`.
+
+    A row completes a step when its gate is `scorer` or `judge_step`, its evidence
+    is `verified`, and it is not blocked. When the row's `archive` key or the
+    reports directory (`<run>/reports/<step>/<task>-<head>/`, `latest` preferred)
+    yields a head sha, that sha must additionally satisfy `is_ancestor` -- work
+    that is no longer on the branch is not complete. Scorer rows yield their step
+    slug; `judge_step` rows carry the JUDGED phase's slug, so they yield
+    `judge:<judged slug>` and mark the judge step, never the phase, complete.
+    """
+    done: set[str] = set()
+    for row in rows:
+        gate = row.get("gate")
+        if gate not in ("scorer", "judge_step") or row.get("evidence") != "verified":
+            continue
+        if row.get("blocked") or row.get("block"):
+            continue
+        slug = row.get("step")
+        if not slug:
+            continue
+        m = SHA_TAIL.search(row.get("archive") or "")
+        sha = m.group(1) if m else ""
+        if not sha and (reports_dir / slug).is_dir():
+            latest = reports_dir / slug / "latest"
+            names = [latest.resolve().name] if latest.is_symlink() else                     sorted(d.name for d in (reports_dir / slug).iterdir() if d.is_dir())
+            for name in names:
+                m = SHA_TAIL.search(name)
+                if m:
+                    sha = m.group(1)
+        if sha and not is_ancestor(sha):
+            continue
+        done.add(f"judge:{slug}" if gate == "judge_step" else slug)
+    return done
+
+
+def _derive_resume(root: Path, plan) -> tuple[object, list[str]] | str:
+    """Write `<slug>-resume` plan + sidecar with completed steps pruned; update ACTIVE.
+
+    Returns (resume Plan, pruned titles) or an error string. Classification is
+    `completed_steps` over `<run>/runs.jsonl`; ancestry is checked against the
+    root's current HEAD, so work stranded off the branch re-runs.
+    """
+    import json
+    import subprocess
+
+    from bernstein_herdr.plan import load_plan
+
+    runs = plan.run_dir / "runs.jsonl"
+    if not runs.exists():
+        return f"refusing --resume: no {runs}; nothing recorded to resume from"
+    rows = [json.loads(l) for l in runs.read_text().splitlines() if l.strip()]
+
+    def is_ancestor(sha: str) -> bool:
+        return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+                              cwd=root, capture_output=True, check=False).returncode == 0
+
+    completed = completed_steps(rows, plan.run_dir / "reports", is_ancestor)
+    pruned: list[str] = []
+    for raw in plan.steps():
+        st = plan.step(raw["title"])
+        token = f"judge:{plan.step(st.judges).slug}" if st.judges else st.slug
+        if token in completed:
+            pruned.append(raw["title"])
+    if not pruned:
+        return "refusing --resume: no step classifies as complete; run the plan as it stands"
+    stages = []
+    for stage in plan.data.get("stages", []):
+        kept = [s for s in stage.get("steps", []) if s.get("title") not in pruned]
+        if kept:
+            stages.append({**stage, "steps": kept})
+    if not stages:
+        return "refusing --resume: every step is complete; there is nothing left to run"
+    live = {st.get("name") for st in stages}
+    stages = [{**st, **({"depends_on": [d for d in st.get("depends_on") or [] if d in live]}
+                        if st.get("depends_on") else {})} for st in stages]
+    name = f"{plan.slug}-resume"
+    plans_dir = root / ".agents" / "build" / "plans"
+    (plans_dir / f"{name}.yaml").write_text(yaml.safe_dump({**plan.data, "name": name, "stages": stages}, sort_keys=False))
+    (plans_dir / f"{name}.steps.yaml").write_text(yaml.safe_dump(plan.sidecar, sort_keys=False))
+    (plans_dir / "ACTIVE").write_text(f"{name}.yaml")
+    return load_plan(plans_dir / f"{name}.yaml", root=root), pruned
+
+
+def run_config(root: Path, plan_path: Path | None = None, resume: bool = False) -> int:
     """Write `.sdd/runtime/run_config.json`, pick this run's port, check base_ref.
 
     Three things that must be true before `bernstein run` and that nothing else checks:
@@ -113,13 +204,23 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
     if declared != branch:
         print(f"refusing: bernstein.yaml quality_gates.base_ref is {declared!r}, not the checked-out {branch!r}; fix and commit it")
         return 1
+    from bernstein_herdr.plan import load_plan
+
+    plan = load_plan(plan_path, root=root)
+    if resume:
+        derived = _derive_resume(root, plan)
+        if isinstance(derived, str):
+            print(derived)
+            return 1
+        plan, pruned = derived
+        print(f"resume: pruned {len(pruned)} completed step(s): " + "; ".join(pruned))
+        print(f"resume: wrote .agents/build/plans/{plan.slug}.yaml + .steps.yaml, ACTIVE now names it; "
+              f"COMMIT both plan files (executor worktrees only see tracked files), rerun readiness, "
+              f"then launch with the plan path below")
     out = root / ".sdd" / "runtime" / "run_config.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(RUN_CONFIG))
     port_file.write_text(f"{port}\n")
-    from bernstein_herdr.plan import load_plan
-
-    plan = load_plan(plan_path, root=root)
     run_dir = plan.run_dir
     run_dir.mkdir(parents=True, exist_ok=True)
     # The integration branch at run start. Every merge advances that branch, so a judge
@@ -133,6 +234,8 @@ def run_config(root: Path, plan_path: Path | None = None) -> int:
     subprocess.run(["git", "update-ref", ref, base_sha], cwd=root, capture_output=True, check=False)
     (run_dir / "bernstein.json").write_text(json.dumps({"port": port, "base_ref": branch, "base_sha": base_sha, "base_ref_name": ref}))
     print(f"{out}: {json.dumps(RUN_CONFIG)}\nbase_ref={branch}\nbase_sha={base_sha} ({ref})\nrun with: --port {port}")
+    if resume:
+        print(f"next: bernstein run .agents/build/plans/{plan.slug}.yaml --auto-approve --quiet --fresh --port {port}")
     return 0
 
 
@@ -231,6 +334,169 @@ def short_circuit_sha(wt: Path, memo_dir: Path, task_id: str, base_sha: str, int
     return sha if merged_ahead(wt, sha, base_sha, integration) else ""
 
 
+RETRY_EVIDENCE = re.compile(r"verdict=retry|scheduling retry", re.I)
+
+#: Exactly what build-run's branch-loss recovery prescribes, printed on BRANCH-LOSS.
+BRANCH_LOSS_RECOVERY = """recover (build-run step 6, branch-loss):
+  git reflog show --all | rg 'renamed refs/heads/'
+  git branch --list '<workspace branch>'
+  git log --oneline -5 salvage/<agent>
+  # if the workspace branch is missing: inspect the salvage tip; drop only a
+  # proven .sdd/ dump, then rename the salvage branch back and check it out:
+  git branch -m salvage/<agent> <workspace branch>
+  git checkout <workspace branch>
+  # anything merged after the rename landed on the wrong branch"""
+
+
+def classify(inputs: dict) -> tuple[str, list[str]]:
+    """(verdict, reasons) for `triage`, pure over gathered evidence.
+
+    inputs: rows (last runs.jsonl rows, dicts), refused (refused_merges.jsonl lines),
+    spawner (spawner.log tail lines), graveyard (for-each-ref lines), renames
+    (reflog lines naming `renamed refs/heads/`), pids ((pid, cmd) tuples).
+
+    Precedence: BRANCH-LOSS (a rename ate the workspace branch; everything else is
+    noise until it is back) > RETRYING (the engine is already handling it) >
+    DISPATCH-FIX (a refused merge with no retry pending needs a driver-dispatched
+    fix) > TERMINAL / RUNNING on liveness alone.
+    """
+    rows = inputs.get("rows") or []
+    refused = inputs.get("refused") or []
+    spawner = inputs.get("spawner") or []
+    graveyard = inputs.get("graveyard") or []
+    renames = inputs.get("renames") or []
+    pids = inputs.get("pids") or []
+    alive = [f"{len(pids)} live bernstein process(es)"] if pids else ["no live bernstein process"]
+    last = [f"last gate row: {json.dumps(rows[-1], separators=(',', ':'))[:200]}"] if rows else []
+    if renames:
+        return "BRANCH-LOSS", [f"branch rename seen: {l.strip()[:200]}" for l in renames[-3:]] + alive
+    retry = [l for l in spawner if RETRY_EVIDENCE.search(l)]
+    if retry and pids:
+        return "RETRYING", [f"retry scheduled: {retry[-1].strip()[:200]}"] + alive + last
+    if refused and not retry:
+        reasons = [f"refused merge: {l.strip()[:200]}" for l in refused[-3:]]
+        reasons += ["no retry pending in spawner.log"] + alive
+        if graveyard:
+            reasons.append(f"graveyard holds {len(graveyard)} ref(s); newest: {graveyard[-1].strip()[:120]}")
+        return "DISPATCH-FIX", reasons + last
+    if not pids:
+        return "TERMINAL", alive + ["no refused merge and no pending retry"] + last
+    return "RUNNING", alive + ["no trouble evidence in the ledger, refused merges, spawner log or reflog"] + last
+
+
+def triage(root: Path) -> int:
+    """Gather the evidence (all best effort) and print `TRIAGE: <verdict>` first."""
+    import json
+    import subprocess
+
+    from bernstein_herdr.plan import load_plan
+    from bernstein_herdr.proc import stale_bernstein_pids
+
+    def lines(path: Path, tail: int | None = None) -> list[str]:
+        try:
+            out = path.read_text(errors="replace").splitlines()
+            return out[-tail:] if tail else out
+        except OSError:
+            return []
+
+    rows: list[dict] = []
+    try:
+        run_dir = load_plan(root=root).run_dir
+        for l in lines(run_dir / "runs.jsonl", 3):
+            try:
+                rows.append(json.loads(l))
+            except json.JSONDecodeError:
+                pass
+    except Exception:
+        pass
+    git = lambda *a: subprocess.run(["git", *a], cwd=root, capture_output=True, text=True, check=False).stdout
+    inputs = {
+        "rows": rows,
+        "refused": lines(root / ".sdd" / "runtime" / "refused_merges.jsonl"),
+        "spawner": lines(root / ".sdd" / "runtime" / "spawner.log", 200),
+        "graveyard": [l for l in git("for-each-ref", "refs/graveyard/").splitlines() if l.strip()],
+        "renames": [l for l in git("reflog", "show", "--all").splitlines() if "renamed refs/heads/" in l],
+        "pids": stale_bernstein_pids(root),
+    }
+    verdict, reasons = classify(inputs)
+    print(f"TRIAGE: {verdict}")
+    for r in reasons:
+        print(f"  {r}")
+    if verdict == "BRANCH-LOSS":
+        print(BRANCH_LOSS_RECOVERY)
+    return 0
+
+
+def fix_noop(cwd: Path, title: str) -> int:
+    """The fix step's no-op path as a command, so no model has to transcribe it.
+
+    Reads the judged phase's `<run>/judge/<phase slug>/verdict.json` (the fix
+    sidecar's `fixes:` names the phase). ONLY when the verdict is legal, both
+    counts are declared, and `certain` is 0: writes the no-op report at the
+    step's report path, `git add -f` + commits it, prints DONE, exits 0. Any
+    other state prints why and exits 1 without writing anything.
+    """
+    import json
+    import subprocess
+
+    from bernstein_herdr.judge import VERDICTS
+    from bernstein_herdr.plan import load_plan, repo_root
+
+    if not title:
+        print('fix-noop: pass --step "<fix step title>"')
+        return 1
+    try:
+        plan = load_plan(root=repo_root(cwd))
+        step = plan.step(title)
+    except Exception as exc:
+        print(f"fix-noop: cannot resolve the step: {exc}")
+        return 1
+    if not step.fixes:
+        print(f"fix-noop: step {title!r} declares no `fixes:` in the sidecar; only a fix step can no-op")
+        return 1
+    try:
+        phase = plan.step(step.fixes)
+    except KeyError as exc:
+        print(f"fix-noop: sidecar `fixes:` does not name a plan step: {exc}")
+        return 1
+    vj = plan.run_dir / "judge" / phase.slug / "verdict.json"
+    if not vj.exists():
+        print(f"fix-noop: no judge verdict at {vj}; the judge for {phase.slug} has not recorded one")
+        return 1
+    try:
+        v = json.loads(vj.read_text())
+    except json.JSONDecodeError as exc:
+        print(f"fix-noop: unreadable verdict.json at {vj}: {exc}")
+        return 1
+    if v.get("verdict") not in VERDICTS:
+        print(f"fix-noop: verdict {v.get('verdict')!r} is not one of the three legal strings; "
+              f"the review cannot route this step -- take the refusal path")
+        return 1
+    if not v.get("counts_declared"):
+        print("fix-noop: counts_declared is false; the review cannot route this step -- take the refusal path")
+        return 1
+    if v.get("certain") != 0:
+        print(f"fix-noop: the judge counted certain={v.get('certain')}; take the fix path")
+        return 1
+    report = cwd / step.report_rel
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(
+        f"# Report: {step.title}\n\n"
+        f"Verdict: {v['verdict']}\n"
+        f"Certain: {v.get('certain')}\n"
+        f"Plausible: {v.get('plausible')}\n\n"
+        f"The judge reported 0 certain defects on {step.fixes!r}; nothing was changed.\n\n"
+        f"## Deviations\n\nnone\n")
+    add = subprocess.run(["git", "add", "-f", step.report_rel], cwd=cwd, capture_output=True, text=True, check=False)
+    commit = subprocess.run(["git", "commit", "-m", f"docs: {step.slug} no-op, judge reported 0 certain defects"],
+                            cwd=cwd, capture_output=True, text=True, check=False)
+    if add.returncode != 0 or commit.returncode != 0:
+        print(f"fix-noop: report written but the commit failed:\n{add.stderr}{commit.stdout}{commit.stderr}")
+        return 1
+    print("DONE")
+    return 0
+
+
 def gate(argv: list[str]) -> int:
     """The quality gate, run by Bernstein in the agent worktree before the merge.
 
@@ -323,6 +589,20 @@ def gate(argv: list[str]) -> int:
     print(f"gate: step={step.slug} title={task['title']!r} task={task['id']} worktree={wt} head={head[:12]} wall_s={wall} ({wall_src})")
 
     if step.judges:
+        # A judge's only legitimate diff is its review artifacts. Any other tracked
+        # change vs the step base means the judge edited code, and the review that
+        # sits on top of its own edits is worthless: block before parsing it.
+        violations = judge.judge_worktree_violations(wt, step.base)
+        if violations:
+            row = {**common, "gate": "judge", "blocked": True,
+                   "judge_worktree_violations": violations,
+                   "reason": "the judge edited files beyond its review artifacts"}
+            ledger.row(plan.run_dir, row)
+            ledger.note(plan.run_dir, f"gate {step.slug} judge BLOCKED: edited {violations}")
+            print(f"gate: BLOCKING -- the judge step changed files beyond "
+                  f"{', '.join(judge.JUDGE_ALLOWED)} (the judge edited code): {violations}")
+            print(json.dumps(row, separators=(",", ":")))
+            return remember(row, 1)
         # A judge verdict ROUTES; it does not block. Only `do not merge` (and a missing
         # review) exits 1. Findings are what the judge is for, and its own diff is the
         # review file: blocking on findings fails the judge TASK, and `fix-N` -- which
@@ -352,6 +632,7 @@ def gate(argv: list[str]) -> int:
     if report.exists():
         shutil.copy(report, dest / "report.md")
     row = {**common, "gate": "scorer", "blocked": blocked, **stats, "gate_rc": f["gate"]["rc"],
+           "gate_s": f.get("gate_s"), "plan_source": f.get("plan_source"),
            "archive": str(dest.relative_to(plan.run_dir)), "commits": f["commits"],
            "allowlist_violations": f["allowlist_violations"], "report_present": report.exists()}
     ledger.row(plan.run_dir, row)
@@ -373,7 +654,7 @@ def main() -> int:
     if cmd == "run-config":
         from bernstein_herdr.plan import repo_root
         plan = _arg(rest, "--plan")
-        return run_config(repo_root(Path.cwd()), Path(plan) if plan else None)
+        return run_config(repo_root(Path.cwd()), Path(plan) if plan else None, resume="--resume" in rest)
     if cmd == "ready":
         from bernstein_herdr.ready import main as ready_main
         return ready_main(rest)
@@ -393,6 +674,11 @@ def main() -> int:
         if _arg(rest, "--stall"):
             kw["stall_minutes"] = float(_arg(rest, "--stall"))
         return watch(root, plan.run_dir, until_stall="--until-stall" in rest, **kw)
+    if cmd == "triage":
+        from bernstein_herdr.plan import repo_root
+        return triage(repo_root(Path.cwd()))
+    if cmd == "fix-noop":
+        return fix_noop(Path.cwd(), _arg(rest, "--step") or "")
     if cmd == "judge-verdict":
         from bernstein_herdr.judge import record_verdict
         from bernstein_herdr.plan import load_plan, repo_root

@@ -19,13 +19,14 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from bernstein.core.quality.gate_plugins import GatePlugin
 from bernstein.core.quality.gate_runner import GateResult
 
 from bernstein_herdr import ledger
-from bernstein_herdr.plan import load_plan, repo_root
+from bernstein_herdr.plan import frozen_plan, load_plan, repo_root, sha256
 
 LINT_RUN = re.compile(r"golangci|\bruff\b|eslint|clippy|\blint(ing|er)?\b", re.I)
 NOLINT = re.compile(r"^\+.*//\s*nolint\b(?!.*\s//\s*\S)", re.M)
@@ -66,10 +67,20 @@ def lint_env(worktree: Path, run_dir: Path) -> dict[str, str]:
 
 def score(worktree: Path, task_title: str, changed_files: list[str] | None = None) -> tuple[bool, dict]:
     plan = load_plan(root=repo_root(worktree))
+    # Once run-config froze refs/build/base/<slug>, gate_cmd, allowlist and base come
+    # from the FROZEN plan files, not the working copies an executor (or an earlier
+    # step's merge) can rewrite. Pre-run and in tests the ref is absent and the
+    # working copies stand.
+    frozen = frozen_plan(plan, worktree)
+    if frozen is not None:
+        plan = frozen
     step = plan.step(task_title)
-    f: dict = {"step": step.slug, "gate_cmd": step.gate_cmd}
+    f: dict = {"step": step.slug, "gate_cmd": step.gate_cmd,
+               "plan_source": "frozen_base" if frozen is not None else "worktree"}
 
+    t0 = time.monotonic()
     rc, out = _sh(step.gate_cmd, worktree, lint_env(worktree, step.run_dir))
+    f["gate_s"] = round(time.monotonic() - t0, 1)
     f["gate"] = {"rc": rc, "tail": out[-1200:]}
     lint_issues = re.findall(r"(\d+) issues?\.", out)
     f["lint_issues_measured"] = int(lint_issues[-1]) if lint_issues else None
@@ -82,6 +93,12 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
         c for c in changed_files
         if step.files and _authored(c) and not any(fnmatch.fnmatch(c, g) for g in step.files)
     ]
+
+    # The plan files are the gate's own configuration. `.agents` is excluded from every
+    # diff above, so a step that rewrites `.agents/build/plans/` (allowlist, gate_cmd,
+    # briefs) merges that edit invisibly and every LATER step is gated by it. Tracked
+    # edits there vs the step base are an automatic block.
+    f["plans_dir_edit"] = [l for l in _sh(f"git diff --name-only {step.base} -- .agents/build/plans", worktree)[1].splitlines() if l]
 
     _, diff = _sh(f"git diff {step.base} -- . ':!.agents'", worktree)
     f["new_nolint_without_reason"] = len(NOLINT.findall(diff))
@@ -117,9 +134,27 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     # A refusal receipt in the report parks the step as failed instead of merging it as a
     # silent success: a refused step used to pass (gate green on an untouched tree, report
     # committed) and the missing work surfaced only at branch validation (retro item 8).
+    # Readiness pinned the plan and every brief; the gate refuses to score against
+    # drifted copies (a root-side edit between readiness and this attempt). Absent
+    # pins.json (pre-readiness, tests) is a note, never a block.
+    pins_path = plan.run_dir / "readiness" / "pins.json"
+    if pins_path.exists():
+        pins = json.loads(pins_path.read_text())
+        f["pin_drift"] = [key for key, path in (("plan", plan.path), (f"brief:{step.slug}", step.brief))
+                          if key in pins and sha256(path) != pins[key]]
+    else:
+        f["pin_drift"] = None
+        ledger.note(plan.run_dir, f"gate {step.slug}: no readiness pins.json; pin check skipped")
+
     f["refusal"] = claims.get("refusal")
+    # A report that contradicts the measured gate is a false receipt and blocks. The
+    # SOLE entry "no report file" stays a non-blocking note: Codex skips the report on
+    # about half of otherwise-good steps (measured 2026-09-02), and the gate measures
+    # everything the report would have claimed anyway.
+    lying_report = bool(mismatch) and mismatch != ["no report file"]
     blocked = (rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0
-               or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]))
+               or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]) or bool(f["plans_dir_edit"])
+               or lying_report or bool(f["pin_drift"]))
     f["blocked"] = blocked
     ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-scorer", "step": step.slug, "gate": "scorer", "evidence": "verified", **{k: v for k, v in f.items() if k != "gate"}, "gate_rc": rc})
     return blocked, f

@@ -97,7 +97,9 @@ Before removing anything, preserve evidence:
     rsync -a <workspace>/<run>/ <primary>/.agents/build/runs/<slug>/
 
 Run `git config --unset core.hooksPath`; tolerate only the exit that means the
-key was absent.
+key was absent. Then verify with `git config --get core.hooksPath`: it must
+print nothing. Record in the handoff's Integration section that the hooks
+path was unset and the verification came back empty.
 
 After either merge path has completed:
 
@@ -124,7 +126,9 @@ with these headings exactly and no others:
     ## Open
     ## Integration
 
-Under Integration, record what the user chose and every exact command run.
+Under Integration, record what the user chose and every exact command run,
+including the hooksPath unset and its empty `git config --get core.hooksPath`
+verification.
 Under Phases, include executor, wall time, files, gate, and judge verdict.
 Under Defects, separate caught-before-merge from post-run findings with
 file:line evidence. Under Open, list uncompleted release and `owner: user`
