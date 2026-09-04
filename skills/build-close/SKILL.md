@@ -8,7 +8,9 @@ description: "Land a validated three-stage build and run its release ceremonies.
 Input: `<plan dir>` or nothing, resolved exactly as `/build-run` resolves
 it (the plan document is `<plan dir>/plan.md`; with no argument, the ACTIVE
 plan of the workspace you are in). Never edit application code. Send every code fix
-to a fresh executor with a brief and allowlist. Never merge on your own
+to a fresh executor with a brief and allowlist - build-run's close-round rule:
+one sequential codex `gpt-5.6-sol` (effort high) session through herdr per fix
+list, `claude-opus-5` subagent as the fallback. Never merge on your own
 judgment; merge only after the user answers.
 
 The moment a skill instruction proves wrong, ambiguous, or is deviated
@@ -108,7 +110,7 @@ After either merge path has completed:
 3. If clean, remove the worktree without `--force` from the primary checkout.
 4. Delete the merged branch with `git branch -d <branch>`.
 
-The build allowlist in `<primary>/.claude/settings.local.json` stays; tell the
+The build allowlist (in Claude Code: `<primary>/.claude/settings.local.json`) stays; tell the
 user it is there and removable by hand.
 
 Keep the worktree while a PR remains open or when the user chooses to keep it.
