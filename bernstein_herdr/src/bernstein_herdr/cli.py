@@ -632,6 +632,7 @@ def gate(argv: list[str]) -> int:
     if report.exists():
         shutil.copy(report, dest / "report.md")
     row = {**common, "gate": "scorer", "blocked": blocked, **stats, "gate_rc": f["gate"]["rc"],
+           "gate_s": f.get("gate_s"), "plan_source": f.get("plan_source"),
            "archive": str(dest.relative_to(plan.run_dir)), "commits": f["commits"],
            "allowlist_violations": f["allowlist_violations"], "report_present": report.exists()}
     ledger.row(plan.run_dir, row)

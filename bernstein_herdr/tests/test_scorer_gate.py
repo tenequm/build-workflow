@@ -218,3 +218,12 @@ def test_missing_pins_is_a_note_not_a_block(ws: Path) -> None:
     blocked, f = score(wt, TITLE)
     assert f["pin_drift"] is None
     assert not blocked
+
+
+def test_gate_timing_is_recorded(ws: Path) -> None:
+    """H12: the scorer times the gate command run."""
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    commit_all(wt)
+    _, f = score(wt, TITLE)
+    assert isinstance(f["gate_s"], float) and f["gate_s"] >= 0.0

@@ -35,8 +35,11 @@ is a plan-stage defect: log it as `- workflow:` so the retro moves it there.
 
 The moment a skill instruction proves wrong, ambiguous, or is deviated
 from - or the user has to intervene where the skill should have sufficed -
-append `- workflow: <what and why>` to `<run>/ledger.md`. These lines are
-the retro's input for improving the workflow after the run.
+append `- workflow: <what and why>` to `<run>/ledger.md`. Start every
+`workflow:` line with one tag from {`instruction-wrong`,
+`instruction-ambiguous`, `tooling-gap`, `engine-bug`, `driver-error`,
+`flaky`} so the retro can aggregate. These lines are the retro's input for
+improving the workflow after the run.
 
 Every commit anywhere in this workflow - driver, executor, judge, fix - uses
 Conventional Commits: `type(scope): description` with type in feat, fix,

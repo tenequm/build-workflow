@@ -20,3 +20,6 @@ or slash command and never reads a file from a sibling skill's directory. Each s
 `templates/`; a template two skills need is copied into both. Consumers
 install the skills one at a time, and a skill that reaches outside itself
 breaks for them.
+
+A retro item closes only as a check, a template field, or a test - never as
+another skill sentence.

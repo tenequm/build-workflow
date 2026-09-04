@@ -19,6 +19,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from bernstein.core.quality.gate_plugins import GatePlugin
@@ -77,7 +78,9 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     f: dict = {"step": step.slug, "gate_cmd": step.gate_cmd,
                "plan_source": "frozen_base" if frozen is not None else "worktree"}
 
+    t0 = time.monotonic()
     rc, out = _sh(step.gate_cmd, worktree, lint_env(worktree, step.run_dir))
+    f["gate_s"] = round(time.monotonic() - t0, 1)
     f["gate"] = {"rc": rc, "tail": out[-1200:]}
     lint_issues = re.findall(r"(\d+) issues?\.", out)
     f["lint_issues_measured"] = int(lint_issues[-1]) if lint_issues else None
