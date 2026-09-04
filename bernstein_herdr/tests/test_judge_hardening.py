@@ -54,3 +54,65 @@ def test_code_edit_is_a_violation(repo: Path) -> None:
 def test_uncommitted_tracked_edit_is_a_violation(repo: Path) -> None:
     (repo / "code.py").write_text("print('probe left behind')\n")
     assert judge_worktree_violations(repo, "build/x") == ["code.py"]
+
+
+PROSE = "found a bug at pkg/a.go:12\n\nCertain: 1\nPlausible: 2\nVerdict: merge after listed fixes\n"
+
+
+def _review(tmp_path: Path, body: str = PROSE, vj: dict | str | None = None) -> Path:
+    d = tmp_path / "a"
+    d.mkdir(exist_ok=True)
+    f = d / "blind-review.md"
+    f.write_text(body)
+    if vj is not None:
+        (d / "verdict.json").write_text(vj if isinstance(vj, str) else json.dumps(vj))
+    return f
+
+
+def test_json_and_prose_agree(tmp_path: Path) -> None:
+    v = parse_verdict(_review(tmp_path, vj={
+        "verdict": "merge after listed fixes", "certain": 1, "plausible": 2,
+        "evidence": [{"file": "pkg/a.go", "line": 12, "note": "nil deref"}]}))
+    assert not v["block"]
+    assert v["verdict_json"] is True
+    assert v["evidence"] == [{"file": "pkg/a.go", "line": 12, "note": "nil deref"}]
+    assert v["certain"] == 1 and v["verdict"] == "merge after listed fixes"
+
+
+def test_json_prose_disagreement_blocks(tmp_path: Path) -> None:
+    v = parse_verdict(_review(tmp_path, vj={
+        "verdict": "merge as-is", "certain": 0, "plausible": 2, "evidence": []}))
+    assert v["block"] and v["verdict_json"] is False
+    assert "disagrees with the prose block" in v["reason"]
+
+
+def test_json_invalid_schema_blocks(tmp_path: Path) -> None:
+    v = parse_verdict(_review(tmp_path, vj={
+        "verdict": "merge after listed fixes", "certain": 1, "plausible": 2, "evidence": []}))
+    assert v["block"] and "invalid verdict.json" in v["reason"]
+    v = parse_verdict(_review(tmp_path, vj="not json at all"))
+    assert v["block"] and "invalid verdict.json" in v["reason"]
+    v = parse_verdict(_review(tmp_path, vj={
+        "verdict": "ship it", "certain": 1, "plausible": 2,
+        "evidence": [{"file": "a.go", "line": 1, "note": "x"}]}))
+    assert v["block"] and "legal strings" in v["reason"]
+
+
+def test_json_with_malformed_prose_blocks(tmp_path: Path) -> None:
+    v = parse_verdict(_review(
+        tmp_path,
+        body="Verdict: merge as-is\nCertain: 0\nPlausible: 0\nlate\nprose\ntail\n",
+        vj={"verdict": "merge as-is", "certain": 0, "plausible": 0, "evidence": []}))
+    assert v["block"] and "prose verdict block is malformed" in v["reason"]
+
+
+def test_prose_only_certain_without_evidence_blocks(tmp_path: Path) -> None:
+    v = parse_verdict(_review(
+        tmp_path, body="two real bugs, trust me\n\nCertain: 2\nPlausible: 0\nVerdict: merge after listed fixes\n"))
+    assert v["block"] and "counted defects without evidence" in v["reason"]
+
+
+def test_prose_only_with_enough_references_passes(tmp_path: Path) -> None:
+    v = parse_verdict(_review(
+        tmp_path, body="bugs at pkg/a.go:12 and cmd/b.py:9\n\nCertain: 2\nPlausible: 0\nVerdict: merge after listed fixes\n"))
+    assert not v["block"] and v["certain"] == 2

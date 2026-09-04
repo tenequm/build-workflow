@@ -53,6 +53,11 @@ all and is a decision for the driver, not a fix list.
    not the times you used the word. Both counts are required even when they are 0.
    The judge prompt below lists the three uniqueness rules the parser needs and
    the two commands that check them; follow them before you commit.
+3. `.agents/verdict.json` written and COMMITTED beside the review, in the exact
+   schema the judge prompt gives: the same verdict and counts as the prose
+   block, plus one `{file, line, note}` evidence entry per certain defect. The
+   gate blocks this step on any schema error or disagreement with the prose
+   block, and on certain defects counted without evidence.
 
 ## Original brief
 
@@ -73,11 +78,11 @@ exact path in this worktree and nowhere else. Also write `.agents/scorecard.md`
 (numbers only). Record under a `## Deviations` heading in the scorecard anything
 you could not measure and why.
 
-When both files exist (`-f` because `.agents/` is gitignored in many repos, and
-an unstaged review is a review the gate cannot read):
+When all three files exist (`-f` because `.agents/` is gitignored in many
+repos, and an unstaged review is a review the gate cannot read):
 
 ```
-git add -f .agents/blind-review.md .agents/scorecard.md
+git add -f .agents/blind-review.md .agents/scorecard.md .agents/verdict.json
 git commit -m "docs(review): blind review of <phase>"
 ```
 
