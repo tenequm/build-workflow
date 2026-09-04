@@ -198,6 +198,15 @@ the workspace root.
 
 6. Handle blocked gates and retries.
 
+   Run `bernstein-herdr triage` first; its verdict routes you. It reads the
+   ledger tail, refused merges, the spawner log, the graveyard, the reflog and
+   live processes, and prints exactly one of: `TRIAGE: RETRYING` (wait, the
+   engine is on it), `TRIAGE: BRANCH-LOSS` (follow the recovery commands it
+   prints), `TRIAGE: DISPATCH-FIX` (write and dispatch a fix brief),
+   `TRIAGE: TERMINAL` (the run is over; act on the evidence), or
+   `TRIAGE: RUNNING` (nothing wrong), with the evidence lines under it. The
+   detail below is the manual fallback when a verdict needs context.
+
    A blocked gate refuses this merge. It writes a row to
    `.sdd/runtime/refused_merges.jsonl` and reports unhealthy, but a lifecycle
    retry may already be scheduled even with `gate_repair_enabled: false`.
@@ -272,8 +281,10 @@ the workspace root.
 
 7. Restore a displaced workspace root.
 
-   A warm-pool slot can run at the root, overwrite CLAUDE.md, and switch HEAD to
-   `agent/<role>-<id>`. The gate refuses that spawn. On every block check:
+   `bernstein-herdr triage` covers the branch-side evidence here too; run it
+   first. A warm-pool slot can run at the root, overwrite CLAUDE.md, and switch
+   HEAD to `agent/<role>-<id>`. The gate refuses that spawn. On every block
+   check:
 
        git symbolic-ref --short HEAD
        git status --short

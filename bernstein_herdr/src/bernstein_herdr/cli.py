@@ -7,10 +7,12 @@
   bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the verdict is `do not merge`
   bernstein-herdr fix-noop --step "<fix step title>"       write and commit the no-op report when the judge counted 0 certain defects; exit 1 otherwise
   bernstein-herdr watch [--interval N] [--stall M] [--until-stall]   event lines for a live run; exits on run end
+  bernstein-herdr triage                                   one-line verdict on a run's state, with the evidence behind it
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -332,6 +334,99 @@ def short_circuit_sha(wt: Path, memo_dir: Path, task_id: str, base_sha: str, int
     return sha if merged_ahead(wt, sha, base_sha, integration) else ""
 
 
+RETRY_EVIDENCE = re.compile(r"verdict=retry|scheduling retry", re.I)
+
+#: Exactly what build-run's branch-loss recovery prescribes, printed on BRANCH-LOSS.
+BRANCH_LOSS_RECOVERY = """recover (build-run step 6, branch-loss):
+  git reflog show --all | rg 'renamed refs/heads/'
+  git branch --list '<workspace branch>'
+  git log --oneline -5 salvage/<agent>
+  # if the workspace branch is missing: inspect the salvage tip; drop only a
+  # proven .sdd/ dump, then rename the salvage branch back and check it out:
+  git branch -m salvage/<agent> <workspace branch>
+  git checkout <workspace branch>
+  # anything merged after the rename landed on the wrong branch"""
+
+
+def classify(inputs: dict) -> tuple[str, list[str]]:
+    """(verdict, reasons) for `triage`, pure over gathered evidence.
+
+    inputs: rows (last runs.jsonl rows, dicts), refused (refused_merges.jsonl lines),
+    spawner (spawner.log tail lines), graveyard (for-each-ref lines), renames
+    (reflog lines naming `renamed refs/heads/`), pids ((pid, cmd) tuples).
+
+    Precedence: BRANCH-LOSS (a rename ate the workspace branch; everything else is
+    noise until it is back) > RETRYING (the engine is already handling it) >
+    DISPATCH-FIX (a refused merge with no retry pending needs a driver-dispatched
+    fix) > TERMINAL / RUNNING on liveness alone.
+    """
+    rows = inputs.get("rows") or []
+    refused = inputs.get("refused") or []
+    spawner = inputs.get("spawner") or []
+    graveyard = inputs.get("graveyard") or []
+    renames = inputs.get("renames") or []
+    pids = inputs.get("pids") or []
+    alive = [f"{len(pids)} live bernstein process(es)"] if pids else ["no live bernstein process"]
+    last = [f"last gate row: {json.dumps(rows[-1], separators=(',', ':'))[:200]}"] if rows else []
+    if renames:
+        return "BRANCH-LOSS", [f"branch rename seen: {l.strip()[:200]}" for l in renames[-3:]] + alive
+    retry = [l for l in spawner if RETRY_EVIDENCE.search(l)]
+    if retry and pids:
+        return "RETRYING", [f"retry scheduled: {retry[-1].strip()[:200]}"] + alive + last
+    if refused and not retry:
+        reasons = [f"refused merge: {l.strip()[:200]}" for l in refused[-3:]]
+        reasons += ["no retry pending in spawner.log"] + alive
+        if graveyard:
+            reasons.append(f"graveyard holds {len(graveyard)} ref(s); newest: {graveyard[-1].strip()[:120]}")
+        return "DISPATCH-FIX", reasons + last
+    if not pids:
+        return "TERMINAL", alive + ["no refused merge and no pending retry"] + last
+    return "RUNNING", alive + ["no trouble evidence in the ledger, refused merges, spawner log or reflog"] + last
+
+
+def triage(root: Path) -> int:
+    """Gather the evidence (all best effort) and print `TRIAGE: <verdict>` first."""
+    import json
+    import subprocess
+
+    from bernstein_herdr.plan import load_plan
+    from bernstein_herdr.proc import stale_bernstein_pids
+
+    def lines(path: Path, tail: int | None = None) -> list[str]:
+        try:
+            out = path.read_text(errors="replace").splitlines()
+            return out[-tail:] if tail else out
+        except OSError:
+            return []
+
+    rows: list[dict] = []
+    try:
+        run_dir = load_plan(root=root).run_dir
+        for l in lines(run_dir / "runs.jsonl", 3):
+            try:
+                rows.append(json.loads(l))
+            except json.JSONDecodeError:
+                pass
+    except Exception:
+        pass
+    git = lambda *a: subprocess.run(["git", *a], cwd=root, capture_output=True, text=True, check=False).stdout
+    inputs = {
+        "rows": rows,
+        "refused": lines(root / ".sdd" / "runtime" / "refused_merges.jsonl"),
+        "spawner": lines(root / ".sdd" / "runtime" / "spawner.log", 200),
+        "graveyard": [l for l in git("for-each-ref", "refs/graveyard/").splitlines() if l.strip()],
+        "renames": [l for l in git("reflog", "show", "--all").splitlines() if "renamed refs/heads/" in l],
+        "pids": stale_bernstein_pids(root),
+    }
+    verdict, reasons = classify(inputs)
+    print(f"TRIAGE: {verdict}")
+    for r in reasons:
+        print(f"  {r}")
+    if verdict == "BRANCH-LOSS":
+        print(BRANCH_LOSS_RECOVERY)
+    return 0
+
+
 def fix_noop(cwd: Path, title: str) -> int:
     """The fix step's no-op path as a command, so no model has to transcribe it.
 
@@ -578,6 +673,9 @@ def main() -> int:
         if _arg(rest, "--stall"):
             kw["stall_minutes"] = float(_arg(rest, "--stall"))
         return watch(root, plan.run_dir, until_stall="--until-stall" in rest, **kw)
+    if cmd == "triage":
+        from bernstein_herdr.plan import repo_root
+        return triage(repo_root(Path.cwd()))
     if cmd == "fix-noop":
         return fix_noop(Path.cwd(), _arg(rest, "--step") or "")
     if cmd == "judge-verdict":

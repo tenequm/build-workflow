@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from bernstein_herdr.cli import completed_steps, fix_noop
+from bernstein_herdr.cli import classify, completed_steps, fix_noop
 
 FIX_TITLE = "fix-1: judge findings on phase-1"
 
@@ -156,3 +156,47 @@ def test_completed_steps_no_sha_anywhere_completes_without_ancestry(tmp_path: Pa
     hits: list[str] = []
     assert completed_steps([row()], tmp_path, hits.append) == {"phase-1"}
     assert hits == []
+
+
+# --- H10: triage classification ---------------------------------------------
+
+PIDS = [(123, "bernstein run ...")]
+
+
+def test_classify_branch_loss_takes_precedence() -> None:
+    verdict, reasons = classify({
+        "renames": ["abc123 HEAD@{0}: Branch: renamed refs/heads/build/x to refs/heads/salvage/a1"],
+        "spawner": ["retry_or_fail_task verdict=retry attempt=1/3"],
+        "refused": ["{}"], "pids": PIDS})
+    assert verdict == "BRANCH-LOSS"
+    assert any("renamed refs/heads" in r for r in reasons)
+
+
+def test_classify_retrying() -> None:
+    verdict, reasons = classify({
+        "spawner": ["retry_or_fail_task verdict=retry attempt=2/3"],
+        "refused": ["{}"], "pids": PIDS})
+    assert verdict == "RETRYING"
+    assert any("retry scheduled" in r for r in reasons)
+
+
+def test_classify_dispatch_fix() -> None:
+    verdict, reasons = classify({
+        "refused": ['{"task": "t1", "reason": "allowlist violation src/evil.go"}'],
+        "spawner": ["retry_or_fail_task verdict=permanent_fail"],
+        "graveyard": ["abc refs/graveyard/a1-123"], "pids": []})
+    assert verdict == "DISPATCH-FIX"
+    assert any("allowlist violation" in r for r in reasons)
+    assert any("no retry pending" in r for r in reasons)
+
+
+def test_classify_terminal() -> None:
+    verdict, reasons = classify({"rows": [{"step": "s", "blocked": False}], "pids": []})
+    assert verdict == "TERMINAL"
+    assert any("no live bernstein process" in r for r in reasons)
+
+
+def test_classify_running() -> None:
+    verdict, reasons = classify({"pids": PIDS})
+    assert verdict == "RUNNING"
+    assert any("live bernstein process" in r for r in reasons)
