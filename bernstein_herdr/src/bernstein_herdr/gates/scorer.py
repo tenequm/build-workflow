@@ -132,8 +132,14 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     # silent success: a refused step used to pass (gate green on an untouched tree, report
     # committed) and the missing work surfaced only at branch validation (retro item 8).
     f["refusal"] = claims.get("refusal")
+    # A report that contradicts the measured gate is a false receipt and blocks. The
+    # SOLE entry "no report file" stays a non-blocking note: Codex skips the report on
+    # about half of otherwise-good steps (measured 2026-09-02), and the gate measures
+    # everything the report would have claimed anyway.
+    lying_report = bool(mismatch) and mismatch != ["no report file"]
     blocked = (rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0
-               or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]) or bool(f["plans_dir_edit"]))
+               or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]) or bool(f["plans_dir_edit"])
+               or lying_report)
     f["blocked"] = blocked
     ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-scorer", "step": step.slug, "gate": "scorer", "evidence": "verified", **{k: v for k, v in f.items() if k != "gate"}, "gate_rc": rc})
     return blocked, f

@@ -230,9 +230,12 @@ the workspace root.
    memo never qualifies. `gate: already merged` creates no row or archive.
    Doing nothing is still scored and blocks.
 
+   A report that contradicts the measured gate (claimed exit codes or issue
+   counts against the measured result) BLOCKS the merge as `report_mismatch`
+   in the row; only the sole entry "no report file" stays a non-blocking note.
    A committed refusal receipt (`scope_exceeded`, `underspecified`,
-   `blocked_on_dependency`, `awaiting_operator` in the report) now BLOCKS the
-   merge by design: the step parks as failed instead of passing silently, the
+   `blocked_on_dependency`, `awaiting_operator` in the report) likewise BLOCKS
+   the merge by design: the step parks as failed instead of passing silently, the
    refused branch is in the graveyard, and the driver dispatches the answer as
    a fix brief or records the failure. A malformed or missing judge review
    likewise blocks the judge step so the engine retries it; fix-N's refusal

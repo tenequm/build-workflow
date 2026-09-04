@@ -132,3 +132,46 @@ def test_no_plans_dir_edit_passes(ws: Path) -> None:
     blocked, f = score(wt, TITLE)
     assert f["plans_dir_edit"] == []
     assert not blocked
+
+
+def test_report_mismatch_blocks(ws: Path) -> None:
+    """H4: a report that claims exit 0 against a measured red gate blocks."""
+    side = ws / ".agents" / "build" / "plans" / "t.steps.yaml"
+    side.write_text(side.read_text().replace('gate_cmd: "true"', 'gate_cmd: "false"'))
+    git(ws, "add", "-A")
+    git(ws, "commit", "-qm", "chore: red gate")
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    (wt / ".agents").mkdir(exist_ok=True)
+    (wt / ".agents" / "phase-1-work.md").write_text("## Validation\n\nExit: 0\n\n## Deviations\n\nnone\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert "report claims all commands exit 0; measured gate is red" in f["report_mismatch"]
+    assert blocked
+
+
+def test_report_mismatch_blocks_on_green_gate(ws: Path) -> None:
+    """H4: the mismatch blocks on its own, not only when the gate is already red."""
+    side = ws / ".agents" / "build" / "plans" / "t.steps.yaml"
+    side.write_text(side.read_text().replace("gate_cmd: \"true\"", "gate_cmd: \"echo 'lint ran: 3 issues.'\""))
+    git(ws, "add", "-A")
+    git(ws, "commit", "-qm", "chore: lint-shaped gate")
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    (wt / ".agents").mkdir(exist_ok=True)
+    (wt / ".agents" / "phase-1-work.md").write_text("## Validation\n\nlint clean, 0 issues.\n\n## Deviations\n\nnone\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert f["gate"]["rc"] == 0
+    assert "report claims 0 issues; measured 3" in f["report_mismatch"]
+    assert blocked
+
+
+def test_missing_report_alone_does_not_block(ws: Path) -> None:
+    """H4: the sole entry "no report file" stays a non-blocking note."""
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert f["report_mismatch"] == ["no report file"]
+    assert not blocked
