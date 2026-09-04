@@ -22,24 +22,17 @@ whether there is anything to do.
    facts from that file's last three lines (a legal verdict string, and both
    counts present as `Certain:` / `Plausible:` lines -- absent lines mean
    `counts_declared: false`).
-2. NO-OP PATH -- take it ONLY when all three hold: `verdict` is one of the three
-   legal strings (`merge as-is`, `merge after listed fixes`, `do not merge`),
-   `counts_declared` is `true`, and `certain` is 0. Write `<report path>` with
-   the verdict line and the two counts quoted, one sentence saying no certain
-   defect was reported and nothing was changed, and `## Deviations\n\nnone`.
-   Then:
+2. NO-OP PATH -- run, from this worktree's root:
 
    ```
-   git add -f <report path>
-   git commit -m "docs: fix-N no-op, judge reported 0 certain defects"
+   bernstein-herdr fix-noop --step "<this step's exact title>"
    ```
 
-   `-f` because `.agents/` is gitignored in many repos, and an unstaged report
-   means a commit of nothing, which the gate blocks. That commit is the whole
-   step: `.agents/` is excluded from the gate's diff and from the allowlist
-   check, so the gate sees zero changed files and passes. Do not touch a source
-   file to "have something to show"; do not open the phase diff looking for work
-   the judge did not report.
+   If it prints DONE you are finished: it verified the judge's verdict is
+   legal with declared counts and `certain: 0`, wrote `<report path>` itself,
+   and committed it. If it exits 1, read its reason and take the matching
+   path below. Do not touch a source file to "have something to show"; do not
+   open the phase diff looking for work the judge did not report.
 3. REFUSAL PATH (defensive fallback -- a malformed or missing review normally
    blocks the judge step itself, so this step never spawns; you reach here only
    if `verdict.json` is unreadable or inconsistent from your worktree) --

@@ -5,6 +5,7 @@
   bernstein-herdr gate                                     THE quality gate: run by Bernstein from the agent worktree
   bernstein-herdr scorer --step "<title>"                  scorer gate in the current worktree; exit 0/1
   bernstein-herdr judge-verdict --step "<phase title>"     completion signal for a judge step; exit 0 unless the verdict is `do not merge`
+  bernstein-herdr fix-noop --step "<fix step title>"       write and commit the no-op report when the judge counted 0 certain defects; exit 1 otherwise
   bernstein-herdr watch [--interval N] [--stall M] [--until-stall]   event lines for a live run; exits on run end
 """
 
@@ -231,6 +232,76 @@ def short_circuit_sha(wt: Path, memo_dir: Path, task_id: str, base_sha: str, int
     return sha if merged_ahead(wt, sha, base_sha, integration) else ""
 
 
+def fix_noop(cwd: Path, title: str) -> int:
+    """The fix step's no-op path as a command, so no model has to transcribe it.
+
+    Reads the judged phase's `<run>/judge/<phase slug>/verdict.json` (the fix
+    sidecar's `fixes:` names the phase). ONLY when the verdict is legal, both
+    counts are declared, and `certain` is 0: writes the no-op report at the
+    step's report path, `git add -f` + commits it, prints DONE, exits 0. Any
+    other state prints why and exits 1 without writing anything.
+    """
+    import json
+    import subprocess
+
+    from bernstein_herdr.judge import VERDICTS
+    from bernstein_herdr.plan import load_plan, repo_root
+
+    if not title:
+        print('fix-noop: pass --step "<fix step title>"')
+        return 1
+    try:
+        plan = load_plan(root=repo_root(cwd))
+        step = plan.step(title)
+    except Exception as exc:
+        print(f"fix-noop: cannot resolve the step: {exc}")
+        return 1
+    if not step.fixes:
+        print(f"fix-noop: step {title!r} declares no `fixes:` in the sidecar; only a fix step can no-op")
+        return 1
+    try:
+        phase = plan.step(step.fixes)
+    except KeyError as exc:
+        print(f"fix-noop: sidecar `fixes:` does not name a plan step: {exc}")
+        return 1
+    vj = plan.run_dir / "judge" / phase.slug / "verdict.json"
+    if not vj.exists():
+        print(f"fix-noop: no judge verdict at {vj}; the judge for {phase.slug} has not recorded one")
+        return 1
+    try:
+        v = json.loads(vj.read_text())
+    except json.JSONDecodeError as exc:
+        print(f"fix-noop: unreadable verdict.json at {vj}: {exc}")
+        return 1
+    if v.get("verdict") not in VERDICTS:
+        print(f"fix-noop: verdict {v.get('verdict')!r} is not one of the three legal strings; "
+              f"the review cannot route this step -- take the refusal path")
+        return 1
+    if not v.get("counts_declared"):
+        print("fix-noop: counts_declared is false; the review cannot route this step -- take the refusal path")
+        return 1
+    if v.get("certain") != 0:
+        print(f"fix-noop: the judge counted certain={v.get('certain')}; take the fix path")
+        return 1
+    report = cwd / step.report_rel
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(
+        f"# Report: {step.title}\n\n"
+        f"Verdict: {v['verdict']}\n"
+        f"Certain: {v.get('certain')}\n"
+        f"Plausible: {v.get('plausible')}\n\n"
+        f"The judge reported 0 certain defects on {step.fixes!r}; nothing was changed.\n\n"
+        f"## Deviations\n\nnone\n")
+    add = subprocess.run(["git", "add", "-f", step.report_rel], cwd=cwd, capture_output=True, text=True, check=False)
+    commit = subprocess.run(["git", "commit", "-m", f"docs: {step.slug} no-op, judge reported 0 certain defects"],
+                            cwd=cwd, capture_output=True, text=True, check=False)
+    if add.returncode != 0 or commit.returncode != 0:
+        print(f"fix-noop: report written but the commit failed:\n{add.stderr}{commit.stdout}{commit.stderr}")
+        return 1
+    print("DONE")
+    return 0
+
+
 def gate(argv: list[str]) -> int:
     """The quality gate, run by Bernstein in the agent worktree before the merge.
 
@@ -407,6 +478,8 @@ def main() -> int:
         if _arg(rest, "--stall"):
             kw["stall_minutes"] = float(_arg(rest, "--stall"))
         return watch(root, plan.run_dir, until_stall="--until-stall" in rest, **kw)
+    if cmd == "fix-noop":
+        return fix_noop(Path.cwd(), _arg(rest, "--step") or "")
     if cmd == "judge-verdict":
         from bernstein_herdr.judge import record_verdict
         from bernstein_herdr.plan import load_plan, repo_root
