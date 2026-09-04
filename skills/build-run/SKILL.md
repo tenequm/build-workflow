@@ -250,7 +250,10 @@ the workspace root.
    quarantine. The common cause is an allowlist violation named by the row.
    Any tracked change under `.agents/build/plans/` versus the step base is an
    automatic block (`plans_dir_edit` in the row): the plan files configure the
-   gate itself and no step may rewrite them.
+   gate itself and no step may rewrite them. The gate also re-hashes the plan
+   file and the step's brief against `<run>/readiness/pins.json` and blocks on
+   drift (`pin_drift` names the drifted key); after any driver-side brief or
+   plan edit, rerun readiness so the pins move with it.
    Once engine retries are spent, mechanically dispatch a fresh executor only
    when the gate or judge names a concrete defect inside existing allowlists.
    Write and commit a fix brief, rerun readiness, and dispatch the fix. Preserve

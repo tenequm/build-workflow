@@ -25,7 +25,7 @@ from bernstein.core.quality.gate_plugins import GatePlugin
 from bernstein.core.quality.gate_runner import GateResult
 
 from bernstein_herdr import ledger
-from bernstein_herdr.plan import frozen_plan, load_plan, repo_root
+from bernstein_herdr.plan import frozen_plan, load_plan, repo_root, sha256
 
 LINT_RUN = re.compile(r"golangci|\bruff\b|eslint|clippy|\blint(ing|er)?\b", re.I)
 NOLINT = re.compile(r"^\+.*//\s*nolint\b(?!.*\s//\s*\S)", re.M)
@@ -131,6 +131,18 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     # A refusal receipt in the report parks the step as failed instead of merging it as a
     # silent success: a refused step used to pass (gate green on an untouched tree, report
     # committed) and the missing work surfaced only at branch validation (retro item 8).
+    # Readiness pinned the plan and every brief; the gate refuses to score against
+    # drifted copies (a root-side edit between readiness and this attempt). Absent
+    # pins.json (pre-readiness, tests) is a note, never a block.
+    pins_path = plan.run_dir / "readiness" / "pins.json"
+    if pins_path.exists():
+        pins = json.loads(pins_path.read_text())
+        f["pin_drift"] = [key for key, path in (("plan", plan.path), (f"brief:{step.slug}", step.brief))
+                          if key in pins and sha256(path) != pins[key]]
+    else:
+        f["pin_drift"] = None
+        ledger.note(plan.run_dir, f"gate {step.slug}: no readiness pins.json; pin check skipped")
+
     f["refusal"] = claims.get("refusal")
     # A report that contradicts the measured gate is a false receipt and blocks. The
     # SOLE entry "no report file" stays a non-blocking note: Codex skips the report on
@@ -139,7 +151,7 @@ def score(worktree: Path, task_title: str, changed_files: list[str] | None = Non
     lying_report = bool(mismatch) and mismatch != ["no report file"]
     blocked = (rc != 0 or bool(f["allowlist_violations"]) or f["new_nolint_without_reason"] > 0
                or bool(deleted) or f["commits"] == 0 or bool(f["refusal"]) or bool(f["plans_dir_edit"])
-               or lying_report)
+               or lying_report or bool(f["pin_drift"]))
     f["blocked"] = blocked
     ledger.row(plan.run_dir, {"run_id": f"{plan.slug}-{step.slug}-scorer", "step": step.slug, "gate": "scorer", "evidence": "verified", **{k: v for k, v in f.items() if k != "gate"}, "gate_rc": rc})
     return blocked, f

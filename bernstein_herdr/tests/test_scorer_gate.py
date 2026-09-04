@@ -175,3 +175,46 @@ def test_missing_report_alone_does_not_block(ws: Path) -> None:
     blocked, f = score(wt, TITLE)
     assert f["report_mismatch"] == ["no report file"]
     assert not blocked
+
+
+def _sha(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def test_pin_drift_blocks(ws: Path) -> None:
+    """H5: a plan file that drifted from the readiness pin blocks, naming the key."""
+    rd = ws / ".agents" / "build" / "runs" / "t" / "readiness"
+    rd.mkdir(parents=True)
+    (rd / "pins.json").write_text(json.dumps({"plan": "0" * 64}))
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert f["pin_drift"] == ["plan"]
+    assert blocked
+
+
+def test_pin_match_passes(ws: Path) -> None:
+    """H5: pins that match the working copies do not block."""
+    rd = ws / ".agents" / "build" / "runs" / "t" / "readiness"
+    rd.mkdir(parents=True)
+    (rd / "pins.json").write_text(json.dumps({
+        "plan": _sha(ws / ".agents" / "build" / "plans" / "t.yaml"),
+        "brief:phase-1-work": "",
+    }))
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert f["pin_drift"] == []
+    assert not blocked
+
+
+def test_missing_pins_is_a_note_not_a_block(ws: Path) -> None:
+    """H5: no pins.json means the check is skipped, recorded as None."""
+    wt = worktree(ws)
+    (wt / "src" / "a.txt").write_text("work\n")
+    commit_all(wt)
+    blocked, f = score(wt, TITLE)
+    assert f["pin_drift"] is None
+    assert not blocked
