@@ -19,8 +19,8 @@ Resolving the input:
   its sidecar's `defaults.doc`.
 - nothing given, in a primary checkout: list `.claude/worktrees/*` that hold
   an `.agents/build/runs/<slug>/workspace.json`. Exactly one: tell the user
-  its path and enter it with the native EnterWorktree tool in path mode, then
-  continue. Several: ask which. None: there is no ready build; say so and
+  its path and enter it with the harness's native worktree tool (EnterWorktree
+  in Claude Code, path mode), then continue. Several: ask which. None: there is no ready build; say so and
   point at `/build-plan`.
 - anything else missing on the way (no ACTIVE, no sidecar, no `report.md`,
   readiness not READY): name the missing piece and the `/build-plan` stage
@@ -380,8 +380,12 @@ the workspace root.
     - The instruction to write no application files.
 
     Turn findings into committed `.agents/build/plans/<slug>/close-N.md` briefs
-    and dispatch each as a fresh driver-spawned executor subagent with an exact
-    allowlist (the DAG is over; Bernstein is not relaunched for close rounds). Rerun affected
+    and dispatch ONE sequential codex `gpt-5.6-sol` (effort high) session
+    through herdr per round with an exact allowlist - the 2026-08-31 evals'
+    fix-list conclusion: one coherent pass, zero introduced defects. When
+    herdr or codex is unavailable, the named fallback is a `claude-opus-5`
+    executor subagent per brief. The DAG is over; Bernstein is not relaunched
+    for close rounds. Rerun affected
     checks. Repeat review rounds until a round warrants no edits. Remove detached judge worktrees after archiving evidence.
 
     For each `close-N` round, record:

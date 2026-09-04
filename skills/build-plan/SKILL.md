@@ -12,7 +12,10 @@ executor can start from, a workspace, and a readiness verdict. Human time is
 spent on the spec and on one checkpoint written in spec terms, never on
 implementation detail.
 
-Run in the primary checkout until WORKSPACE, then in the workspace. The
+Everything before the first artifact write is read-only and may run from
+anywhere in the repo; the first write triggers WORKSPACE (section 3), and
+from then on the session lives in the workspace and every artifact commits
+on its branch - the primary stays free for other sessions. The
 driver writes every spec, plan, facts, report, contract document and brief.
 Research and criticism use subagents. Code is written only by the planning
 executor in WITNESS, never by the driver.
@@ -123,6 +126,13 @@ the user on the spec only, three to eight questions that change outcomes,
 approach, scope or delegation. Draft spec.md; the user signs off. Pick a
 short lowercase title slug, one word or two joined by `-`.
 
+The interview and recon are read-only. At the moment the plan directory is
+about to be created - the first write of any kind - ask one intent-level
+question with no implementation vocabulary: "Build this in an isolated
+workspace so the main checkout stays free? (yes)". Default yes. On yes,
+run WORKSPACE now with the chosen slug and continue from inside it; on no
+(sensible for tier S), continue in place. Never ask again for this plan.
+
 Starting from an existing single-file plan document: create the directory,
 move intent-level content into spec.md, discard the rest (plan.md is
 regenerated), and ask for sign-off on spec.md. Starting from an existing plan
@@ -130,18 +140,19 @@ directory: skip INTAKE when spec.md has no commit after the sign-off sha
 recorded in PLAN 7 or the user says it is current. With no argument, continue the current
 directory when it is clear; otherwise ask.
 
-Sign-off is a commit on the primary branch containing only the plan directory
-with spec.md; record its sha in PLAN 7 as `signed-off: <commit sha>`. The same
+Sign-off is a commit on the WORKSPACE branch (or the current branch when the
+user declined a workspace) containing only the plan directory with spec.md;
+record its sha in PLAN 7 as `signed-off: <commit sha>`. The same
 sha is ALSO recorded in the machine sidecar at CUT as `defaults.signoff`:
 readiness compares the working spec.md against `git show <sha>:<spec path>`
 and FAILS when they differ, so a spec edited after sign-off cannot reach an
 unattended run. spec.md is current when `git log --format=%H -- spec.md` shows
-no commit after that sha. This is the last commit the plan makes on the
-primary; everything after lands on the workspace branch.
+no commit after that sha. The primary branch is never committed to by the
+plan; the plan directory reaches it when /build-close merges the branch.
 
 ## 2. DISCOVER
 
-Fan out research subagents (`model: opus`), reports only, never a file. Tier
+Fan out research subagents on `claude-opus-5` (in Claude Code: `model: opus` on the Agent call), reports only, never a file. Tier
 S: none, the driver reads. Tier M: one. Tier L: two to four, split by area.
 Each returns:
 
@@ -172,12 +183,13 @@ git dir differs from the common dir and the superproject result is empty,
 already inside a linked worktree: continue.
 
 In the primary checkout, if `<run>/workspace.json` exists, verify its five
-fields and re-enter its recorded absolute `path` with the native EnterWorktree
-tool in path mode. Never create a second worktree.
+fields and re-enter its recorded absolute `path` with the harness's native
+worktree tool (EnterWorktree in Claude Code, path mode). Never create a
+second worktree.
 
-Otherwise capture the primary HEAD sha and branch; HEAD must be the sign-off
-commit or a descendant. Ask once for branch type `feat|fix|chore|refactor`,
-default `feat`. If `.claude/worktrees/` is not gitignored, add that one line
+Otherwise capture the primary HEAD sha and branch (the workspace branches
+from whatever the primary is at when the first write arrives). Ask once for
+branch type `feat|fix|chore|refactor`, default `feat`. If `.claude/worktrees/` is not gitignored, add that one line
 to the PRIMARY's working tree UNCOMMITTED (it keeps the worktree path
 untracked there; the workspace branched before the edit, so the committed
 copy is made in the workspace below). Create:
@@ -194,13 +206,15 @@ the workspace reverts those edits (a near-miss on 2026-09-03 was stopped only
 by a failed `cd`). The primary may move under an active build; never resync
 from it, the workspace branch is the truth.
 
-Permissions live in the PRIMARY checkout, not the workspace: Claude Code reads
-`.claude/settings*.json` from the main checkout's root for every worktree of
-the repo, and a worktree's own settings file is ignored. Copy this skill's
+The workspace session must inherit the primary checkout's tool permissions;
+how depends on the harness. In Claude Code: settings are read from
+`.claude/settings*.json` at the MAIN checkout's root for every worktree (a
+worktree's own settings file is ignored), so copy this skill's
 `templates/claude-settings.local.json` to
 `<primary>/.claude/settings.local.json`, merging allow lists by hand if the
-file exists, and confirm the primary gitignores it. Config reloads on the
-worktree switch, so no session restart is needed.
+file exists, and confirm the primary gitignores it; config reloads on the
+worktree switch, no session restart needed. A harness without file-based
+permissions skips this step.
 
 Copy this skill's own `templates/bernstein.yaml` when the repo has none and set
 `quality_gates.base_ref: <type>/<slug>`. If the repo tracks one, change only
@@ -213,16 +227,18 @@ branch name, commonly `main`), `primary` (absolute primary checkout path).
 In the WORKSPACE, repeat the `.gitignore` line when it was missing, then make
 one seed commit containing ONLY `bernstein.yaml`, that `.gitignore` edit, and
 `ACTIVE`. Keep copied local state untracked. Enter the workspace
-with native EnterWorktree path mode. If EnterWorktree is absent, tell the user
-to start a session in the absolute workspace path and stop. Point
+with the harness's native worktree tool (EnterWorktree in Claude Code, path
+mode). A harness without one: tell the user to start a session in the
+absolute workspace path and stop. Point
 `core.hooksPath` at an empty repo-local directory now (`.agents/build/nohooks`);
 linked worktrees share hooks and every later stage commits.
 
 ## 4. WITNESS (tier L only)
 
 The spec becomes code before the plan does. Spawn ONE planning executor
-(`model: opus`, or Codex through herdr) in the workspace, on the workspace
-branch, with a brief the driver writes. It lands, in two commits:
+on `claude-opus-5` (seam and contract work is Claude's per the 2026-08-31
+executor evals) in the workspace, on the workspace branch, with a brief the
+driver writes. It lands, in two commits:
 
 1. `test(<scope>): witness SPEC 2 outcomes` - one failing acceptance test per
    SPEC 2 outcome, derived from spec.md alone, before any contract exists, so
@@ -428,7 +444,7 @@ Codex effort must be high, every role needs a `role_model_policy`, fast-path
 titles must be reworded, parallel tasks must not share a role, judge fields must
 be exact, and fix gates must match the step they repair.
 
-Probes (tier L): one fresh executor subagent (`model: opus`) per executor
+Probes (tier L): one fresh executor subagent on `claude-opus-5` per executor
 brief, in parallel batches, each in a throwaway detached worktree of the
 workspace branch outside the repo. The probe has ten minutes to locate every
 allowlisted file, resolve every SPEC, PLAN and DESIGN citation, read the
