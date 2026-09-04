@@ -160,9 +160,13 @@ the workspace root.
 
    Run it IN THE BACKGROUND from the workspace root right after the launch.
    It prints one line per event (new runs.jsonl row, ledger line, spawner
-   trouble line), a STALL line when a live run produces nothing for the
-   stall window, and END when no Bernstein process owns this root; it exits
-   on END. Act only on its lines. On STALL apply the stall rule below. Do
+   trouble line - each trouble line is also appended to `<run>/runs.jsonl` as
+   a `spawner_event` row so kills land in the causal ledger), a STALL line
+   when a live run produces nothing for the stall window, ORCH-DEAD when live
+   processes stop answering on the recorded server port for 10+ minutes, DISK
+   / DISK-CRITICAL when free space crosses 10 GB / 2 GB (on DISK-CRITICAL,
+   kill the run before commits start failing), and END when no Bernstein
+   process owns this root; it exits on END. Act only on its lines. On STALL apply the stall rule below. Do
    not run the old manual poll; these commands remain for AD-HOC inspection
    when a watch line needs context:
 
