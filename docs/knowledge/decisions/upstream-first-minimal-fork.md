@@ -1,0 +1,53 @@
+---
+type: Decision
+title: Bernstein is tracked upstream-first through a minimal rebased fork
+description: The engine fork carries only fixes upstream does not yet have, rebuilt from upstream main whenever upstream absorbs some; every fix is submitted upstream as a small single-topic PR, and the fork dies once a PyPI release ships the last one.
+tags: [bernstein, fork, upstream, dependencies]
+status: stable
+generated: { by: claude-code/fable-5, at: "2026-09-07T14:55:00Z" }
+sources:
+  - id: refs-update
+    resource: https://github.com/tenequm/build-workflow/commit/cbdd972
+    title: "docs: point fork references at fork/main-plus-fixes (upstream main + 3 fixes)"
+  - id: fork-branch
+    resource: https://github.com/tenequm/bernstein/tree/fork/main-plus-fixes
+    title: The carrying branch (upstream main plus the unmerged fixes)
+  - id: absorbed
+    resource: https://github.com/sipyourdrink-ltd/bernstein/pulls?q=is%3Apr+author%3Atenequm+is%3Amerged
+    title: Merged upstream PRs from this project
+---
+
+# Decision
+
+The fork branch (`fork/main-plus-fixes` on `tenequm/bernstein`) is upstream
+`main` plus only the fixes upstream does not yet carry - nothing
+else.[^fork-branch] Every engine defect the workflow hits is fixed locally,
+then submitted upstream as a small single-topic PR with a regression test
+that fails on upstream's base. When upstream absorbs fixes, the branch is
+rebuilt from current `main` with only the survivors cherry-picked, and the
+stale remote branch is force-pushed (same name, so README instructions stay
+valid).[^refs-update] The exit condition is explicit: once a PyPI release
+contains every carried fix, the fork is deleted and the workflow installs
+stock Bernstein.
+
+# Why minimal, why rebuilt
+
+A long-lived fork rots in two directions: its own commits conflict with a
+fast-moving upstream (Bernstein merges dozens of commits per day), and the
+companion package (`bernstein_herdr`) imports engine internals whose line
+numbers and regexes are cited from a specific version. The 2026-09-07
+reconciliation measured the cost of not rebasing: the fork had accumulated
+20 commits, of which 17 were already on upstream `main` in reshaped form -
+dead weight that made every future rebase and every drift question harder.
+Rebuilding cut it to 3.[^refs-update][^absorbed]
+
+Upstreaming aggressively works here because the maintainers demonstrably
+merge small, evidence-backed PRs within days and have twice fixed our
+branches themselves rather than bounce them.[^absorbed] The corollary
+discipline: fixes stay single-topic and carry fail-on-base tests, because
+that is the shape upstream's review machinery verifies (see
+[contributing conventions](/references/contributing-to-bernstein.md)).
+
+[^refs-update]: docs: point fork references at fork/main-plus-fixes
+[^fork-branch]: The carrying branch on the fork
+[^absorbed]: Merged upstream PRs from this project
