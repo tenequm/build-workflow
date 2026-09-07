@@ -20,6 +20,7 @@ deleted. Written as if this repository is public - because it is.
 # Findings
 
 * [A fix proven in our environment is not proven for stock Bernstein](findings/validate-fixes-against-stock-assumptions.md) - pre-submission adversarial validation of three locally-proven engine fixes found one that would false-positive on every clean exit in stock target repos and disproved the premise of half of another.
+* [Codex turns can be silently truncated by its content filter, presenting as clean completion](findings/codex-content-filter-truncates-executor-turns.md) - benign vocabulary (race, sweep, exploit, attack) can kill a codex turn mid-task with a normal-looking ending, so an executor can exit 0 with its work incomplete; brief vocabulary is the authorable risk surface and the engine's clean-exit guards are the mitigation.
 
 # References
 
