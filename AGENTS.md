@@ -10,9 +10,10 @@ The operator's own machines consume `skills/` via live symlinks from
 immediately and need no install step.
 
 A build occupies only its workspace branch: the plan commits nothing to the
-primary (workspace-at-first-write, 2026-09-04), so other sessions may work on
-main freely while a build runs; primary drift is resolved by /build-close's
-merge. The one shared file is the primary's `.claude/settings.local.json`,
+primary (workspace-at-first-write, 2026-09-04; rationale in
+[the decision record](docs/knowledge/decisions/workspace-at-first-write.md)),
+so other sessions may work on main freely while a build runs; primary drift
+is resolved by /build-close's merge. The one shared file is the primary's `.claude/settings.local.json`,
 written once at workspace creation.
 
 The three skills are self-contained: a skill never invokes another skill
