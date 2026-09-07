@@ -4,7 +4,7 @@ title: Workspace-at-first-write replaces the primary lock
 description: A build occupies only its workspace branch from the first artifact write, so other sessions work on main freely; the repo-wide primary lock of 2026-09-03 was dropped for this on 2026-09-04.
 tags: [build-pipeline, git, concurrency, worktrees]
 status: stable
-generated: { by: claude-code/fable-5, at: 2026-09-07T14:42:00Z }
+generated: { by: claude-code/fable-5, at: "2026-09-07T14:42:00Z" }
 sources:
   - id: primary-lock
     resource: https://github.com/tenequm/build-workflow/commit/0813b9673ab8d24509ceb92154643eb1f25eabc2
