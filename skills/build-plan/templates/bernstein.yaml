@@ -134,9 +134,11 @@ quality_gates:
 # .sdd/runtime/config_snapshot.json and still logged `grace_s=90 verdict=DEAD` and
 # `Timeout after 1800s` (2026-09-03: a healthy judge SIGTERMed 13 min into its review).
 # The patched clone the README mandates (github.com/tenequm/bernstein, branch
-# fix/warm-pool-empty-worktree) reads those singletons THROUGH the module on every call;
-# an engine installed any other way -- PyPI 3.19.0 included -- ignores this whole section
-# at the kill paths, and no `tuning:` value can make such a run safe.
+# fork/main-plus-fixes -- upstream main plus three unattended-run fixes) reads those
+# singletons THROUGH the module on every call. Upstream main does too since #5381/#5415
+# (merged 2026-09-05..07), but no PyPI release does yet (latest v3.19.1, 2026-09-03) --
+# a registry install still ignores this whole section at the kill paths, and no
+# `tuning:` value can make such a run safe.
 #
 # VERIFY AT RUNTIME, from the log and not from the absence of a warning:
 #
