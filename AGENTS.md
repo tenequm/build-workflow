@@ -23,3 +23,8 @@ breaks for them.
 
 A retro item closes only as a check, a template field, or a test - never as
 another skill sentence.
+
+Durable project knowledge lives in `docs/knowledge/` (an OKF bundle; read its
+`index.md` first). Load the okf-project-knowledge-base skill before reading or
+writing it, and after substantial work review whether a durable decision or
+finding should be captured there.
