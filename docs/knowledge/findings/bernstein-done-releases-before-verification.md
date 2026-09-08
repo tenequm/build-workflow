@@ -4,7 +4,8 @@ title: Bernstein releases dependents on worker-reported DONE, before any verific
 description: The engine's dependency model is optimistic - a task's dependents unblock and can spawn the moment the worker claims completion, before gates, janitor, or merge run - so no in-DAG dependency edge can enforce verified-before-start ordering.
 tags: [bernstein, orchestration, scheduling, verification]
 status: stable
-generated: { by: claude-code/fable-5, at: "2026-09-08T11:25:00Z" }
+stale_after: "2027-03-08T00:00:00Z"
+generated: { by: codex/gpt-6, at: "2026-09-08T11:24:53Z" }
 sources:
   - id: complete
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/tasks/task_store_core.py
@@ -14,7 +15,10 @@ sources:
     title: Readiness accepts DONE (~1743-1768); claim_and_spawn_batches (~2099) runs before process_completed_tasks (~2108)
   - id: cache
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/tasks/task_lifecycle.py
-    title: Response-cache hit completes a task with no agent spawn and no gate (~2420-2440); verified flag computed before merge success (~3819)
+    title: Cache-hit completion (~2420-2440), pre-merge verified flag (~3819), and same-run cache population (~4442-4461)
+  - id: cache-key
+    resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/knowledge/semantic_cache.py
+    title: ResponseCacheManager loads a manifest, keys on task text, and falls back to cosine similarity (~378-470)
   - id: upstream-test
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/tests/unit/test_retry_unblocks_dependents.py
     title: Upstream's own test encodes that store.complete (not close) releases a retry's successor
@@ -38,8 +42,17 @@ with no gate having run.[^probe]
 A second unverified-completion path compounds it: a semantic response-cache
 hit (exact or fuzzy on role/title/description) completes a single-task
 batch with **no agent spawn and no gate execution at all**, and the entry's
-`verified` flag is computed before merge success is known.[^cache] There is
-no disable switch at this commit.
+`verified` flag is computed before merge success is known.[^cache]
+
+Deleting the persisted cache before launch empties a fresh manager, but
+does not prevent same-run population or remove an already-loaded in-memory
+manifest. A nonce in the description changes the exact key, but does not
+disable fuzzy matching on otherwise similar task text.[^cache][^cache-key]
+For a workflow requiring an executed scorer for every delivered attempt,
+cache neutralization is therefore an execution prerequisite, not a
+pre-launch housekeeping step. A content-sensitive key alone also does not
+prove that the scorer executed for a reused result (see
+[the phase-boundary decision](/decisions/phase-boundary-between-engine-runs.md)).
 
 # Consequence
 
@@ -53,3 +66,10 @@ finding falsified an entire revision of the bernstein_operator design (see
 [the phase-boundary decision](/decisions/phase-boundary-between-engine-runs.md))
 and is the single most load-bearing fact about the engine for this
 workflow.
+
+[^complete]: [TaskStore.complete transitions to DONE and immediately revives/unblocks dependents (lines ~2368-2385)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/tasks/task_store_core.py)
+[^tick]: [Readiness accepts DONE (~1743-1768); claim_and_spawn_batches (~2099) runs before process_completed_tasks (~2108)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/orchestration/orchestrator.py)
+[^cache]: [Cache-hit completion (~2420-2440), pre-merge verified flag (~3819), and same-run cache population (~4442-4461)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/tasks/task_lifecycle.py)
+[^cache-key]: [ResponseCacheManager loads a manifest, keys on task text, and falls back to cosine similarity (~378-470)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/knowledge/semantic_cache.py)
+[^upstream-test]: [Upstream's own test encodes that store.complete (not close) releases a retry's successor](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/tests/unit/test_retry_unblocks_dependents.py)
+[^probe]: Second adversarial review of the bernstein_operator plan, 2026-09-08. Source: operator's session scratch, adversarial gpt-6-astra review round 2 with an executed TaskStore probe (not in this repository).

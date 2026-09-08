@@ -4,7 +4,8 @@ title: A documented Bernstein surface is not a wired one - verify the production
 description: Six engine surfaces exist in source with docs, enums, routes, or CLI flags yet execute nowhere on the plan-run path; one conditional dispatcher assumed absent is wired and default-ON - so both absence and presence must be proven at the call site, never inferred from declarations.
 tags: [bernstein, verification-discipline, engine-audit]
 status: stable
-generated: { by: claude-code/fable-5, at: "2026-09-08T11:25:00Z" }
+stale_after: "2027-03-08T00:00:00Z"
+generated: { by: codex/gpt-6, at: "2026-09-08T11:24:53Z" }
 sources:
   - id: hooks
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/lifecycle/hooks.py
@@ -21,6 +22,9 @@ sources:
   - id: followup
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/orchestration/orchestrator.py
     title: Pre-stop test follow-up POSTs an unplanned qa task (~2578, ~2922)
+  - id: followup-policy
+    resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/orchestration/test_followup.py
+    title: Follow-up criterion, surviving-branch resolution, and environment-first enablement (~134-275)
   - id: reviews
     resource: operator's session scratch, adversarial gpt-6-astra review rounds 1-4 (not in this repository)
     title: Independent adversarial verification of the same inventory, 2026-09-08
@@ -53,7 +57,14 @@ executes nowhere on a plan run:
 The rule cuts both ways: the pre-stop **test follow-up** - a conditional
 task dispatcher everyone assumed the deterministic engine lacked - is
 wired, default-ON, and POSTs an unplanned, signal-less `qa` task at the
-quiescence check.[^followup][^parser]
+quiescence check.[^followup][^parser] It requires a surviving completed-task
+agent branch whose diff touches `src/` without `tests/`; normal cleanup can
+remove the candidate, so not every source-only run triggers it. The task
+has `metadata.origin: test_followup`, not retry lineage. Setting
+`orchestration.test_followup: false` disables it only if an inherited
+truthy `BERNSTEIN_TEST_FOLLOWUP` does not override the setting. A fixed-task
+workflow therefore needs both configuration and launch-environment control,
+not just the absence of importable backlog files.[^followup][^followup-policy]
 
 # Rule
 
@@ -64,3 +75,11 @@ the parser that actually reaches runtime. Four independent adversarial
 review rounds converged on this inventory, and the first plan draft built
 its central routing mechanism on item 1 before the rule was
 applied.[^reviews]
+
+[^hooks]: [LifecycleEvent enum and script registry (POST_MERGE at line 84)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/lifecycle/hooks.py)
+[^tracker]: [The tree's only lifecycle-hook fire site - POST_TASK from the external-tracker pipeline (~2276)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/orchestration/tracker_pipeline.py)
+[^sse]: [The SSE bus publishes only task_update/agent_update strings (~1052)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/server/server_app.py)
+[^parser]: [Pipeline step names outside VALID_GATE_NAMES raise SeedError (~1946); orchestration.test_followup defaults true (~1595)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/config/seed_parser.py)
+[^followup]: [Pre-stop test follow-up POSTs an unplanned qa task (~2578, ~2922)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/orchestration/orchestrator.py)
+[^followup-policy]: [Follow-up criterion, surviving-branch resolution, and environment-first enablement (~134-275)](https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/orchestration/test_followup.py)
+[^reviews]: Independent adversarial verification of the same inventory, 2026-09-08. Source: operator's session scratch, adversarial gpt-6-astra review rounds 1-4 (not in this repository).
