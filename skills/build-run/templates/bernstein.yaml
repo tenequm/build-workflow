@@ -1,153 +1,44 @@
-# bernstein.yaml template for a target repo. Copy to the repo root (tracked).
-#
-# COMMIT THIS FILE BEFORE THE FIRST RUN. The built-in `run_config` gate refuses any
-# change that touches run configuration, so an uncommitted bernstein.yaml shows up in
-# the agent's changed-file set and blocks the merge of work that never touched it.
-goal: "<run through plans; this goal is unused when running --from-plan>"
+# Commit this seed before admission. Use the patched, pinned source engine.
+goal: "<build intent; the operator admits the explicit phase tasks>"
 cli: codex
-# Chain width. 4 concurrent executors is what one Claude Max subscription and one
-# working set sustain: more crowds the subscription's rate limit and pushes siblings
-# into sharing files, which readiness refuses and the merge would serialise anyway.
 max_agents: 4
 
-# THE dispatch table. Bernstein spawns its own adapters (claude and codex) and resolves
-# cli/model/effort by ROLE: `resolution for role='resolver': match=exact` (measured). A
-# per-step `cli:` in the plan is not in Bernstein's schema, won the first spawn and was
-# LOST on the retry, so the role is the only durable key -- every `role:` used in the plan
-# must appear here, and readiness fails the run when one does not.
-#
-# THE ROLE NAMES ARE ODD ON PURPOSE. Bernstein prefixes every prompt with a catalog
-# persona whenever the role matches a catalog agent: `backend` drew a 10,691-byte "AI Data
-# Remediation Engineer" system prompt and `reviewer` a "UI Finish-Gate Reviewer", both
-# irrelevant, and there is NO switch (docs/2609-02-persona-prefix.md). The persona is
-# selected by role: `CatalogRegistry.match()` returns None when no catalog agent carries
-# the role AND `_ROLE_AFFINITY` has no entry for it (agents/catalog.py:790-800). The 154
-# agents loaded from ~/.bernstein/catalogs/agency cover only architect, backend, devops,
-# docs, finance, frontend, gis, healthcare, manager, ml-engineer, qa, research, reviewer,
-# security. Roles must still come from the plan schema's enum (KNOWN_ROLES,
-# planning/plan_schema.py:22-41) or `bernstein plan validate` fails, so the four below are
-# the persona-free names from that enum:
-#
-#   resolver   = the codex executor  (was `backend`)   bulk and fix steps
-#   ci-fixer   = the SECOND codex executor, for a codex step that runs concurrently with
-#                another codex step: two open tasks that share role+cli+model are batched
-#                into ONE spawn, so the DAG's parallel half needs two codex role names
-#   analyst    = the claude executor (was `backend2`)  seam and interface steps
-#   adversary  = the blind judge     (was `reviewer`)
-#
-# Side effect of dropping `reviewer`: the judge no longer gets Bernstein's role tool
-# allowlist (`_ROLE_ALLOWED_TOOLS`, adapters/claude.py:311-316 gives `reviewer` only
-# Bash/Read/Grep/Glob), so the judge now has Write and Edit. Its brief must forbid editing
-# anything but its review file; nothing else enforces it, because a judge step runs the
-# verdict path and not the scorer's allowlist check.
-#
-# `codex exec` takes no effort flag: it reads `model_reasoning_effort` from
-# ~/.codex/config.toml, so `effort: high` below is documentation and the real lock is that
-# per-machine file. Readiness checks it.
-#
-# Parallel siblings that share a role AND a cli AND a model get batched into ONE session
-# (`_groups_can_merge`, tick_pipeline.py:113-127, packed at :465-491), so give siblings
-# different roles. `resolver` and `analyst` differ by cli too; `resolver` and `ci-fixer`
-# differ only by role, which is enough. Readiness FAILS any two steps that share a role
-# with no dependency path between their stages -- "one step per stage" does not save you,
-# because batching groups every CONCURRENTLY OPEN task.
+# These native roles avoid the catalog personas of backend/reviewer. Distinct
+# roles within a phase prevent same-role batching. Role policy survives retries;
+# the driver also sends the resolved cli/model/effort on every task POST.
+# Codex effort is enforced by model_reasoning_effort in ~/.codex/config.toml.
 role_model_policy:
-  resolver:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
-  ci-fixer:  { cli: codex,  model: gpt-5.6-sol,          effort: high }
-  analyst:   { cli: claude, model: claude-opus-5,        effort: high }
-  adversary: { cli: claude, model: claude-opus-5,        effort: high }
+  resolver: {cli: codex, model: gpt-5.6-sol, effort: high}
+  ci-fixer: {cli: codex, model: gpt-5.6-sol, effort: high}
+  analyst: {cli: claude, model: claude-opus-5, effort: high}
 
-# Seed hygiene. Both keys are real seed keys (core/config/seed_parser.py:2517-2518,
-# defaults True); both defaults cost a build run something.
-#
-# evolution_enabled: Bernstein otherwise self-spawns "Upgrade: Improve task success rate"
-# tasks mid-run that write into the repo outside every brief allowlist (observed
-# 2026-09-02). A plan run is a closed set of steps; nothing may add to it.
+# Native retries remain enabled. Unbriefed gate-repair/test-followup/evolution
+# tasks are not admitted by this workflow's closed phase inventory.
 evolution_enabled: false
-# gate_repair_enabled: on a blocked gate Bernstein otherwise posts ONE
-# `[GATE-REPAIR] <title>` task on the same branch and worktree, with the failing gate's
-# output as its description (core/tasks/task_lifecycle.py:3210-3260). It is off here
-# because a judge step's block is a VERDICT, not a repairable failure: repair re-spawns
-# the judge against the same diff and buys one more Opus run for the same answer. This
-# workflow already has the briefed `fix-N` step for that, fed by the review. With it off,
-# no GATE-REPAIR task is posted -- but it does NOT make a block terminal: the agent-death
-# path's `retry_or_fail_task` schedules retries of its own, and did so before the gate
-# refused the attempt (2026-09-03). See build-run/SKILL.md step 6. Turn it on only for a
-# plan with no judge steps.
 gate_repair_enabled: false
-# No key disables the warm pool. `warm_pool` is accepted as a top-level seed key
-# (seed_parser.py:2322) and NOTHING reads it; the pool is constructed unconditionally at
-# orchestrator.py:7067-7072. Speculative slots are created with `worktree_path=""`
-# (core/tasks/task_lifecycle.py:288-297), so a claiming spawn gets `Path("")` = the repo
-# ROOT (spawner_core.py:4471-4479) and switches the root checkout to that agent branch.
-# Our gate refuses to score at the repo root, so the step blocks rather than merging
-# garbage; the driver's recovery is `git checkout <workspace branch>` at the root.
-# See build-run/SKILL.md step 7.
+orchestration:
+  test_followup: false
 
 quality_gates:
   enabled: true
   cache_enabled: false
-  # `command_override` is what makes our gate run VERBATIM. Without it the built-in tests
-  # gate composes its own command from the changed files and returns None -- gate
-  # "skipped" -- whenever no Python file changed, whatever `condition: always` says
-  # (gate_runner.py:1613-1634; measured "status": "skipped" on an empty changed set).
-  # `test_command` is therefore not the lever and is deliberately absent.
-  #
-  # The gate runs in the agent's worktree, once per task, BEFORE the merge. Exit 1 refuses
-  # THAT merge: no escalation, no quarantine, the refused branch is preserved as
-  # `refs/graveyard/<sid>-<ts>` with a bundle under .sdd/graveyard/, a row lands in
-  # .sdd/runtime/refused_merges.jsonl and the run reports unhealthy. `bernstein-herdr gate`
-  # archives and writes its ledger row on that path too. A retry can still be in flight:
-  # see build-run/SKILL.md step 6.
+  flaky_detection: false
   pipeline:
-    - { name: "tests", required: true, condition: "always", command_override: "bernstein-herdr gate" }
-    - { name: "run_config", required: true, condition: "always" }
-  # Gate changed-files are `git diff --name-only <base_ref>..HEAD` in the agent's
-  # worktree. The default "main" carries every commit the workspace branch is ahead
-  # by, so gates judge the branch rather than the step. Set it to the branch this run
-  # merges into -- the same branch checked out at the repo root.
-  base_ref: <workspace branch, e.g. feat/<slug>>
-  cross_model:
-    enabled: false          # our judge replaces the 12k-char cheap-model review
-  intent_verification:
-    enabled: false
+    - {name: scorer, required: true, condition: always}
+    - {name: run_config, required: true, condition: always}
+  base_ref: <type>/<slug>
+  cross_model: {enabled: false}
+  intent_verification: {enabled: false}
 
-# merge_strategy: direct  -- NOT a seed key. `merge_strategy` reaches the orchestrator only
-# through .sdd/runtime/run_config.json (orchestrator.py:7123-7133); there is no top-level
-# seed key of that name, and writing one here only earns an unknown-key warning. The value
-# is set by `bernstein-herdr run-config`, which writes {"merge_strategy": "direct"}. On the
-# default "pr" the approval gate pushes to origin and skips the merge-back entirely.
-
-# Reaper tuning. EVERY key below is a real field on a real section: `_parse_tuning`
-# (core/config/seed_parser.py:1345-1359) hands each `tuning.<section>` to
-# `defaults.override()` (core/defaults.py:956-986), which raises AttributeError on an
-# unknown field -- caught and logged as `tuning.<section>: ...`. The defaults killed the
-# 2026-09-03 acceptance TWICE, in two independent places, on a Codex step that was working
-# the whole time.
-#
-# A SILENT PARSE IS NOT PROOF THE VALUES APPLIED. No warning means only that the key names
-# are real fields; whether the value reaches the code that kills an agent depends on the
-# ENGINE BUILD. A module that did `from bernstein.core.defaults import ORCHESTRATOR` holds
-# a permanent snapshot of the shipped defaults, because `override()` rebinds the module
-# attribute instead of mutating the frozen instance -- so the run below recorded
-# `liveness_grace_s: 600` and `max_agent_runtime_s: 5400` in
-# .sdd/runtime/config_snapshot.json and still logged `grace_s=90 verdict=DEAD` and
-# `Timeout after 1800s` (2026-09-03: a healthy judge SIGTERMed 13 min into its review).
-# The source build the README mandates (a clone of upstream main,
-# github.com/sipyourdrink-ltd/bernstein) reads those singletons THROUGH the module on
-# every call, fixed by #5381/#5415 (merged 2026-09-05..07). No PyPI release does yet
-# (latest v3.19.1, 2026-09-03) -- a registry install still ignores this whole section
-# at the kill paths, and no `tuning:` value can make such a run safe.
-#
-# VERIFY AT RUNTIME, from the log and not from the absence of a warning:
-#
-#   rg -n "liveness_judgment|SIGTERM|Timeout after" .sdd/runtime/spawner.log | tail -5
-#
-# `grace_s=` must show the value configured below. A `Timeout after 1800s` on a step the
-# plan scoped `large` means the same thing from the other side: the kill deadline came off
-# the scope bucket, not from here. The adapter watchdog arms from the step's plan `scope:`
-# (small 15m / medium 30m / large 60m; large + `complexity: high` = xl 120m), NOT from
-# `max_agent_runtime_s` below -- see build.yaml's `scope:` comment.
+# The driver writes merge_strategy: direct into runtime/run_config.json; it is
+# not a seed key. Judges run between native runs through Claude ACP, outside
+# this gate pipeline. The installed scorer always checks ordinary fixes too.
+# BERNSTEIN_RESPONSE_CACHE=0 is enforced by the mandatory engine patch; the
+# quality-gate cache switch above does not disable semantic response reuse.
+# Warm slots have no persistent worker; empty-path slots fall back to a fresh
+# worktree in the pinned engine. The scorer still refuses the workspace root.
+# Preserve scope buckets: small 15m, medium 30m, large 60m, large+high 120m.
+# Runtime tuning requires the source fixes that read current defaults.
 tuning:
   orchestrator:
     # DEFAULT 900 (core/defaults.py:117) released a healthy Codex agent at 16 min with all
@@ -189,7 +80,5 @@ tuning:
     escalation_sigterm_s: 1200
     escalation_sigkill_s: 1500
 
-# internal_llm_provider: Bernstein otherwise preflights an openrouter_free provider for
-# its own internal LLM calls and warns on every run; we drive every model through the
-# adapters, so it needs none.
+
 internal_llm_provider: none

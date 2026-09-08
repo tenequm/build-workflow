@@ -1,416 +1,160 @@
 ---
 name: build-run
-description: "Execute and validate a ready three-stage build unattended. Use /build-run <plan dir>, or /build-run alone inside a workspace, to run the Bernstein DAG, resolve concrete defects through executors, perform whole-branch validation, and optionally open a PR."
+description: "Execute a ready phase build unattended. Use /build-run <plan dir>, or alone in its workspace, for isolated native Bernstein runs, Claude ACP judging between phases, receipt-bound fix mini-runs, and whole-tree validation."
 ---
 
 # build-run
 
-Input: `<plan dir>`, the directory `/build-plan` produced, or nothing. Output:
-a validated local workspace branch, `<run>/runs.jsonl`, attempt archives,
-judge evidence, and `<run>/ledger.md`. Never edit application code in the
-driver session.
-
-Resolving the input:
-
-- `<plan dir>` given: the plan document is `<plan dir>/plan.md`; accept a
-  path to `plan.md` itself as the same thing.
-- nothing given, inside a workspace (git dir differs from the common dir and
-  `<run>/workspace.json` exists for the ACTIVE plan): use the ACTIVE plan and
-  its sidecar's `defaults.doc`.
-- nothing given, in a primary checkout: list `.claude/worktrees/*` that hold
-  an `.agents/build/runs/<slug>/workspace.json`. Exactly one: tell the user
-  its path and enter it with the harness's native worktree tool (EnterWorktree
-  in Claude Code, path mode), then continue. Several: ask which. None: there is no ready build; say so and
-  point at `/build-plan`.
-- anything else missing on the way (no ACTIVE, no sidecar, no `report.md`,
-  readiness not READY): name the missing piece and the `/build-plan` stage
-  that produces it, and stop. Never improvise a plan here.
-
-The run is unattended by design. Every decision a human could be asked for
-was made in the plan stage: the spec is signed off, witnesses and contracts
-are in the tree, every brief was probed. From launch until the DAG ends, do
-not ask the user anything; record what you could not resolve in the ledger
-and report it at the end. A question that turns out to be necessary mid-run
-is a plan-stage defect: log it as `- workflow:` so the retro moves it there.
-
-The moment a skill instruction proves wrong, ambiguous, or is deviated
-from - or the user has to intervene where the skill should have sufficed -
-append `- workflow: <what and why>` to `<run>/ledger.md`. Start every
-`workflow:` line with one tag from {`instruction-wrong`,
-`instruction-ambiguous`, `tooling-gap`, `engine-bug`, `driver-error`,
-`flaky`} so the retro can aggregate. These lines are the retro's input for
-improving the workflow after the run.
-
-Every commit anywhere in this workflow - driver, executor, judge, fix - uses
-Conventional Commits: `type(scope): description` with type in feat, fix,
-chore, refactor, docs, test, ci, perf. Branch names follow the same shape:
-`type/short-description`. No attribution lines or trailers.
-
-Bernstein spawns its own adapters. There is no herdr pane, watcher, or custom
-adapter in the loop. Executors commit on `agent/...` branches;
-`bernstein-herdr gate` runs in each worktree before merge. Run commands from
-the workspace root.
-
-1. Preflight workspace and resolve the plan.
-
-   Require the linked workspace `/build-plan` created. Compare
-   `git rev-parse --git-dir` with `git rev-parse --git-common-dir`; refuse when
-   they are equal. Require an empty
-   `git rev-parse --show-superproject-working-tree` result and an attached HEAD.
-
-   Resolve the machine plan from the plan document: select the sidecar whose
-   `defaults.doc` equals `<plan dir>/plan.md`, or use ACTIVE only when its plan
-   pins the same document. Refuse multiple or disagreeing matches. Derive
-   `<slug>` and `<run>` from that plan.
-
-   Read `<run>/workspace.json`. Require exactly `path`, `branch`, `base`,
-   `base_branch`, and `primary`; require the current absolute root to equal
-   `path` and the checked-out branch to equal `branch`.
-
-       bernstein doctor
-       git symbolic-ref --short HEAD
-       bernstein-herdr ready --plan .agents/build/plans/<slug>.yaml
-
-   Doctor findings are advisory. Read readiness output and require READY.
-   `bernstein.yaml` from the build-run template must be committed, Codex effort
-   must be high, and every role needs a role policy. Require the plan
-   directory's `report.md` to exist and its `## Escalations` to list no open
-   question; an open escalation means the plan stage did not finish.
-
-2. Write run config.
-
-       bernstein-herdr run-config --plan .agents/build/plans/<slug>.yaml
-
-   This writes `.sdd/runtime/run_config.json` with direct merge, refuses a live
-   task server or process for this root, verifies
-   `quality_gates.base_ref == <type>/<slug>`, and prints `run with: --port N`.
-   It freezes the workspace branch tip in `<run>/bernstein.json` and
-   `refs/build/base/<slug>`. From that point every scorer gate re-reads the
-   plan and sidecar out of that frozen ref - gate command, allowlist, and base
-   come from the frozen copies, never from working copies a merge could have
-   rewritten - and records which it used as `plan_source` (`frozen_base` after
-   run-config, `worktree` before) in the gate row. Fix only what it names and
-   rerun. Never assume port 8052.
-
-3. Disable shared hooks before launch.
-
-       mkdir -p .agents/build/nohooks && git config core.hooksPath .agents/build/nohooks
-
-   Linked worktrees share hooks. A hook that rejects an executor or salvage
-   commit loses completed work. `core.hooksPath` is untracked and survives the
-   adapters' filtered environments. Unset it after validation.
-
-4. Launch DETACHED in its own session. Do not use `--from-plan`.
-
-       python3 - <<'PY' | tee -a <run>/ledger.md
-       import os, pathlib, subprocess
-       run = pathlib.Path("<run>")
-       log = run / "bernstein-run.log"
-       env = dict(os.environ, BERNSTEIN_SERVER_URL="http://127.0.0.1:<N>")
-       cmd = ["bernstein", "run", ".agents/build/plans/<slug>.yaml",
-              "--auto-approve", "--quiet", "--fresh", "--wait", "<budget s>", "--port", "<N>"]
-       with log.open("ab") as f:
-           p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env,
-                                start_new_session=True)
-       print(f"- launched bernstein run: wrapper_pid={p.pid} log={log}")
-       PY
-
-   `start_new_session=True` is the point of the wrapper: it puts the run in its
-   OWN session and process group, so a cleanup that kills the driver's process
-   group cannot reach the orchestrator, the task server or the live agents.
-   `nohup ... &` does not do this -- it only ignores SIGHUP, leaving the run in
-   the driver's group. Record the `wrapper_pid` and log path. Stop deliberately
-   with `kill -TERM -<wrapper_pid>`; the negative sign kills the process group.
-
-   `--wait` IS A BUDGET, NOT A CONSTANT. Set `<budget s>` from this plan: the
-   critical path in measured executor medians (from `<run>/runs.jsonl` of
-   prior runs, or 25 min per executor step, 15 per judge, 10 per fix when
-   none exist), doubled. Not the `scope:` buckets: summing those on the
-   recall plan gives 57 hours, which is no signal at all. Fixed example
-   numbers have been wrong every time (a 25-minute wait over a run that
-   took 1h52m). When the budget lapses the WRAPPER exits; the orchestrator does
-   not, so keep watching by step 5's rules rather than reading the wrapper's
-   exit as the end of the run.
-
-   AN INTERRUPTED RUN IS NOT RESUMED ONTO AN ADVANCED TIP. Neither a plain
-   resume nor `--fresh` is safe once merges from this run are in the branch: a
-   resume rebuilt the board as newly open tasks on the already-merged tip, and
-   `--fresh` re-runs completed tasks. The first option is now:
-
-       bernstein-herdr run-config --plan .agents/build/plans/<slug>.yaml --resume
-
-   It classifies each step from `<run>/runs.jsonl` (verified unblocked gate
-   rows whose merged head is an ancestor of the current HEAD), writes a pruned
-   `<slug>-resume` plan and sidecar with completed steps removed and their
-   dependency edges dropped, points ACTIVE at it, freezes
-   `refs/build/base/<slug>-resume` at the current tip, and prints what it
-   pruned and the launch command. Commit the resume plan files and rerun
-   readiness before launching. The manual fallback when the classification is
-   wrong stays the user's call: restore `refs/build/base/<slug>` after
-   archiving merged work and run fresh; or write a new plan with only
-   remaining work and a new slug. Use `<run>/ledger.md` and `runs.jsonl` to
-   identify landed steps.
-
-   `BERNSTEIN_SERVER_URL` is NOT optional. `--port` moves the server only; the
-   URL in agent prompts and Claude hook commands otherwise defaults to 8052.
-   A stale server answers 401; no server answers connection refused; the log
-   scanner can fail the task after its merge landed. Set the variable to the
-   printed port exactly.
-
-5. Watch through the event watcher, not a polling loop.
-
-       bernstein-herdr watch --stall 25
-
-   Run it IN THE BACKGROUND from the workspace root right after the launch.
-   It prints one line per event (new runs.jsonl row, ledger line, spawner
-   trouble line - each trouble line is also appended to `<run>/runs.jsonl` as
-   a `spawner_event` row so kills land in the causal ledger), a STALL line
-   when a live run produces nothing for the stall window, ORCH-DEAD when live
-   processes stop answering on the recorded server port for 10+ minutes, DISK
-   / DISK-CRITICAL when free space crosses 10 GB / 2 GB (on DISK-CRITICAL,
-   kill the run before commits start failing), and END when no Bernstein
-   process owns this root; it exits on END. Act only on its lines. On STALL apply the stall rule below. Do
-   not run the old manual poll; these commands remain for AD-HOC inspection
-   when a watch line needs context:
-
-       tail -1 <run>/runs.jsonl
-       bernstein status
-       tail -20 .sdd/runtime/spawner.log
-
-   `bernstein status` has no port option; from the workspace root it reads
-   `.sdd/runtime/server.port`. Use `--json` for machine output and
-   `--mode expert` for detail.
-
-   Check liveness and scope at runtime. `grace_s=` must match the seed.
-   Deadlines come from each step's `scope:` bucket; a healthy session past its
-   bucket is auto-extended while its heartbeat is fresh. Keep
-   `max_agent_runtime_s` at 1800: raising it floors every deadline at the
-   raised value and makes the buckets inert (measured 2026-09-03).
-   `Timeout after 1800s` on a large step means the source-built engine is not active.
-   A 409 ownership conflict is a lock wait with 300-second backoff, not a stall.
-   Wait for the owner to release.
-
-   STALL RULE. On the watcher's STALL line, check the mtime
-   of that agent's log under `.sdd/`. If it is older than 25 minutes, kill
-   that agent session so Bernstein's retry (`max_task_retries`) starts now,
-   instead of waiting out the runtime deadline: a silent death otherwise
-   costs the full `max_agent_runtime_s` (90 minutes at the template value),
-   and two of four acceptance runs on 2026-09-02 lost time exactly this way.
-   Record the kill in the ledger.
-
-   A `Total tasks / Failed` block is not terminal when the orchestrator is
-   already retrying. The run ends only after that block prints, no Bernstein
-   process owns this root, and the board has no runnable task. Ignore its
-   `Elapsed: 0s`. Kill any orphan before another run-config.
-
-6. Handle blocked gates and retries.
-
-   Run `bernstein-herdr triage` first; its verdict routes you. It reads the
-   ledger tail, refused merges, the spawner log, the graveyard, the reflog and
-   live processes, and prints exactly one of: `TRIAGE: RETRYING` (wait, the
-   engine is on it), `TRIAGE: BRANCH-LOSS` (follow the recovery commands it
-   prints), `TRIAGE: DISPATCH-FIX` (write and dispatch a fix brief),
-   `TRIAGE: TERMINAL` (the run is over; act on the evidence), or
-   `TRIAGE: RUNNING` (nothing wrong), with the evidence lines under it. The
-   detail below is the manual fallback when a verdict needs context.
-
-   A blocked gate refuses this merge. It writes a row to
-   `.sdd/runtime/refused_merges.jsonl` and reports unhealthy, but a lifecycle
-   retry may already be scheduled even with `gate_repair_enabled: false`.
-   Check all evidence before acting:
-
-       tail -1 <run>/runs.jsonl
-       cat .sdd/runtime/refused_merges.jsonl
-       rg -n "Refusing to merge" <run>/bernstein-run.log .sdd/runtime/spawner.log
-       rg -n "retry_or_fail_task" .sdd/runtime/spawner.log | tail -3
-       bernstein status
-
-   `verdict=retry ... attempt=N/M` means work continues. Treat only
-   `verdict=permanent_fail`, `max_retries_exceeded`, and an idle board as
-   terminal.
-
-   THE REFUSED BRANCH IS IN THE GRAVEYARD, NOT IN `salvage/*`. Bernstein moves
-   it to `refs/graveyard/<sid>-<ts>`, writes a portable bundle, and deletes
-   `agent/<sid>`:
-
-       git for-each-ref --sort=-creatordate refs/graveyard/
-       git log --oneline <base>..refs/graveyard/<sid>-<ts>
-       ls -t .sdd/graveyard/*.bundle
-
-   Old runs may retain `salvage/<agent>`. A salvage branch alone never meant a
-   block; successful merges can salvage untracked leftovers. Trust the blocked
-   gate row and `refused_merges.jsonl`.
-
-   A salvage that renamed the workspace branch is a branch-loss event. Check
-   whenever a salvage appears and before accepting the result:
-
-       git reflog show --all | rg 'renamed refs/heads/'
-       git branch --list '<workspace branch>'
-       git log --oneline -5 salvage/<agent>
-
-   If the workspace branch is missing, inspect the salvage tip. Drop only a
-   proven `.sdd/` dump, rename the salvage branch back, check it out, and start
-   recovery. Anything merged after the rename landed on the wrong branch.
-
-   A MERGED TASK IS NEVER RE-GATED. The pass memo qualifies only when its sha is
-   strictly ahead of frozen `base_sha` and on the workspace branch. A blocked
-   memo never qualifies. `gate: already merged` creates no row or archive.
-   Doing nothing is still scored and blocks.
-
-   A report that contradicts the measured gate (claimed exit codes or issue
-   counts against the measured result) BLOCKS the merge as `report_mismatch`
-   in the row; only the sole entry "no report file" stays a non-blocking note.
-   A committed refusal receipt (`scope_exceeded`, `underspecified`,
-   `blocked_on_dependency`, `awaiting_operator` in the report) likewise BLOCKS
-   the merge by design: the step parks as failed instead of passing silently, the
-   refused branch is in the graveyard, and the driver dispatches the answer as
-   a fix brief or records the failure. A malformed or missing judge review
-   likewise blocks the judge step so the engine retries it; fix-N's refusal
-   path is the fallback, not the norm.
-
-   `runs.jsonl` is one row per ATTEMPT. A retry reuses its task id. No row means
-   the executor died before the gate; inspect the board and spawner log. Each
-   attempt archives under `<run>/reports/<step>/<task>-<head>/`; `latest`
-   points to the newest. The blocking path archives before review.
-
-   `bernstein quarantine list` is empty after a block; the block is not a
-   quarantine. The common cause is an allowlist violation named by the row.
-   Any tracked change under `.agents/build/plans/` versus the step base is an
-   automatic block (`plans_dir_edit` in the row): the plan files configure the
-   gate itself and no step may rewrite them. The gate also re-hashes the plan
-   file and the step's brief against `<run>/readiness/pins.json` and blocks on
-   drift (`pin_drift` names the drifted key); after any driver-side brief or
-   plan edit, rerun readiness so the pins move with it.
-   Once engine retries are spent, mechanically dispatch a fresh executor only
-   when the gate or judge names a concrete defect inside existing allowlists.
-   Write and commit a fix brief, rerun readiness, and dispatch the fix. Preserve
-   the refused commit from `refs/graveyard/...` when useful.
-
-7. Restore a displaced workspace root.
-
-   `bernstein-herdr triage` covers the branch-side evidence here too; run it
-   first. A warm-pool slot can run at the root, overwrite CLAUDE.md, and switch
-   HEAD to `agent/<role>-<id>`. The gate refuses that spawn. On every block
-   check:
-
-       git symbolic-ref --short HEAD
-       git status --short
-       git checkout <workspace branch> && git checkout -- CLAUDE.md
-
-8. Route judge results.
-
-   A judge gate exits 1 only for the blocking verdict or a missing review.
-   Findings normally merge so `fix-N` can read them. The row and verdict.json
-   carry verdict, certain, plausible, and counts_declared. `fix-N` takes the
-   no-op path only for a legal verdict, declared counts, and zero certain
-   defects. Missing, unclear, or undeclared results require a fresh judge.
-   Read every fix report; a committed refusal receipt blocks its own gate and parks the step.
-
-9. Apply full autonomy.
-
-   Handle mechanically a refusal whose retry the engine already scheduled, and
-   a fix brief to a fresh executor when a gate or judge names a concrete defect.
-   When the same step fails twice, a fix would touch outside plan allowlists,
-   or a step is blocked with no mechanical move left: mark that step failed
-   in the ledger with the gate row and the graveyard ref, let every step that
-   does not depend on it continue, and carry the failure into the end report.
-   Never wait on the user mid-run. A witness test still red at the final
-   `regress` step is a failed outcome, reported by its SPEC 2 number.
-
-10. Never edit `bernstein_herdr` while a run is live. Every gate imports it
-    fresh, so a mid-run edit changes the gate under running work.
-
-11. The driver never edits code. Fixes go to a fresh executor with a committed
-    brief, file allowlist, validation, and per-item report.
-
-12. Validate the whole branch after the DAG completes.
-
-    One review round is one message that launches, in parallel, the blind
-    whole-branch judge (below) and four read-only review subagents on your
-    own model over the same frozen diff `refs/build/base/<slug>..HEAD`, one
-    lens each: cleanliness (unnecessary constructs, dead code, duplicated
-    helpers), design (departures from the plan document's settled choices),
-    efficiency (measurable cost or a duplicated pass), side effects (reads
-    versus external mutations, gating). Each returns findings with file:line
-    and a proposed edit, "write no files". Running these serially cost 3h47
-    on the 2026-09-01 tail. Merge all findings into one `close-N` set. No
-    step here asks the user anything: a finding is accepted or rejected by
-    the checklist below, and every accepted one goes to a fresh executor,
-    never the driver.
-
-    Accept a finding only when all of these hold:
-
-    - The comparison base is the frozen ref, not a moving branch name.
-    - The diff includes every DAG merge and excludes run evidence.
-    - Cleanliness findings name a concrete file and unnecessary construct.
-    - Design findings are within the plan document's settled choices.
-    - Efficiency findings describe a measurable cost or duplicated pass.
-    - Side-effect findings distinguish reads from external mutations.
-    - Every proposed code edit fits an existing step allowlist.
-    - Every accepted edit has an exact validation command.
-    - Every rejected edit is recorded with its reason in the ledger.
-    - The driver has not edited application code.
-
-    Stage a blind whole-branch judge from the frozen base:
-
-        git worktree add --detach <run>/judge/branch-N/W refs/build/base/<slug>
-        git -C <run>/judge/branch-N/W apply --index <branch diff patch>
-        git -C <run>/judge/branch-N/W commit -m "chore: staged branch diff for blind review"
-
-   The commit is load-bearing: the judge prompt diffs `$BASE..HEAD`, and an
-   applied-but-uncommitted patch is invisible to a commit-range diff, so
-   without it the judge's own non-empty guard stops every review.
-
-    Give a fresh subagent on your own model the detached worktree, the plan
-    document, and this skill's own `templates/judge-prompt.md`. Keep it
-    read-only except for its review evidence. Require blocking findings only
-    and no fixes.
-
-    Give the judge these fixed inputs:
-
-    - The absolute detached worktree path.
-    - The frozen base sha and ref.
-    - The full applied branch diff.
-    - The plan document path.
-    - The optional product spec path.
-    - Every executor brief and report.
-    - The whole-tree gate command.
-    - The instruction to attribute files by commit ancestry.
-    - The instruction to reproduce certain defects.
-    - The instruction to write no application files.
-
-    Turn findings into committed `.agents/build/plans/<slug>/close-N.md` briefs
-    and dispatch codex `gpt-5.6-sol` (effort high) sessions through herdr:
-    partition the fix list by file overlap, one session per DISJOINT
-    partition in parallel, sequential only within a partition (the
-    2026-08-31 evals: one coherent pass over a coupled list, zero introduced
-    defects; parallel fixers on shared files collide). When herdr or codex
-    is unavailable, the named fallback is a `claude-opus-5` executor
-    subagent per partition. The DAG is over; Bernstein is not relaunched
-    for close rounds. Rerun affected
-    checks. Repeat review rounds until a round warrants no edits. Remove detached judge worktrees after archiving evidence.
-
-    For each `close-N` round, record:
-
-    - The source finding and file:line.
-    - The executor role and task id.
-    - The allowed files.
-    - The commit sha.
-    - Every command and exit code.
-    - The next judge verdict.
-
-    Finally run the sidecar's exact `defaults.gate_cmd` on the workspace branch
-    and require exit 0. Record every round and command in `<run>/ledger.md`.
-    When the plan has witnesses (PLAN 9), list each SPEC 2 outcome with its
-    witness tests' final state in the ledger; that list is the run's result.
-
-13. End local.
-
-    Run `git config --unset core.hooksPath`. Keep the validated workspace branch
-    local and push nothing. Ask exactly:
-
-    The branch is validated. Open a PR? (default: no)
-
-    Only on explicit yes run `git push -u origin <branch>` and `gh pr create`
-    using repo PR conventions. Either way, offer
-    `/build-close <path_to_plan_doc>`.
+Input: a plan directory (or its plan.md), or the ACTIVE plan inside its linked
+workspace. Output: a validated local branch and immutable attempt evidence under
+`.agents/build/runs/<slug>/`. The driver never edits application code.
+
+Resolve the sidecar whose `defaults.doc` names that plan.md. With no argument,
+read `.agents/build/plans/ACTIVE`. Refuse missing or disagreeing matches. In a
+primary checkout, enumerate linked workspaces with a workspace.json; re-enter
+an unambiguous one, otherwise obtain the missing workspace identity. Never
+improvise a plan or copy newer artifacts from the primary into a running build.
+
+A run is unattended after the user's execution instruction. Existing authorization
+persists; do not ask again. An unresolvable obligation parks with evidence and
+ends the run. Do not widen scope, change a frozen brief or seed, or patch code
+in the driver session. Record workflow defects in `<run>/ledger.md` as
+`- workflow: <tag>: <what and why>`, where tag is instruction-wrong,
+instruction-ambiguous, tooling-gap, engine-bug, driver-error or flaky.
+
+Use absolute paths for actual commands. The examples use `<skill>` for this
+skill's own installed directory and `<python>` for the interpreter in the
+Bernstein uv tool environment (`uv tool dir` then `bernstein/bin/python`). No
+script reads another skill's directory. Do not use an arbitrary system Python.
+
+## Preflight
+
+1. Require a linked workspace, attached integration branch, no superproject.
+   Compare resolved git-dir and git-common-dir paths. Validate workspace.json's
+   exact fields: path, branch, base, base_branch, primary; current root and branch
+   must equal its path and branch.
+2. Require the plan directory's report.md and no open Escalations. Require all
+   authored inputs committed, the native scorer plugin installed, and all three
+   engine compatibility patches present. The installed Python must import
+   bernstein_operator and operator scripts from this skill. See the repository
+   install instructions; do not mutate the engine or plugin during a live run.
+3. Run this skill's checked hooks helper; its existing receipt preserves the
+   original configuration captured by planning:
+
+       <python> <skill>/scripts/workspace-hooks.py disable --root <workspace> --run <workspace>/<run>
+
+4. Run the skill-local readiness checker from the workspace root:
+
+       <python> <skill>/scripts/build-operator.py ready --root <workspace> --plan <machine.yaml>
+
+   It checks frozen inputs, sign-off, roles, scopes, citations, disjointness,
+   loaded completion signals, ingress isolation, patches, disk and commands in
+   a detached baseline. Read every baseline validation result. Expected red
+   witnesses must be explicitly explained in their brief; unexplained red is
+   a planning defect. A command failure never becomes a baseline exemption.
+
+## Execute and observe
+
+Run the driver in an owned detached session with stdout/stderr recorded in
+`<run>/driver.log`. Use subprocess.Popen with start_new_session=True and
+record its PID plus creation time; do not use a shell background job that
+shares the supervising agent's process group. The command is:
+
+    <python> <skill>/scripts/build-operator.py run --root <workspace> --plan <machine.yaml>
+
+The driver holds both its own flock and the native Bernstein PID marker,
+including between runs. It freezes refs/build/base/<slug> once, journals every
+launch and POST intent, and observes through an HTTP/journal poll loop. Never
+launch `bernstein run`, `--from-plan`, a watcher or another scheduler alongside
+it. Do not call `bernstein stop`: its soft-drain can merge rejected work.
+
+Each phase launch uses a fresh run ID and port, an isolated authenticated task
+server with a fresh tasks.jsonl, and full direct POSTs with completion_signals,
+metadata, model policy and concrete phase-local dependency IDs. No explicit
+IDs are reused. Only after verifying stored payloads does the driver start the
+native orchestrator. Future-phase tasks do not exist yet. Native gate repair,
+flaky deselection, test follow-ups and evolution are off. Semantic response
+reuse is disabled by the mandatory source patch. Importable root TODO.md,
+TASKS.md, .plan and native backlog contents block launch; new ingress during a
+run parks it. Quarantined expected titles also park before execution.
+
+The native engine owns worktrees, execution, janitor, retries, quality gates,
+merge queues and reaping. A native DONE status may release a dependency before
+merge, so a verified-before-start dependency must have been cut into another
+phase. In-phase strict ordering is unsupported. Distinct phase roles avoid
+batching; disjoint ownership avoids parallel edits to shared files.
+
+Inspect without launching anything:
+
+    <python> <skill>/scripts/build-operator.py status --root <workspace> --plan <machine.yaml>
+
+The status output and workflow.jsonl are authoritative for driver obligations;
+runs.jsonl and ledger.md are readable indexes. Native logs and per-run archived
+reports explain failures. A native run_completed row or an empty task board is
+not build completion. The driver requires run_quiescence, successful identified
+scheduler exit, no residual children, stopped server and positive delivery for
+every expected title: spawned task/attempt -> scorer PASS -> landed commit ->
+integration ancestry. It archives native evidence and reconciles paired WAL
+claims before any next run. Missing or contradictory evidence parks.
+
+## Judge and fix ceremony
+
+After a proven boundary, the driver stages the exact cumulative base..tip tree
+in a detached worktree under `<run>/judge/<attempt>/worktree`. Claude runs through
+acpx and the pinned Claude ACP adapter in a fresh one-shot session. Budget,
+model and turn limits are passed through ACP session metadata; user settings
+and saved sessions are disabled. The judge receives the frozen brief, precise
+range and tracked context. It writes only the three review artifacts. It never
+commits or becomes an engine task. The driver checks tree/index integrity, reaps
+children and rechecks the integration ref before archiving the receipt.
+
+- Legal zero-certain verdict: accept this phase.
+- Certain findings: POST the complete pinned fix as a separate native mini-run,
+  embedding exact review bytes and hashes, then judge the new cumulative tip.
+- Do not merge: park immediately.
+- Malformed or missing output: one fresh ceremony, then park.
+- Findings outside the pinned fix scope, integrity failures, refusal reports,
+  uncertain launches or unaccounted tasks: park with evidence.
+
+Ordinary fixes run the same scorer as every executor. No fix task exists for a
+zero-certain verdict. No new brief or allowlist is invented mid-run. The final
+phase must include whole-tree regression validation; its repairs use the same
+whole-tree gate. Repeated repairs consume whole-build attempts, wall time and
+spend reservations. Native reservations remain charged conservatively because
+an observed native cost ledger is not a complete invoice.
+
+## Recovery
+
+After a driver interruption, use only:
+
+    <python> <skill>/scripts/build-operator.py resume --root <workspace> --plan <machine.yaml>
+
+Recovery reads the journal before acting, checks process identity and server
+inventory, recovers server-generated IDs, and resumes the recorded obligation.
+It never recreates an absent ambiguous POST or relaunches an uncertain process.
+A persisted park remains parked; preserve its native logs, refused merges,
+scorer receipts, judge attempts and graveyard refs for explicit resolution.
+Do not reset tasks.jsonl, remove the WAL, use --fresh, reset the frozen base,
+prune already merged steps into a new implicit run, or dispatch an ad hoc fix.
+A new signed-off repair plan with a new slug is the supported scope change.
+
+Evidence locations:
+
+- workflow.jsonl: hash-chained intent/receipt/reaction authority.
+- readiness/: frozen pins and admission receipt.
+- native/<run-id>/: archived journal, tasks, runtime evidence and WAL.
+- reports/<title-hash>/<attempt-id>/: scorer receipt, diff, report.
+- judge/<attempt>/: exact review range, artifact hashes, process log and receipt.
+- processes/: identified launches, completion receipts and logs.
+
+Keep secrets out of pasted logs. The private workflow journal includes an
+expired local server token; runs.jsonl omits it. Never edit immutable evidence.
+
+## End local
+
+Success requires build_completed and a current integration tip equal to its
+receipt. Report measured outcomes and any owner:user obligations. Restore the
+captured hooksPath with this skill's `scripts/workspace-hooks.py restore --root <workspace> --run <workspace>/<run>`. Keep the branch local. Open a PR only when authorized by
+the user; if that decision is still missing, ask once after the validated result
+is concrete. Do not automatically merge, publish, or delete the workspace.
+Every authored commit uses Conventional Commits without attribution trailers.
