@@ -95,7 +95,7 @@ evidence in PLAN 7, and overridable by the user at either checkpoint.
 
 | tier | trigger | what runs | target wall |
 |---|---|---|---|
-| S | one phase, one package, no signature, schema or contract change, no product-spec amendment | driver reads the code itself; spec.md; one brief; plan-lint; no critics; one phase and its detached judge; readiness | 15 min |
+| S | one phase, one package, no signature, schema or contract change, no product-spec amendment | driver reads the code itself; spec.md; one brief; plan-lint; no critics, no judge step; readiness | 15 min |
 | M | up to four phases, no public contract or schema change | one research agent; spec.md, plan.md, facts.md; surface check; one round of two parallel critics only when a schema changes; cut; per-brief critics in one batch; readiness | 40 min |
 | L | anything else | full pipeline below, including WITNESS and probes | 90 min |
 
@@ -131,10 +131,7 @@ about to be created - the first write of any kind - ask one intent-level
 question with no implementation vocabulary: "Build this in an isolated
 workspace so the main checkout stays free? (yes)". Default yes. On yes,
 run WORKSPACE now with the chosen slug and continue from inside it; on no
-(draft planning only), continue without committing. Never ask again for this
-plan. A linked workspace is required before sign-off, machine readiness or
-execution; if the user declined one, finish the draft and report that unmet
-prerequisite instead of claiming READY.
+(sensible for tier S), continue in place. Never ask again for this plan.
 
 Starting from an existing single-file plan document: create the directory,
 move intent-level content into spec.md, discard the rest (plan.md is
@@ -143,7 +140,8 @@ directory: skip INTAKE when spec.md has no commit after the sign-off sha
 recorded in PLAN 7 or the user says it is current. With no argument, continue the current
 directory when it is clear; otherwise ask.
 
-Sign-off is a commit on the WORKSPACE branch containing only the plan directory with spec.md;
+Sign-off is a commit on the WORKSPACE branch (or the current branch when the
+user declined a workspace) containing only the plan directory with spec.md;
 record its sha in PLAN 7 as `signed-off: <commit sha>`. The same
 sha is ALSO recorded in the machine sidecar at CUT as `defaults.signoff`:
 readiness compares the working spec.md against `git show <sha>:<spec path>`
@@ -219,28 +217,21 @@ worktree switch, no session restart needed. A harness without file-based
 permissions skips this step.
 
 Copy this skill's own `templates/bernstein.yaml` when the repo has none and set
-`quality_gates.base_ref: <type>/<slug>`. If the repo tracks one, retain its project settings and reconcile the mandatory
-scorer pipeline, cache, repair, evolution and follow-up switches with the template;
-set `base_ref` to this workspace branch. Write `.agents/build/plans/ACTIVE` as one line containing
+`quality_gates.base_ref: <type>/<slug>`. If the repo tracks one, change only
+`base_ref`. Write `.agents/build/plans/ACTIVE` as one line containing
 `<slug>.yaml`. Write `<run>/workspace.json` with EXACTLY these five fields:
 `path` (absolute workspace path), `branch` (`<type>/<slug>`), `base` (the
 primary HEAD sha the worktree branched from), `base_branch` (the primary's
 branch name, commonly `main`), `primary` (absolute primary checkout path).
-
-Capture and disable shared Git hooks before the first workspace commit:
-
-    python3 <this skill>/scripts/workspace-hooks.py disable --root <workspace> --run <workspace>/<run>
-
-The immutable hooks.json records the previous local configuration. A different
-build already owning the shared setting blocks this change.
 
 In the WORKSPACE, repeat the `.gitignore` line when it was missing, then make
 one seed commit containing ONLY `bernstein.yaml`, that `.gitignore` edit, and
 `ACTIVE`. Keep copied local state untracked. Enter the workspace
 with the harness's native worktree tool (EnterWorktree in Claude Code, path
 mode). A harness without one: tell the user to start a session in the
-absolute workspace path and stop. The captured empty hooksPath stays active
-through planning and execution; linked worktrees share hooks.
+absolute workspace path and stop. Point
+`core.hooksPath` at an empty repo-local directory now (`.agents/build/nohooks`);
+linked worktrees share hooks and every later stage commits.
 
 ## 4. WITNESS (tier L only)
 
@@ -313,13 +304,15 @@ Produce exactly:
     .agents/build/plans/<slug>.steps.yaml
     .agents/build/plans/<slug>/<step>.md
     .agents/build/runs/<slug>/contracts/<seam>.md   # only for a seam WITNESS did not land in code;
-                                                    # move any executor-required contract to a TRACKED path
+                                                    # run-dir = driver-side evidence, so a brief that needs
+                                                    # it cites the ABSOLUTE path (as fix briefs cite verdict.json)
 
 Keep only generated machine artifacts plus `ACTIVE` under
 `.agents/build/plans/`. Keep prose in the plan directory. Briefs are tracked,
 not run files; only tracked files enter executor worktrees. Point each plan
-`description:` at its tracked brief. Every sidecar brief, report and document path resolves from the workspace root.
-No run-directory-relative fallback exists. A brief edit is a commit.
+`description:` at its tracked brief. A sidecar `brief:` starting with
+`.agents/` resolves from the repo root; other paths resolve from `<run>`. A
+brief edit is a commit.
 
 Copy templates from this skill's own `templates/` directory (under the base
 directory the harness reports for this skill; for older installs,
@@ -328,8 +321,7 @@ directory the harness reports for this skill; for older installs,
 `build.yaml`, the sidecar from `build.steps.yaml`, executor briefs from
 `brief.md`, judge briefs from `judge-brief.md` plus `judge-prompt.md`, and
 fixes from `fix-brief.md`. Replace every placeholder and remove unused
-sibling stanzas. Every phase needs a complete conditional fix specification
-and a tracked judge brief, including tier S. No judge belongs to the machine task inventory.
+sibling, judge, fix, and polish stanzas.
 
 Pin discovery in the sidecar:
 
@@ -344,8 +336,9 @@ wall per step. With witnesses landed, shared files already exist, so siblings
 split naturally by package; write a driver-owned interface contract only for
 a seam WITNESS did not cover. Split more than about eight files or two
 independent packages into disjoint `phase-Na`, `phase-Nb` siblings. Give
-shared files to one sibling or a small predecessor. Readiness compares every pair of executor allowlists within a phase using a
-conservative overlap check; it still cannot prove true glob disjointness,
+shared files to one sibling or a small predecessor. Readiness checks every
+glob of every concurrently-open step pair (repair steps exempt) with a
+segment-aware overlap test; it still cannot prove true glob disjointness,
 so guarantee sibling disjointness yourself.
 
 Use one step per stage and make stage name equal step name. Carry the DAG in
@@ -353,7 +346,7 @@ Use one step per stage and make stage name equal step name. Carry the DAG in
 one session. Give parallel siblings different roles that resolve to different
 dispatch policies. Never write per-step `cli:`; Bernstein loses it on retry.
 Use only the persona-free roles: `resolver` and `ci-fixer` for Codex,
-`analyst` for Claude. Judges have no engine role; the sidecar pins their Claude ACP transport. Assign seam and investigation
+`analyst` for Claude, and `adversary` for judges. Assign seam and investigation
 work to `analyst`; assign transfer, exact-line, and fix work to `resolver` or
 `ci-fixer`.
 
@@ -366,33 +359,25 @@ Gates while the tree is red by design (tier L, witness tests failing until
 their phase lands): a phase gate is compile plus whole-tree lint plus the
 phase's own witness tests plus every test that was green at the base. Never
 let a phase's gate include a witness test another phase owns. Add a final
-`regress` phase after all prior phases have been accepted, with `defaults.gate_cmd`
+`regress` step depending on every phase and fix, with `defaults.gate_cmd`
 as its gate; it is the only step whose gate requires every witness green.
 Tiers S and M use `defaults.gate_cmd` on every step.
 
-Define `phases` and `bounds` in the sidecar using build.steps.yaml. Each phase
-names its executor titles, one complete conditional fix title, and a tracked
-judge brief with a pinned Claude ACP adapter, model, turn, time and spend limits.
-All tasks belong exactly once to an executor phase or conditional fix. No judge
-or no-op fix task exists. The final phase declares `final_regression: true` and
-runs the whole-tree command; its repair uses that same command.
+Use this judge shape (tiers M and L):
 
-A dependency meaning "verified and merged before this starts" MUST cross phases.
-Native DONE releases a dependent before gate/merge; no in-phase edge is a verified
-barrier. Within a phase use distinct roles, disjoint files and only dependencies
-that tolerate that native behavior. Future phases are not posted until the prior
-run is quiescent, delivery is proven, and its detached judge accepts.
+- Make `judge-N` depend on every phase-N sibling.
+- Make `fix-N` depend on `judge-N`; it always runs and takes the no-op path only
+  for a legal verdict with both counts declared and `Certain: 0`.
+- Let phase N+1 depend on phase N, not its judge, when speculation is safe.
+- Set judge sidecar `judges:` to the exact reviewed title, `report:` exactly
+  `.agents/blind-review.md`, and plan `files: []`.
+- Set every fix or polish sidecar `fixes:` to the exact repaired title and copy
+  that step's own scoped `gate_cmd:`.
 
-Judge scope is cumulative from one frozen build base to the current tip. Earlier
-changes cannot be excluded using the synthetic staging commit's ancestry. Pin
-fix scope wide enough for the intended cumulative repairs, or explicitly accept
-that an earlier-phase defect outside it parks for a new plan. Never widen a fix
-at runtime. Fix input arrives as immutable review bytes in its task description.
-Every step must declare working completion_signals; file_contains uses exactly
-`{type: file_contains, value: "relative/path :: literal needle"}`. The driver
-POSTs and verifies them directly because the native bootstrap drops this field.
-Derive whole-build wall, spend and attempt bounds from measured medians and a
-finite repair allowance. Native runs and judge ceremonies each count as attempts.
+`fix-N` and phase N+1 commonly overlap. Either serialize phase N+1 behind
+`fix-N`, or keep them concurrent and rely on the final `regress` step. Record
+the choice in a plan comment. Never make the fix depend on the later consumer;
+that verifies the consumer before the repair lands.
 
 For every executor brief:
 
@@ -410,8 +395,8 @@ For every executor brief:
 - Choose a writable, committed report path and set sidecar `brief:` and
   `report:` explicitly. If `.agents/` is refused, use a tracked allowed path.
 
-Set seed `quality_gates.base_ref` to the `<type>/<slug>` workspace branch. The
-driver freezes a separate write-once base ref at admission. The scorer measures the command even where its Go and TypeScript heuristics do
+Set sidecar `defaults.base` to the `<type>/<slug>` workspace branch. The
+scorer measures the command even where its Go and TypeScript heuristics do
 not apply.
 
 Record hashes in `<run>/ledger.md` and commit `.agents/build/plans` on the
@@ -419,11 +404,9 @@ workspace branch. Re-cut only changed artifacts when re-verifying an old plan.
 
 ## 7. READY
 
-Use the Python interpreter from the installed Bernstein uv tool environment
-(`uv tool dir` then `bernstein/bin/python`). It must import bernstein_operator
-and the pinned patched source engine. Follow the repository installation guide
-when absent; do not silently substitute PyPI or weaken required gates. Claude
-ACP/acpx must be installed and authenticated before paid execution.
+If `bernstein-herdr` is not on PATH, stop and hand the operator the install
+commands from this repo's README (the Bernstein source clone plus
+`bernstein_herdr`); never install it yourself.
 
 Preflight, before the first readiness pass (each item here otherwise costs a
 full readiness rerun):
@@ -448,17 +431,18 @@ full readiness rerun):
 
 Then from the workspace root run:
 
-    <Bernstein python> <this skill>/scripts/plan-check.py <plan dir> --repo <workspace> --machine <machine.yaml>
+    bernstein-herdr ready --plan .agents/build/plans/<slug>.yaml
 
-Read the structured readiness receipt and every facts/surface result. Notes are advisory: a missing
+Read every PASS, FAIL, RED, and NOTE line. NOTE is advisory: a missing
 allowlisted path may be a new file and a missing report requirement weakens
 evidence. Treat unexpected RED as a brief error unless the brief names that red
-window. Read every printed gate command and require the discovered whole-tree command (there is no fallback). Keep step-specific gates scoped.
+window. Read every printed gate command and replace the `just check` fallback
+with the discovered whole-tree command. Keep step-specific gates scoped.
 
 Preserve the dispatch guards:
 Codex effort must be high, every role needs a `role_model_policy`, fast-path
-titles must be reworded, parallel tasks must not share a role, phase judge fields must
-be complete, and every final regression fix uses the whole-tree gate.
+titles must be reworded, parallel tasks must not share a role, judge fields must
+be exact, and fix gates must match the step they repair.
 
 Probes (tier L): one fresh executor subagent on `claude-opus-5` per executor
 brief, in parallel batches, each in a throwaway detached worktree of the
@@ -476,8 +460,9 @@ contradictions, validation gaps, allowlist gaps, overlapping claims. Edit
 briefs yourself, rerun ready so it re-pins, and rerun critics only on the
 briefs you edited. A round returning only nits ends after the fold.
 
-Readiness also writes `<run>/readiness/receipt.json` (engine source provenance, installed code hashes,
-CLI versions, Codex config hash and role_model_policy) so the retro can tell what the run actually executed
+Readiness also writes `<run>/readiness/manifest.json` (engine source dir and
+HEAD, codex and claude versions, the codex config hash, the seed's
+`role_model_policy`) so the retro can tell what the run actually executed
 with. Record the readiness rounds and final pins in `<run>/ledger.md`.
 
 ## 8. REPORT
@@ -494,9 +479,7 @@ Write report.md in the plan directory, in spec terms only, no code:
 An outcome with no witness goes back to DERIVE, never to the user.
 Restatement exists to expose a consistent misread, where witnesses and
 contracts are both wrong in the same way and every check passes. Commit the
-plan directory, then rerun this skill's plan-check.py with --machine so the final
-readiness receipt names this exact committed tip (report generation advances HEAD).
-Present report.md as checkpoint 2. End STOPPED. Print exactly:
+plan directory. Present report.md as checkpoint 2. End STOPPED. Print exactly:
 
     use /build-run <plan dir> to start plan execution
 

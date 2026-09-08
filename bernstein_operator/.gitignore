@@ -1,9 +1,0 @@
-.venv/
-.sdd/
-__pycache__/
-.pytest_cache/
-.ruff_cache/
-dist/
-build/
-htmlcov/
-!uv.lock

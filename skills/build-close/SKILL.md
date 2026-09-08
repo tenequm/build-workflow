@@ -7,12 +7,12 @@ description: "Land a validated three-stage build and run its release ceremonies.
 
 Input: `<plan dir>` or nothing, resolved exactly as `/build-run` resolves
 it (the plan document is `<plan dir>/plan.md`; with no argument, the ACTIVE
-plan of the workspace you are in). Never edit application code. A code change
-after build completion requires a new, signed-off repair build with its own slug,
-allowlist, whole-tree regression phase and detached review. Do not dispatch an
-ad hoc herdr close round or modify frozen inputs. This skill does not invoke
-another skill; describe the missing build obligation and preserve the workspace.
-Merge when authorized by the user's existing instruction or explicit answer.
+plan of the workspace you are in). Never edit application code. Send every code fix
+to a fresh executor with a brief and allowlist - build-run's close-round rule:
+codex `gpt-5.6-sol` (effort high) through herdr, one session per file-disjoint
+partition of the fix list in parallel, sequential within a partition;
+`claude-opus-5` subagent as the fallback. Never merge on your own
+judgment; merge only after the user answers.
 
 The moment a skill instruction proves wrong, ambiguous, or is deviated
 from - or the user has to intervene where the skill should have sufficed -
@@ -39,12 +39,8 @@ machine plan.
 Read `<run>/workspace.json`, `<run>/ledger.md`, and `<run>/runs.jsonl` before
 anything else. Require workspace.json to contain exactly `path`, `branch`,
 `base`, `base_branch`, and `primary`. Require the current absolute root and
-checked-out branch to equal `path` and `branch`. Read workflow.jsonl, the native_closed proofs and each phase_accepted receipt.
-Require build_completed and its exact reviewed tip; a parked build cannot close.
-Read the immutable scorer/judge artifacts named by those receipts, including
-refusals and earlier failed attempts. runs.jsonl is an index, not recovery authority.
-A later successful attempt can resolve a failed attempt only through the journaled
-workflow; a bare merged task status never proves delivery.
+checked-out branch to equal `path` and `branch`. Read every attempt report and
+judge result named by runs.jsonl; a blocked row is unresolved evidence.
 
 Discover what release means. Check CLAUDE.md (or the equivalent project
 instructions) for release and deploy ceremonies - commonly versioning,
@@ -66,8 +62,8 @@ When a PR exists for the workspace branch:
 
 1. Watch CI until terminal. Do not merge red or pending checks.
 2. Read review feedback and unresolved threads. Turn every requested code
-   change into an explicit repair-build obligation; preserve the current build
-   evidence and obtain a freshly validated repair result before continuing.
+   change into a committed brief and dispatch a fresh fix executor. Never edit
+   the code in the driver session.
 3. Re-run the affected checks, push executor commits to the existing branch,
    reply, and resolve threads according to repo convention.
 4. Require green checks and all required threads resolved.
@@ -86,7 +82,7 @@ On explicit yes, operate from the primary checkout recorded in workspace.json:
 4. Run the sidecar's `defaults.gate_cmd` on the merged primary tree.
 
 If the merged-tree check is red, stop. Leave the merge, workspace, and branch
-in place for diagnosis. Require a newly validated repair build; do not hide
+in place for diagnosis. Send any code repair to a fresh executor; do not hide
 the failed integration with cleanup.
 
 ## Ceremonies
@@ -101,21 +97,12 @@ user explicitly. Do not claim a release step that was not measured.
 
 Before removing anything, preserve evidence:
 
-    <Bernstein python> <this skill>/scripts/preserve-evidence.py --root <workspace> --run <workspace>/<run> --dest <primary>/.agents/build/runs/<slug>/
+    rsync -a <workspace>/<run>/ <primary>/.agents/build/runs/<slug>/
 
-The script verifies the workflow chain, native archives and judge/scorer
-receipts, retains reviewed Git objects in evidence refs and a portable bundle,
-and verifies every copied file. Native retention cannot substitute for this
-archive. It allows only the regenerated report.md to differ after the validated
-tip; code drift refuses cleanup. Do not fall back to an unchecked rsync.
-
-Restore and verify the captured hooksPath using this skill's own helper:
-
-    <Bernstein python> <this skill>/scripts/workspace-hooks.py restore --root <workspace> --run <workspace>/<run>
-
-It restores the original local value (or absence), and refuses to overwrite a
-setting changed outside this build.
-Record the result in the handoff's Integration section.
+Run `git config --unset core.hooksPath`; tolerate only the exit that means the
+key was absent. Then verify with `git config --get core.hooksPath`: it must
+print nothing. Record in the handoff's Integration section that the hooks
+path was unset and the verification came back empty.
 
 After either merge path has completed:
 
@@ -143,11 +130,12 @@ with these headings exactly and no others:
     ## Integration
 
 Under Integration, record what the user chose and every exact command run,
-including hooksPath restoration and its measured verification.
+including the hooksPath unset and its empty `git config --get core.hooksPath`
+verification.
 Under Phases, include executor, wall time, files, gate, and judge verdict.
 Under Defects, separate caught-before-merge from post-run findings with
 file:line evidence. Under Open, list uncompleted release and `owner: user`
-items. Then re-run the evidence preservation script so the primary's copy contains this
+items. Then re-run the evidence rsync so the primary's copy contains this
 handoff:
 
-    <Bernstein python> <this skill>/scripts/preserve-evidence.py --root <workspace> --run <workspace>/<run> --dest <primary>/.agents/build/runs/<slug>/
+    rsync -a <workspace>/<run>/ <primary>/.agents/build/runs/<slug>/

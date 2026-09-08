@@ -20,8 +20,6 @@ deleted. Written as if this repository is public - because it is.
 
 # Findings
 
-* [Native merge-back can fetch, rebase and push the integration branch](findings/native-merge-back-pushes.md) - local completion requires stopping safe_push before any Git I/O, not merely omitting an explicit driver push.
-* [Native merge evidence differs between live verification and dead-agent reaping](findings/native-merge-evidence-varies-by-path.md) - merge gates receive surrogate task IDs, dead-agent reaping can omit task_merged, and paired WAL claims need closure before a fresh phase.
 * [A fix proven in our environment is not proven for stock Bernstein](findings/validate-fixes-against-stock-assumptions.md) - pre-submission adversarial validation of three locally-proven engine fixes found one that would false-positive on every clean exit in stock target repos and disproved the premise of half of another.
 * [Codex turns can be silently truncated by its content filter, presenting as clean completion](findings/codex-content-filter-truncates-executor-turns.md) - benign vocabulary (race, sweep, exploit, attack) can kill a codex turn mid-task with a normal-looking ending, so an executor can exit 0 with its work incomplete; brief vocabulary is the authorable risk surface and the engine's clean-exit guards are the mitigation.
 * [Bernstein releases dependents on worker-reported DONE, before any verification](findings/bernstein-done-releases-before-verification.md) - the engine's dependency model is optimistic (gates are compensating controls, not barriers), and response-cache reuse bypasses execution despite file wiping or description nonces; strict verified-before-start ordering requires keeping downstream work off the task server entirely.

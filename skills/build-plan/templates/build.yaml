@@ -1,59 +1,184 @@
-# Authored inventory, not a command to pass to bernstein run. The skill driver
-# compiles one phase at a time and POSTs full payloads to a fresh native server.
-# Every task belongs to one sidecar phase OR one conditional fix mini-run.
-# No judge task exists. Dependencies requiring verified/merged predecessors
-# MUST cross phase boundaries: native DONE can release an in-phase dependent
-# before its predecessor's gate/merge. Never rely on in-phase strict ordering.
-# One task per stage; unique titles; distinct roles and disjoint files per phase.
-# Keep title/description free of native L0 triggers (lint, format, rename X to Y).
-# Scope buckets: small 15m, medium 30m, large 60m, large+high complexity 120m.
+# Bernstein plan template. Copy to .agents/build/plans/<slug>.yaml (tracked) with its
+# sidecar <slug>.steps.yaml. Stages run in order unless depends_on says otherwise;
+# steps in a stage run in parallel. Bernstein's plan schema is strict, so
+# build-workflow options (brief, report, base, judges, gate_cmd) live in the sidecar.
+#
+# `name:` MUST equal the run-directory slug and this machine plan's file name. The
+# sidecar pins the discovered plan document and optional product spec.
+#
+# ROLE, NOT cli. Bernstein spawns its own adapters and resolves cli/model/effort by role
+# through `role_model_policy` in bernstein.yaml (measured: `resolution for role='resolver':
+# match=exact`). A per-step `cli:` is not in Bernstein's plan schema; it won the first
+# spawn and was LOST on the retry, so it is not a dispatch key and is omitted below.
+# Readiness fails any role with no policy entry.
+#
+# The four roles -- `resolver` and `ci-fixer` (codex), `analyst` (claude), and
+# `adversary` (the judge) -- are persona-free names from Bernstein's role enum.
+# `ci-fixer` exists only so a step that runs CONCURRENTLY with another codex step has a
+# different role: same role plus same cli plus same model = one batched spawn. The
+# obvious names (`backend`, `reviewer`) each drag a 10 KB irrelevant catalog persona onto
+# the front of the prompt and there is no switch; see bernstein.yaml's comment and
+# docs/2609-02-persona-prefix.md. Do not rename them back, and do not invent new ones:
+# anything outside `KNOWN_ROLES` (planning/plan_schema.py:22-41) fails `plan validate`.
+#
+# ONE STEP PER STAGE, and the stage name IS the step name; `depends_on` carries the whole
+# DAG. Nothing disables Bernstein's task batching: `OrchestratorConfig.max_tasks_per_agent`
+# defaults to 2 (core/tasks/models.py:1635) and no seed key, `tuning:` section,
+# run_config.json field or `bernstein run` flag ever sets it. Two batched tasks become ONE
+# session with one spawn. Batching groups CONCURRENTLY OPEN tasks BY ROLE, so one step per
+# stage is necessary and not sufficient: `_groups_can_merge` (tick_pipeline.py:113-127)
+# refuses to merge tasks whose cli or model differ, so parallel siblings must be given
+# DIFFERENT ROLES that resolve to different clis (`resolver` = codex, `analyst` = claude).
+#
+# `description:` IS THE PROMPT. It is the only field of a step that reaches the agent
+# (plan_loader.py:457); the sidecar is invisible to Bernstein and the run directory is
+# untracked and outside every worktree. So the description points at the step's TRACKED
+# brief, which is committed at .agents/build/plans/<slug>/<step>.md and therefore present
+# in the agent's worktree.
+#
+# No completion_signals here. Bernstein 3.19.0 validates them and then drops them when it
+# posts the task to its task server, so they never run. Completion is the git-diff output
+# mode: the agent commits on its branch and exits. The gate is
+# `bernstein-herdr gate`, wired once in bernstein.yaml's quality_gates pipeline.
+#
+# Shape per phase:
+#   phase-N   executor; the gate runs the scorer in its worktree and merges on pass. Split
+#             into siblings phase-Na, phase-Nb with disjoint file ownership once one step
+#             would own more than ~8 files; siblings must not share a file and must not
+#             share a role. The planner guarantees the first: readiness compares
+#             allowlists only WITHIN one stage, so with one step per stage nothing checks
+#             sibling overlap for you.
+#   judge-N   depends on EVERY phase-N sibling stage, role adversary; reviews the merged
+#             diff. Mark it by giving the step a `judges:` entry in the sidecar -- that
+#             field, not the title, is what selects the verdict gate over the scorer.
+#             ITS VERDICT ROUTES, IT DOES NOT BLOCK: the gate exits 0 on every verdict
+#             but `do not merge`, so a judge that finds defects still merges its review
+#             and fix-N still spawns. Blocking on findings failed the judge TASK and put
+#             every dependent in `blocked_by_failed_dep` (measured 2026-09-02), which made
+#             "the judge finds the defects" and "fix-N fixes them" jointly unsatisfiable.
+#   phase-N+1 depends on the phase-N sibling stages ONLY, so it starts while judge-N runs
+#   fix-N     depends on judge-N; ALWAYS in the plan, because the verdict is not known when
+#             the plan is written. Its brief routes on the review's `Certain:` count and it
+#             completes as a no-op -- a report commit under .agents/, nothing else -- when
+#             that count is 0. See fix-brief.md.
+#   polish-N  depends on judge-N, optional: cleanliness and docs on phase-N's files only
+#
+# fix-N AND phase-N+1 OVERLAP BY CONSTRUCTION: fix-N reuses phase-N's allowlist and
+# phase-N+1 normally builds on the same seam files. Bernstein file-locks declared files, so
+# the second claimant waits in `HTTP 409 File ownership conflict` backoff (300 s a time)
+# until the first releases -- expected, and once ~40 min of it. Pick one shape per phase:
+# add `fix-N` to phase-N+1's `depends_on` (serialized; the fix precedes its consumer, at
+# the cost of the judge round on the critical path), or keep them concurrent and add a
+# final `regress-N` stage depending on both, with the whole-tree gate command. Never the
+# inverse edge (fix-N depending on phase-N+1): the repair then lands after its consumer was
+# verified and fix-N's scoped gate never rechecks it.
+#
+# TITLES ARE ROUTED ON. Bernstein's L0 fast path matches `f"{title} {description}".lower()`
+# against `lint|format|autofix|sort imports|rename X to Y` (core/quality/fast_path.py:108-125)
+# and hands the task to `ruff` instead of an executor -- on a non-Python repo it dies as
+# `Failed to spawn: ruff` and takes every dependent with it (a run lost in 25 s,
+# 2026-09-02). Readiness fails any step that matches.
+#
+# `scope:` IS THE KILL DEADLINE, and it defaults to `medium`. Bernstein arms the adapter
+# watchdog from the step's scope bucket -- small 15m, medium 30m, large 60m, and `large`
+# plus `complexity: high` = xl 120m (core/defaults.py:294-303,
+# core/tasks/task_lifecycle.py:_batch_timeout_seconds) -- so an unscoped step is killed at
+# 30 minutes of wall no matter what `tuning.orchestrator.max_agent_runtime_s` says in
+# bernstein.yaml; a batch takes the LARGEST scope among its tasks. The schema's own
+# description ("small <30min, medium 30-90min, large 90min+") matches none of those
+# numbers; the buckets above are what the code uses. RULE: any step whose expected
+# executor wall exceeds ~20 min gets `scope: large`, and so does every judge step over a
+# multi-file phase. This is the lever that held when the `tuning:` keys did not: a
+# `scope: large` on phase-2 was the edit that stopped the 30-minute kills (2026-09-03).
 name: <slug>
-description: <build intent>
+description: <one line>
 cli: codex
 max_agents: 4
+# Reference files every worker on this plan reads. Bernstein stamps them onto each task's
+# metadata and content-addresses each one as (path, order, sha256) into the run journal.
+# TRACKED PATHS ONLY: resolution is against the worker's worktree at spawn, so an
+# untracked path is recorded `{"reason_code": "missing"}` and reaches nobody (measured
+# 2026-09-02). Readiness fails an entry that is not in the step base.
 context_files:
-  - <plan dir>/plan.md
-  - <plan dir>/spec.md
+  - <sidecar defaults.doc plan.md path>
+  - <sidecar defaults.spec spec.md path>
+  - <sidecar defaults.design product spec path; omit when none>
 constraints:
-  - "Read your tracked brief. Never edit the plan directory or bernstein.yaml."
-  - "Commit on your agent branch. Never push or move the integration branch."
+  - "The plan directory is driver-owned: never edit it. Ambiguity -> smallest faithful shape, recorded under Deviations."
+  - "Commit on your branch. Never push. Never touch the workspace branch."
+
 stages:
-  - name: implement
+  # phase-1a and phase-1b are siblings: no dependency between them, so they run in
+  # parallel, they own disjoint files, and they carry different roles so batching cannot
+  # fold them into one session.
+  - name: phase-1a
     steps:
-      - title: "implement: <behavior>"
-        role: analyst
-        scope: large
-        description: "Execute .agents/build/plans/<slug>/implement.md and commit the result."
-        files: [<owned source path or glob>]
-        completion_signals:
-          - {type: file_contains, value: "<owned path> :: <literal completion witness>"}
-  - name: fix-implement
-    depends_on: [implement]
-    steps:
-      - title: "fix-implement: repair verified findings"
+      - title: "phase-1a: <what>"
         role: resolver
-        scope: large
-        description: "Execute .agents/build/plans/<slug>/fix-implement.md using the immutable review input in this task."
-        files: [<implementation repair allowlist>]
-        completion_signals:
-          - {type: file_contains, value: "<report path> :: Validation:"}
-  - name: regress
-    depends_on: [implement]
+        scope: <small|medium|large>
+        description: |
+          Read .agents/build/plans/<slug>/phase-1a.md in this worktree and execute it
+          fully; commit your work on your branch when done.
+        files:
+          - <allowlisted path or glob>
+
+  - name: phase-1b
     steps:
-      - title: "regress: verify combined behavior"
-        role: resolver
-        scope: large
-        description: "Execute .agents/build/plans/<slug>/regress.md and commit the validation report."
-        files: [<regression test paths>]
-        completion_signals:
-          - {type: file_contains, value: ".agents/regress.md :: Validation:"}
-  - name: fix-regress
-    depends_on: [regress]
-    steps:
-      - title: "fix-regress: repair combined behavior"
+      - title: "phase-1b: <what else>"
         role: analyst
-        scope: large
-        description: "Execute .agents/build/plans/<slug>/fix-regress.md using the immutable review input in this task."
-        files: [<cumulative repair allowlist agreed before admission>]
-        completion_signals:
-          - {type: file_contains, value: ".agents/fix-regress.md :: Validation:"}
+        scope: <small|medium|large>
+        description: |
+          Read .agents/build/plans/<slug>/phase-1b.md in this worktree and execute it
+          fully; commit your work on your branch when done.
+        files:
+          - <a disjoint path or glob; no overlap with phase-1a>
+
+  - name: judge-1
+    depends_on: [phase-1a, phase-1b]
+    steps:
+      - title: "judge-1: blind review of phase-1"
+        role: adversary
+        scope: large        # a blind review of a multi-file phase does not fit 30 min
+        description: |
+          Read .agents/build/plans/<slug>/judge-1.md in this worktree and execute it
+          fully; commit your work on your branch when done.
+        files: []
+
+  # phase-2 runs concurrently with judge-1, so it must not share judge-1's role -- and it
+  # must not share phase-1a's either where phase-1a is still open. Readiness fails any two
+  # steps that share a role with no dependency path between their stages.
+  - name: phase-2
+    depends_on: [phase-1a, phase-1b]
+    steps:
+      - title: "phase-2: <what>"
+        role: ci-fixer
+        scope: <small|medium|large>
+        description: |
+          Read .agents/build/plans/<slug>/phase-2.md in this worktree and execute it
+          fully; commit your work on your branch when done.
+        files: []
+
+  - name: fix-1
+    depends_on: [judge-1]
+    steps:
+      - title: "fix-1: judge findings on phase-1"
+        role: analyst
+        scope: <small|medium|large>
+        description: |
+          Read .agents/build/plans/<slug>/fix-1.md in this worktree and execute it
+          fully; commit your work on your branch when done.
+        files:
+          - <phase-1a and phase-1b allowlists together>
+
+  - name: polish-1
+    depends_on: [judge-1]
+    steps:
+      - title: "polish-1: cleanliness and docs on phase-1 files"
+        role: resolver
+        scope: <small|medium|large>
+        priority: 4
+        description: |
+          Read .agents/build/plans/<slug>/polish-1.md in this worktree and execute it
+          fully; commit your work on your branch when done.
+        files:
+          - <phase-1a and phase-1b allowlists together>
