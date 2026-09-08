@@ -1,71 +1,36 @@
-# Brief: fix-N - judge findings on <phase>
+# Brief: <fix title> - verified findings on <phase>
 
-The judge that reviewed <phase> merged whatever its verdict was; the verdict is
-routing, not a block. So this step ALWAYS runs, and its first job is to decide
-whether there is anything to do.
+This ordinary executor task runs only after a valid actionable review. Its task
+description contains the exact immutable receipt and UTF-8 review artifacts,
+with SHA-256 hashes. No review file from another branch or "latest" path is an
+input. There is no no-op path and you must not invent work.
 
 ## Items
 
-1. Read `verdict.json` and `blind-review.md` for <phase>. The run directory is
-   at the REPO ROOT, outside this worktree, so use the absolute path:
-
-   ```
-   <absolute repo root>/.agents/build/runs/<slug>/judge/<phase T>/
-   ```
-
-   `<phase T>` is the judged step's title slug: lowercase, every non-alphanumeric
-   run replaced by `-`, CUT TO 48 CHARS (a hand-written full title does not
-   resolve). `verdict.json` carries `verdict`, `certain`, `plausible` and
-   `counts_declared`, and it exists only there -- it is driver-side. The review
-   itself the judge committed, so `.agents/blind-review.md` is also in THIS
-   worktree; if the run directory is unreadable from here, take the same three
-   facts from that file's last three lines (a legal verdict string, and both
-   counts present as `Certain:` / `Plausible:` lines -- absent lines mean
-   `counts_declared: false`).
-2. NO-OP PATH -- run, from this worktree's root:
-
-   ```
-   bernstein-herdr fix-noop --step "<this step's exact title>"
-   ```
-
-   If it prints DONE you are finished: it verified the judge's verdict is
-   legal with declared counts and `certain: 0`, wrote `<report path>` itself,
-   and committed it. If it exits 1, read its reason and take the matching
-   path below. Do not touch a source file to "have something to show"; do not
-   open the phase diff looking for work the judge did not report.
-3. REFUSAL PATH (defensive fallback -- a malformed or missing review normally
-   blocks the judge step itself, so this step never spawns; you reach here only
-   if `verdict.json` is unreadable or inconsistent from your worktree) --
-   `verdict` is `missing` or `unclear`, or `counts_declared` is `false`. The
-   review cannot be trusted to route this step, and a `certain: 0` on that
-   path is a parser fallback, not a finding.
-   Do not fix anything and do not take the no-op path. Write `<report path>`
-   with `blocked_on_dependency`, the exact `verdict.json` contents, and one line
-   saying the judge must be re-run; commit it as above so the report exists, and
-   say the same in the first line of your final message. The gate recognizes the
-   receipt and parks this step as failed; the driver decides what happens next.
-4. FIX PATH -- a legal verdict, counts declared, `certain` 1 or more. Fix every
-   defect the review labels certain, in the review's order, each with a test that
-   fails before and passes after. Treat a plausible defect as an item only when
-   the review gives a reproduction. Same allowlist as <phase>.
+1. Verify the supplied artifact hashes and reviewed base/tip. Read the findings
+   from those bytes. If absent, malformed or out of scope, commit a report with
+   `blocked_on_dependency` or `scope_exceeded` and stop. Do not fetch a newer review.
+2. Fix every certain finding inside <explicit allowlist>. Demonstrate each
+   defect with a reproducer/test and record before/after results. Do not widen
+   the allowlist or change the frozen spec, plan, seed or briefs.
+3. Preserve earlier accepted behavior. Review scope is cumulative; the pinned
+   repair scope is <explicit cumulative subset>. An out-of-scope finding parks
+   the build for a new plan; it does not authorize an extra file.
 
 ## Validation (exactly, from the worktree root)
 
 ```
-<copy the exact commands from <phase>'s brief's Validation block>
+<exact scoped commands; final regression repair uses the whole-tree command>
 ```
-
-Readiness rejects any brief whose `## Validation` is prose without a fenced
-block, so the generator must fill the fence above, never replace it with a
-sentence.
 
 ## Report
 
-`<report path>`, on every path. On the fix path, one entry per certain item with
-file:line, the test that now covers it, and the review's own wording of the
-defect. Record anything you did not fix, and why, under `## Deviations`.
+Write and commit `<report path>`, one entry per certain item: original finding,
+file:line, reproducer, commands and measured exit codes. Include `Validation:`
+and `## Deviations`. A refusal is a failing obligation, never a successful fix.
+The same scorer checks this task's actual diff, owned files, report, and command.
 
 ## Commit convention
 
-Commit with Conventional Commits: `type(scope): description`, type in feat,
-fix, chore, refactor, docs, test, ci, perf. No attribution lines or trailers.
+Use Conventional Commits, no attribution trailers. Commit on your agent branch.
+Never push or change the integration branch. Do not run setup/install-hook recipes.

@@ -1,0 +1,49 @@
+[project]
+name = "bernstein-operator"
+version = "0.1.0"
+description = "Content-bound scorer gate for Bernstein phase runs"
+requires-python = ">=3.13"
+dependencies = ["bernstein", "pyyaml", "psutil>=6"]
+
+[dependency-groups]
+dev = ["ruff>=0.15.0", "ty==0.0.79", "pytest>=9.0.0", "pytest-asyncio>=1.3.0", "pre-commit>=4.0.0"]
+
+[tool.uv.sources]
+bernstein = { git = "https://github.com/sipyourdrink-ltd/bernstein", rev = "0a6bf9f2d69daae4ad468a9ba6a2713f79d67fdf" }
+
+[project.entry-points."bernstein.gates"]
+scorer = "bernstein_operator.scorer:ScorerGate"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bernstein_operator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = ["--strict-markers", "--strict-config", "-ra"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501", "E741", "UP007"]
+exclude = [".git", ".venv", "__pycache__", "build", "dist"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ty.environment]
+python-version = "3.13"
+extra-paths = ["../skills/build-run/scripts"]
+root = ["src", "../skills/build-run/scripts", "../skills/build-plan/scripts", "../skills/build-close/scripts"]

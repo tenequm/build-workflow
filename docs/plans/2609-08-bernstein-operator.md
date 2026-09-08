@@ -6,8 +6,10 @@ three adversarial gpt-6-astra reviews, reports archived in session
 scratch). Review 2's executed store probe falsified the second revision's
 in-DAG routing; review 3 accepted the phase-run architecture and this
 revision adds the execution contracts it required (boundary/teardown,
-launch transaction, cache prerequisite, judge-ceremony integrity). Not yet
-built. `bernstein_herdr` remains the shipped companion until this lands.
+launch transaction, cache prerequisite, judge-ceremony integrity). Implementation
+and recording-agent acceptance live in `bernstein_operator/`; see the
+[acceptance map](../operator-acceptance.md). `bernstein_herdr` remains in the repository after cutover, per the
+operator's explicit retention decision; the new skills use `bernstein_operator`.
 
 ## Why now
 
@@ -427,7 +429,9 @@ commits do not prove the combined tree passes.
 
 ## Deleted outright, with the native reason
 
-`task_for_worktree`/`team.json`/`tasks.jsonl` forensics (plugin identity),
+`task_for_worktree`/`team.json` heuristics (replaced by driver-admitted IDs;
+the native merge call site supplies a surrogate task ID, so a run-bound
+task-store lookup is still required),
 `fix-noop` and in-DAG judge/fix steps (phase-boundary driver loop),
 `judge.py` as a gate plugin (driver-side ceremony),
 `merged_ahead`/`short_circuit_sha` complexity (shrinks into the memo +
@@ -441,9 +445,9 @@ migrates to the acceptance list, it is not dropped with the fake).
 ## Upstream enablers (separate workstream; each deletes a workaround)
 
 Filed and tracked outside this plan. Package *development* proceeds
-independently of all of them. Workflow *cutover* requires two things:
+independently of all of them. Workflow *cutover* requires three things:
 plugin reachability (#1, with the local-patch fallback) and effective
-response-cache neutralization (#4, likewise) - both fail-closed
+response-cache neutralization (#4, likewise), and local-only merge-back (#7) - fail-closed
 prerequisites, not conveniences.
 
 1. **Plugin-aware `pipeline:` validation** in the seed parser - unblocks
@@ -465,6 +469,11 @@ prerequisites, not conveniences.
    never matches after finalization appends `run_quiescence`
    (`bootstrap.py:1087`), so a cleanly-finished spawner can be restarted.
    Our teardown contract sidesteps it; the fix is a membership check.
+7. **Disable automatic fetch/rebase/push for local builds.** Native
+   `spawner_merge.py` calls `safe_push` after merge-back. Its fetch/rebase
+   changes commit identity and its push violates the local completion contract.
+   Until upstream exposes this control, the source patch makes `safe_push`
+   return before any Git I/O when `BERNSTEIN_OPERATOR_LOCAL_ONLY=1`.
 
 ## Acceptance evidence before the revision is called settled
 
@@ -530,5 +539,7 @@ proceeds in its own workstream, with the local-patch fallback), move the
 herdr judge logic into build-run's phase ceremony, port the herdr test
 scenarios whose invariants survive (most hardening tests die with the code
 they hardened; the ones in the acceptance list above do not), cut the
-skills over in one release, then delete `bernstein_herdr/` in the same
-release. The uv install line changes only in the `--with` path.
+skills over in one release, and keep `bernstein_herdr/` in the repository.
+Retaining the old package is intentional, including after acceptance; it is
+not part of the new skills' runtime. The uv install line changes only in the
+`--with` path. CI is deferred; local checks and acceptance tests remain required.
