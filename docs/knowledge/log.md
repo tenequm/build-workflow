@@ -1,5 +1,9 @@
 # Knowledge Bundle Update Log
 
+## 2026-09-08
+
+* **Update**: Recorded the absorption outcome in [Bernstein is tracked upstream-first through a minimal rebased fork](decisions/upstream-first-minimal-fork.md) - all 11 upstream PRs merged, content diff showed nothing fork-only remaining, herdr suite green against a build of upstream main; the workflow now installs a source build of upstream main and the fork branch is retired.
+
 ## 2026-09-07
 
 * **Capture**: Added [Codex turns can be silently truncated by its content filter](findings/codex-content-filter-truncates-executor-turns.md), from the same session's executor observations.

@@ -341,8 +341,8 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         lines.append(f"PASS no commit-time git hooks under {hook_root}"
                      + (f" (core.hooksPath={configured})" if configured else ""))
 
-    # The workflow requires a LOCALLY BUILT Bernstein (the patched clone); prose alone
-    # cannot stop a stock PyPI install from silently voiding every engine guarantee. A
+    # The workflow requires a LOCALLY BUILT Bernstein (a source clone of upstream main);
+    # prose alone cannot stop a stale PyPI install from silently voiding engine fixes. A
     # registry install's receipt requirement has no source key at all (verified across
     # eight receipts, 2026-09-04), so "path-like source present" is the check -- not a
     # string match on this machine's clone path.
@@ -359,10 +359,10 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
         elif any(k in req for k in ("directory", "editable", "path", "git")):
             lines.append(f"PASS installed bernstein is a local/source build ({ {k: req[k] for k in ('directory', 'editable', 'path', 'git') if k in req} })")
         else:
-            fail("installed bernstein comes from a registry per the uv tool receipt; this workflow requires the "
-                 "patched clone -- reinstall per the README (uv tool install <patched clone> --with bernstein_herdr ...)")
+            fail("installed bernstein comes from a registry per the uv tool receipt; this workflow requires a "
+                 "source clone -- reinstall per the README (uv tool install <clone> --with bernstein_herdr ...)")
     else:
-        lines.append("NOTE no uv tool receipt for bernstein; cannot verify the installed engine is the patched clone")
+        lines.append("NOTE no uv tool receipt for bernstein; cannot verify the installed engine is a source build")
 
     v = subprocess.run(["bernstein", "plan", "validate", str(plan.path)], capture_output=True, text=True, check=False)
     lines.append(f"{'PASS' if v.returncode == 0 else 'FAIL'} bernstein plan validate: {v.stdout.strip()[-200:] or v.stderr.strip()[-200:]}")

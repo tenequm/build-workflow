@@ -186,7 +186,7 @@ the workspace root.
    bucket is auto-extended while its heartbeat is fresh. Keep
    `max_agent_runtime_s` at 1800: raising it floors every deadline at the
    raised value and makes the buckets inert (measured 2026-09-03).
-   `Timeout after 1800s` on a large step means the patched engine is not active.
+   `Timeout after 1800s` on a large step means the source-built engine is not active.
    A 409 ownership conflict is a lock wait with 300-second backoff, not a stall.
    Wait for the owner to release.
 

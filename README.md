@@ -13,8 +13,7 @@ judge contract, run ledger, and generated-plan templates.
 npx -y skills add tenequm/build-workflow -y \
   --skill build-plan --skill build-run --skill build-close
 
-git clone https://github.com/tenequm/bernstein.git ~/pjv/sipyourdrink-ltd/bernstein
-git -C ~/pjv/sipyourdrink-ltd/bernstein checkout fork/main-plus-fixes
+git clone https://github.com/sipyourdrink-ltd/bernstein.git ~/pjv/sipyourdrink-ltd/bernstein
 uv cache clean bernstein
 uv tool install ~/pjv/sipyourdrink-ltd/bernstein \
   --with ~/pj/build-workflow/bernstein_herdr --force --reinstall
@@ -72,23 +71,20 @@ catalog personas; see the comments in `bernstein.yaml` and
 1. One ACTIVE plan per checkout. `.sdd/`, the task-server port, run config,
    ACTIVE, and `refs/build/base/<slug>` are per checkout. A concurrent build
    needs another workspace.
-2. Bernstein must be the patched clone below, not stock upstream. The branch
-   `fork/main-plus-fixes` is upstream main plus three fixes not yet merged
-   upstream: a session that exited 0 is never failed on a log-pattern match, a
-   run is not called terminal while a retry is pending, and a clean exit that
-   left uncommitted work is not auto-completed. Everything else the workflow
-   once carried (17 commits: worktree symlink isolation, the CLAUDE.md-symlink
-   spawn fix, tuning reaching the kill paths, port propagation, and more)
-   merged upstream by 2026-09-07, but the latest PyPI release (v3.19.1,
-   2026-09-03) predates those merges - stock stays unsafe until a release
-   ships them.
+2. Bernstein must be a source build of upstream main (the clone above), never
+   a PyPI install. Every fix the workflow once carried merged upstream - the
+   last three (exit-0 log-pattern guard #5618, pending-retry terminal guard
+   #5622, uncommitted-work veto #5619) on 2026-09-07..08 - so the fork
+   (`tenequm/bernstein`, branch `fork/main-plus-fixes`) is retired. But the
+   latest PyPI release (v3.19.1, 2026-09-03) predates all of them; a registry
+   install stays unsafe until a release ships them.
 
 ## Components
 
 - `skills/` contains the three driver skills: plan, run, and close. Install
   them per project with `npx skills add`.
 - `bernstein_herdr/` is installed into Bernstein's environment with
-  `uv tool install <patched clone> --with ./bernstein_herdr`. It provides
+  `uv tool install <clone> --with ./bernstein_herdr`. It provides
   readiness, run config, and the pre-merge quality gate. Executors remain
   Bernstein's own adapters.
 - `docs/research/` contains the eval, tool-survey, and design evidence.

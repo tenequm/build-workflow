@@ -1,10 +1,10 @@
 ---
 type: Decision
 title: Bernstein is tracked upstream-first through a minimal rebased fork
-description: The engine fork carries only fixes upstream does not yet have, rebuilt from upstream main whenever upstream absorbs some; every fix is submitted upstream as a small single-topic PR, and the fork dies once a PyPI release ships the last one.
+description: The engine fork carries only fixes upstream does not yet have, rebuilt from upstream main whenever upstream absorbs some; every fix is submitted upstream as a small single-topic PR. Fully absorbed 2026-09-08 - the workflow now installs a source build of upstream main, and the discipline stands ready if a new engine defect appears.
 tags: [bernstein, fork, upstream, dependencies]
 status: stable
-generated: { by: claude-code/fable-5, at: "2026-09-07T14:55:00Z" }
+generated: { by: claude-code/fable-5, at: "2026-09-08T08:25:00Z" }
 sources:
   - id: refs-update
     resource: https://github.com/tenequm/build-workflow/commit/cbdd972
@@ -15,6 +15,9 @@ sources:
   - id: absorbed
     resource: https://github.com/sipyourdrink-ltd/bernstein/pulls?q=is%3Apr+author%3Atenequm+is%3Amerged
     title: Merged upstream PRs from this project
+  - id: last-fix
+    resource: https://github.com/sipyourdrink-ltd/bernstein/pull/5619
+    title: The last carried fix (uncommitted-work veto), merged 2026-09-08
 ---
 
 # Decision
@@ -29,6 +32,20 @@ stale remote branch is force-pushed (same name, so README instructions stay
 valid).[^refs-update] The exit condition is explicit: once a PyPI release
 contains every carried fix, the fork is deleted and the workflow installs
 stock Bernstein.
+
+# Outcome (2026-09-08)
+
+Upstream absorbed everything: all 11 PRs from this project merged, the last
+(#5619, the uncommitted-work veto) on 2026-09-08.[^absorbed][^last-fix] A
+content-level diff of `fork/main-plus-fixes` against upstream `main` showed
+main carrying every fork change in equal or refined form (e.g. the veto
+landed with tighter `.sdd/` scoping) and nothing fork-only remaining;
+`bernstein_herdr`'s suite passed against a build of current main. The
+workflow now clones upstream and installs a source build of `main` directly.
+The fork branch is retired. The final exit step - installing from PyPI -
+still waits on a release newer than v3.19.1 (2026-09-03), which predates the
+last four fixes. If a new engine defect appears, this discipline restarts:
+fix locally, carry minimally, submit upstream, retire on absorption.
 
 # Why minimal, why rebuilt
 
@@ -51,3 +68,4 @@ that is the shape upstream's review machinery verifies (see
 [^refs-update]: docs: point fork references at fork/main-plus-fixes
 [^fork-branch]: The carrying branch on the fork
 [^absorbed]: Merged upstream PRs from this project
+[^last-fix]: The last carried fix (uncommitted-work veto), merged 2026-09-08

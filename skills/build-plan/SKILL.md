@@ -405,7 +405,7 @@ workspace branch. Re-cut only changed artifacts when re-verifying an old plan.
 ## 7. READY
 
 If `bernstein-herdr` is not on PATH, stop and hand the operator the install
-commands from this repo's README (the patched Bernstein clone plus
+commands from this repo's README (the Bernstein source clone plus
 `bernstein_herdr`); never install it yourself.
 
 Preflight, before the first readiness pass (each item here otherwise costs a
