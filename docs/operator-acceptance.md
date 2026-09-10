@@ -37,6 +37,17 @@ are `claude` (the bridge binds budget, model and turns; cumulative USD cost is
 required evidence) and `acp` (any other ACP agent, model passed to acpx;
 subscription agents report no cost, so the ceremony is recorded unmetered).
 
+Two builds carried the whole lifecycle on 2026-09-10: a single phase whose
+completion signals name both its code and its report reached `build_completed`
+with a zero-certain judge verdict, and `/build-close` then regenerated the
+report, merged to the primary, ran the whole-tree check on the merged tree,
+preserved 48 evidence files, restored the captured hooksPath and removed the
+workspace. One ran its executor on Claude Sonnet 5, the other on Codex
+`gpt-5.6-terra`. An earlier attempt on `gpt-5.6-luna` failed repeatedly - the
+agent wandered off its brief, wrote its report outside the declared path and
+exited without committing - so executor model capability, not sandboxing, is
+what that lane needs.
+
 The driver parks uncertain effects; it does not promise automatic recovery from
 every interrupted filesystem write. Tests inject interruption at durable-effect
 boundaries and verify either reconciliation or a preserved unresolved obligation.
