@@ -100,10 +100,13 @@ claims before any next run. Missing or contradictory evidence parks.
 ## Judge and fix ceremony
 
 After a proven boundary, the driver stages the exact cumulative base..tip tree
-in a detached worktree under `<run>/judge/<attempt>/worktree`. Claude runs through
-acpx and the pinned Claude ACP adapter in a fresh one-shot session. Budget,
-model and turn limits are passed through ACP session metadata; user settings
-and saved sessions are disabled. The judge receives the frozen brief, precise
+in a detached worktree under `<run>/judge/<attempt>/worktree`. The pinned reviewer
+runs through acpx in a fresh one-shot session. On the default `claude` transport,
+budget, model and turn limits pass through ACP session metadata, user settings and
+saved sessions are disabled, and the measured USD cost is required evidence; on
+the `acp` transport any other ACP agent runs with the model given to acpx, and a
+subscription agent that reports no cost is recorded unmetered against its
+reservation. The judge receives the frozen brief, precise
 range and tracked context. It writes only the three review artifacts. It never
 commits or becomes an engine task. The driver checks tree/index integrity, reaps
 children and rechecks the integration ref before archiving the receipt.

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import inspect
 import json
 import runpy
+import shutil
 from pathlib import Path
 
 import pytest
@@ -104,6 +106,59 @@ def test_missing_required_scorer_switch_fails_before_launch(authored):
     build = Build(root, path)
     with pytest.raises(Park, match="quality gates must be enabled"):
         admission.prerequisites(build)
+
+
+def test_engine_without_the_closed_quiescence_patch_fails_admission(
+    authored, monkeypatch, tmp_path
+):
+    """A merged task is archived to CLOSED; an engine whose terminal check omits that
+    status never self-stops, so the phase boundary it journals never arrives."""
+    from bernstein.core.orchestration import orchestrator
+
+    patched = Path(inspect.getfile(orchestrator)).read_text()
+    marker = 'or fetch_all_tasks(self._client, base, ["closed"])["closed"]\n'
+    assert marker in patched, "the installed acceptance engine is unpatched"
+    stock = tmp_path / "orchestrator.py"
+    stock.write_text(patched.replace(marker, ""))
+    real = admission.inspect.getfile
+    monkeypatch.setattr(
+        admission.inspect,
+        "getfile",
+        lambda module: str(stock) if module is orchestrator else real(module),
+    )
+    with pytest.raises(Park, match="closed-task quiescence patch"):
+        admission.prerequisites(Build(*authored))
+
+
+def test_prepare_engine_applies_every_patch_once_to_the_pinned_source(tmp_path):
+    import bernstein
+
+    prepare = runpy.run_path(
+        str(Path(__file__).resolve().parents[2] / "skills/build-run/scripts/prepare-engine.py")
+    )["prepare"]
+    source = tmp_path / "src/bernstein"
+    shutil.copytree(
+        Path(bernstein.__file__).parent, source, ignore=shutil.ignore_patterns("__pycache__")
+    )
+    # The acceptance engine is already patched, so reverting one proves the patcher
+    # reapplies exactly it, and that a second pass is the no-op the checker accepts.
+    orchestrator = source / "core/orchestration/orchestrator.py"
+    orchestrator.write_text(
+        orchestrator.read_text().replace(
+            "            _had_any_terminal_task = bool(\n"
+            '                refreshed_tasks_by_status["done"]\n'
+            '                or refreshed_tasks_by_status["failed"]\n'
+            '                or fetch_all_tasks(self._client, base, ["closed"])["closed"]\n'
+            "            )",
+            '            _had_any_terminal_task = bool(refreshed_tasks_by_status["done"] '
+            'or refreshed_tasks_by_status["failed"])',
+        )
+    )
+    with pytest.raises(RuntimeError, match="prerequisite patches"):
+        prepare(tmp_path, check=True)
+    assert prepare(tmp_path) == ["src/bernstein/core/orchestration/orchestrator.py"]
+    assert prepare(tmp_path) == []
+    prepare(tmp_path, check=True)
 
 
 def test_missing_installed_plugin_fails_admission(authored, monkeypatch):

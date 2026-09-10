@@ -112,6 +112,25 @@ def test_post_recovery_uses_original_identity_despite_an_active_retry(tmp_path, 
     admitted_inventory(server.tasks(), {task_id})
     assert post_once(Ledger(tmp_path), server, payload(), "fix-op") == task_id
     assert server.posts == 1
+    # The native retry path drops owned_files; a different list is still a widening.
+    server.rows[1]["owned_files"] = []
+    admitted_inventory(server.tasks(), {task_id})
+    # A retry of that emptied retry is judged against the admitted task, not its
+    # immediate parent, so carrying the frozen list forward is not a change.
+    server.rows.append(
+        {
+            **copy.deepcopy(original),
+            "id": "retry-of-retry",
+            "status": status,
+            "metadata": {**original["metadata"], "retry_of": "retry-id"},
+        }
+    )
+    admitted_inventory(server.tasks(), {task_id})
+    server.rows.pop()
+    server.rows[1]["owned_files"] = ["src/somewhere-else.py"]
+    with pytest.raises(Park, match="owned_files"):
+        admitted_inventory(server.tasks(), {task_id})
+    server.rows[1]["owned_files"] = original["owned_files"]
     server.rows[1]["completion_signals"] = []
     with pytest.raises(Park, match="completion_signals"):
         admitted_inventory(server.tasks(), {task_id})

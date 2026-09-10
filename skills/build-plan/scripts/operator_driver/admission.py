@@ -41,6 +41,11 @@ def prerequisites(build: Build):
         raise Park(
             "installed engine lacks the verified response-cache disable patch; run prepare-engine.py and rebuild"
         )
+    if 'fetch_all_tasks(self._client, base, ["closed"])["closed"]' not in source:
+        raise Park(
+            "installed engine lacks the closed-task quiescence patch; a merged run would "
+            "never self-stop or journal its phase boundary"
+        )
     if 'os.environ.get("BERNSTEIN_OPERATOR_LOCAL_ONLY") == "1"' not in inspect.getsource(
         git_basic.safe_push
     ):

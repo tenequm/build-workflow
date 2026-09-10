@@ -60,6 +60,12 @@ def run_env(build: Build, run: dict, base: str) -> dict:
             "BERNSTEIN_SERVER_URL": run["url"],
             "BERNSTEIN_RESPONSE_CACHE": "0",
             "BERNSTEIN_OPERATOR_LOCAL_ONLY": "1",
+            # Repair belongs to the driver's judged fix mini-runs. The janitor's own
+            # reopen re-runs a step whose completion signal it could not verify, and a
+            # reopened step that merges after an earlier attempt already merged delivers
+            # one step twice (measured 2026-09-10). Fail the step instead; its evidence
+            # parks the build for the operator.
+            "BERNSTEIN_JANITOR_REOPEN_MAX": "0",
             "BERNSTEIN_OPERATOR_ROOT": str(build.root),
             "BERNSTEIN_OPERATOR_PLAN": build.rel,
             "BERNSTEIN_OPERATOR_BASE": base,

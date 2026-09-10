@@ -29,6 +29,19 @@ PATCHES = (
         "        )",
     ),
     (
+        "src/bernstein/core/orchestration/orchestrator.py",
+        '            _had_any_terminal_task = bool(refreshed_tasks_by_status["done"] '
+        'or refreshed_tasks_by_status["failed"])',
+        "            # Operator: a merged task is soft-archived to CLOSED, a status the\n"
+        "            # default fetch omits, so a fully merged run never self-stops and\n"
+        "            # never journals the run_quiescence its phase boundary requires.\n"
+        "            _had_any_terminal_task = bool(\n"
+        '                refreshed_tasks_by_status["done"]\n'
+        '                or refreshed_tasks_by_status["failed"]\n'
+        '                or fetch_all_tasks(self._client, base, ["closed"])["closed"]\n'
+        "            )",
+    ),
+    (
         "src/bernstein/core/config/seed_parser.py",
         "    if name not in VALID_GATE_NAMES:\n"
         '        raise SeedError(f"quality_gates.pipeline[{index}].name is unsupported: {name!r}")',
@@ -43,22 +56,24 @@ PATCHES = (
 
 
 def prepare(root: Path, *, check: bool = False) -> list[str]:
-    edits = []
+    # Two patches share orchestrator.py, so each edit must build on the previous
+    # one's text; deriving both from the original file would drop the first write.
+    pending: dict[Path, str] = {}
     for rel, before, after in PATCHES:
         path = root / rel
-        source = path.read_text()
+        source = pending.get(path, path.read_text())
         if after in source:
             continue
         if source.count(before) != 1:
             raise RuntimeError(
                 f"unfamiliar engine source at {rel}; inspect the upstream implementation"
             )
-        edits.append((path, source.replace(before, after)))
-    if check and edits:
+        pending[path] = source.replace(before, after)
+    if check and pending:
         raise RuntimeError("source checkout still needs the operator prerequisite patches")
-    for path, replacement in edits:
+    for path, replacement in pending.items():
         path.write_text(replacement)
-    return [str(path.relative_to(root)) for path, _ in edits]
+    return [str(path.relative_to(root)) for path in pending]
 
 
 if __name__ == "__main__":

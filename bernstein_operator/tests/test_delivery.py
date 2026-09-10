@@ -109,8 +109,20 @@ def test_local_only_native_push_skips_all_git_io(monkeypatch, tmp_path):
 
 def test_parked_task_or_residual_process_blocks_boundary(delivered):
     tasks = [{**delivered[4][0], "status": "blocked_by_failed_dep"}]
-    with pytest.raises(Park, match="nonterminal"):
+    with pytest.raises(Park, match="task obligation"):
         prove(delivered, tasks=tasks)
+    # A claimed retry of a step this run delivered is not an obligation: it was
+    # dispatched after the work landed, so the scorer refuses it a content-bound PASS.
+    stranded = [
+        *delivered[4],
+        {
+            "id": "task-two",
+            "title": "Owned step",
+            "status": "claimed",
+            "metadata": {"retry_of": "task-one"},
+        },
+    ]
+    assert prove(delivered, tasks=stranded)[0]["task_id"] == "task-one"
     events = native_events(delivered[5].path)
     events[-1]["residual"] = [{"pid": 123}]
     with pytest.raises(Park, match="quiescence"):
@@ -135,6 +147,49 @@ def test_native_refusal_cannot_be_hidden_by_later_status_or_pass(delivered):
         stream.write(json.dumps({"session_id": "test", "reason": "file-scope-refused"}) + "\n")
     with pytest.raises(Park, match="native merge refusal"):
         prove(delivered)
+
+
+def test_refusal_of_an_attempt_a_later_one_superseded_does_not_park_the_step(delivered):
+    """Native retries stay enabled, so a first attempt whose branch the gates refused is
+    resolved once a DIFFERENT attempt delivers that step. Measured on the first real
+    build: a misdispatched attempt was refused and its retry landed the scored work."""
+    root, _, _, _, _, journal, _ = delivered
+    path = root / ".sdd/runtime/refused_merges.jsonl"
+    path.write_text(
+        json.dumps({"session_id": "first-try", "reason": "quality-gates-blocked"}) + "\n"
+    )
+    events = native_events(journal.path, closed=True)
+    events.insert(0, {"event": "agent_spawned", "agent_id": "first-try", "task_ids": ["task-one"]})
+    assert prove(delivered, events=events)[0]["agent_id"] == "test"
+    # Only the gates blocking an attempt is explained by a later delivery. Scope,
+    # blast radius and a merge aimed at the default branch are not.
+    for reason in ("allowed-files-scope", "target-is-default-branch", None):
+        row = {"session_id": "first-try"} | ({"reason": reason} if reason else {})
+        path.write_text(json.dumps(row) + "\n")
+        with pytest.raises(Park, match="native merge refusal"):
+            prove(delivered, events=events)
+
+
+def test_landed_content_of_a_failed_attempt_needs_a_completed_retry(delivered):
+    """Dead-agent reaping lands a scored attempt and still records it failed, then
+    retries. Measured on the first real build: the landed content held a scorer PASS
+    while its own task read failed. The step is resolved only by a completed retry."""
+    failed = [{"id": "task-one", "title": "Owned step", "status": "failed", "metadata": {}}]
+    with pytest.raises(Park, match="failed task obligation"):
+        prove(delivered, tasks=failed)
+    retried = [
+        *failed,
+        {
+            "id": "task-two",
+            "title": "Owned step",
+            "status": "done",
+            "metadata": {"retry_of": "task-one"},
+        },
+    ]
+    assert prove(delivered, tasks=retried)[0]["task_id"] == "task-one"
+    orphan = [*failed, {**retried[1], "status": "failed"}]
+    with pytest.raises(Park, match="failed task obligation"):
+        prove(delivered, tasks=orphan)
 
 
 def test_native_retention_cannot_prune_archived_build_evidence(delivered):

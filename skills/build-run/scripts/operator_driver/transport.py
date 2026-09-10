@@ -68,16 +68,27 @@ def admitted_inventory(tasks: list[dict], expected: set[str]) -> None:
     by_id = {task["id"]: task for task in tasks}
     if len(by_id) != len(tasks):
         raise Park("task inventory contains duplicate IDs")
+    # Every retry is compared against the ADMITTED task at the root of its chain, not
+    # its immediate parent: a middle retry that dropped owned_files must not become
+    # the anchor a later retry carrying the frozen list is judged against.
+    root = {task_id: task_id for task_id in allowed}
     pending = [task for task in tasks if task["id"] not in allowed]
     while pending:
         next_pending = []
         for task in pending:
             parent = task.get("metadata", {}).get("retry_of")
             if parent in allowed and parent in by_id:
-                original = by_id[parent]
-                for key in ("title", "description", "role", "owned_files", "completion_signals"):
+                original = by_id[root[parent]]
+                root[task["id"]] = root[parent]
+                for key in ("title", "description", "role", "completion_signals"):
                     if task.get(key) != original.get(key):
                         raise Park(f"native retry changed frozen task {key}")
+                # The native retry path drops owned_files (measured 2026-09-10: a retry
+                # of a three-file step carried []). Ownership is enforced by the scorer
+                # from the frozen plan, not from the task, so an emptied list is the
+                # engine losing a field. A DIFFERENT list would be a widened scope.
+                if task.get("owned_files") not in (original.get("owned_files"), [], None):
+                    raise Park("native retry changed frozen task owned_files")
                 for key in ("operator_run", "operator_spec", "context_files"):
                     if task.get("metadata", {}).get(key) != original.get("metadata", {}).get(key):
                         raise Park(f"native retry changed frozen metadata {key}")

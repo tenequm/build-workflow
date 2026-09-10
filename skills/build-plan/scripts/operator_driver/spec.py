@@ -86,14 +86,17 @@ class Build:
                 )
             owned.extend([*titles, phase["fix"]])
             judge = phase["judge"]
+            transport = judge.get("transport", "claude")
+            if transport not in ("claude", "acp"):
+                raise Park("judge transport must be claude or acp")
             if (
                 not isinstance(judge.get("adapter_argv"), list)
                 or not judge["adapter_argv"]
                 or not all(isinstance(v, str) and v for v in judge["adapter_argv"])
             ):
-                raise Park("judge adapter_argv must name a pinned Claude ACP adapter")
+                raise Park("judge adapter_argv must name a pinned ACP adapter")
             if not isinstance(judge.get("model"), str) or not judge["model"]:
-                raise Park("judge needs an explicit Claude model")
+                raise Park("judge needs an explicit model")
             if type(judge.get("max_turns")) is not int or judge["max_turns"] <= 0:
                 raise Park("judge needs a positive integer max_turns")
             if any(

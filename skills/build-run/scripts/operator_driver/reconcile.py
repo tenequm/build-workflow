@@ -84,6 +84,29 @@ def native_events(path: Path, *, closed: bool = False) -> list[dict]:
     return load_events(path).events
 
 
+def retried_to_completion(tasks: list[dict], task_id: str | None) -> bool:
+    """Whether a native retry of this attempt reached a terminal, non-failed status.
+
+    Dead-agent reaping lands an attempt's scored content and still records that
+    attempt failed, then retries it. The landed content is proven by its own scorer
+    PASS and merge ancestry; the failed status is engine bookkeeping about the
+    session, so it is only unresolved when no retry of it ever completed.
+    """
+    frontier, seen = [task_id], set()
+    while frontier:
+        current = frontier.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        for task in tasks:
+            if task.get("metadata", {}).get("retry_of") != current:
+                continue
+            if task.get("status") in {"done", "closed"}:
+                return True
+            frontier.append(task["id"])
+    return False
+
+
 def prove_delivery(
     root: Path,
     run_dir: Path,
@@ -95,8 +118,6 @@ def prove_delivery(
     events: list[dict],
 ) -> list[dict]:
     admitted_inventory(tasks, set(expected.values()))
-    if any(task.get("status") not in {"done", "closed", "failed"} for task in tasks):
-        raise Park("scheduler closure left nonterminal task obligations")
     if not is_ancestor(root, start, tip):
         raise Park("integration moved outside the phase start ancestry")
     quiescence = [row for row in events if row.get("event") == "run_quiescence"]
@@ -132,13 +153,17 @@ def prove_delivery(
         for task_id in row.get("task_ids", [])
     }
     refusal_path = root / ".sdd/runtime/refused_merges.jsonl"
+    refused: list[dict] = []
     if refusal_path.exists():
         raw = refusal_path.read_bytes()
         if raw and not raw.endswith(b"\n"):
             raise Park("merge refusal journal has a torn tail")
         agent_ids = {agent_id for agent_id, _ in spawned}
-        if any(json.loads(line).get("session_id") in agent_ids for line in raw.splitlines()):
-            raise Park("native merge refusal remains in this run's evidence")
+        refused = [
+            row
+            for row in (json.loads(line) for line in raw.splitlines())
+            if row.get("session_id") in agent_ids
+        ]
     merges = [row for row in events if row.get("event") == "task_merged"]
     recorded_commits = {row.get("merge_commit") for row in merges}
     # Native dead-agent reaping can merge without a task_merged journal event.
@@ -185,7 +210,9 @@ def prove_delivery(
         if not title or not commit or (agent_id, task_id) not in spawned:
             raise Park("merge has no attributable executed task attempt")
         task = task_map[task_id]
-        if task.get("status") not in {"done", "closed"}:
+        if task.get("status") not in {"done", "closed"} and not retried_to_completion(
+            tasks, task_id
+        ):
             raise Park("landed work still has a failed task obligation")
         matching = [
             receipt
@@ -234,6 +261,32 @@ def prove_delivery(
         )
     if delivered != set(expected):
         raise Park(f"expected steps lack delivery proof: {sorted(set(expected) - delivered)}")
+    # A task left claimed at closure is not a separate obligation: nothing runs after
+    # the scheduler exits, every admitted task and retry maps to an expected step, and
+    # each of those steps has just been proven delivered above. The native janitor
+    # reopens a step whose report is missing, and a retry dispatched after the work
+    # landed is refused by the scorer for having no content-bound PASS, so it can
+    # never merge (measured 2026-09-10). An undelivered step parks above instead.
+    # Native retries stay enabled, so an attempt the gates blocked is resolved
+    # evidence once a DIFFERENT attempt delivered its step - that is the scorer doing
+    # its job, then a retry succeeding. Every other refusal reason still parks
+    # (scope, blast radius, unreadable diffs, a merge aimed at the default branch),
+    # and so does a refusal naming the attempt whose content actually landed: a later
+    # status or PASS never explains away the refusal of the work in the branch.
+    landed = {(proof["agent_id"], proof["task_id"]) for proof in proofs}
+    for row in refused:
+        attempts = {(agent, task) for agent, task in spawned if agent == row["session_id"]}
+        titles = {logical.get(task) for _, task in attempts}
+        if (
+            row.get("reason") != "quality-gates-blocked"
+            or attempts & landed
+            or not titles
+            or not titles <= delivered
+        ):
+            raise Park(
+                "native merge refusal remains in this run's evidence: "
+                f"{row['session_id']} ({row.get('reason', 'no reason recorded')})"
+            )
     unexplained = set(git(root, "rev-list", f"{start}..{tip}").splitlines()) - explained
     if unexplained:
         raise Park(f"unexpected integration commits: {sorted(unexplained)}")

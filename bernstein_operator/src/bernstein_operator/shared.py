@@ -152,9 +152,15 @@ def policy(worktree: Path, title: str) -> dict:
         declaration = next(step for step in steps if step["title"] == title)
         for task_id in seen | {requested}:
             row = tasks[task_id]
+            owned = row.get("owned_files")
+            # The admitted task carries the frozen ownership. A native retry of it
+            # drops the field (measured 2026-09-10: a retry of a three-file step
+            # carried []), and this gate scores against the frozen declaration
+            # regardless, so only a DIFFERENT list is a scope nobody admitted.
+            dropped = task_id != requested and owned in ([], None)
             if (
                 row["title"] != title
-                or row.get("owned_files") != declaration["files"]
+                or (owned != declaration["files"] and not dropped)
                 or row.get("metadata", {}).get("operator_run") != native_run
             ):
                 raise ValueError("merge task identity or scope differs from admission")

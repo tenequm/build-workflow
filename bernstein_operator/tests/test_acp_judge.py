@@ -54,6 +54,27 @@ def test_missing_cost_and_incomplete_protocol_do_not_pass():
     assert transcript(stream(event(0.1)) + b'{"partial', complete=False)["cost_usd"] == 0.1
 
 
+def test_unmetered_transport_accepts_absent_cost_but_not_a_missing_session():
+    assert transcript(stream(event()), require_cost=False)["cost_usd"] is None
+    assert transcript(stream(event(0.3)), require_cost=False)["cost_usd"] == 0.3
+    with pytest.raises(Park, match="no ACP session"):
+        transcript(stream({"id": 1, "result": {"stopReason": "end_turn"}}), require_cost=False)
+
+
+def test_acp_transport_keeps_its_bounds_without_the_claude_bridge(tmp_path):
+    """The bridge's session metadata cannot reach another agent, so acpx's own flags
+    carry the turn ceiling, the review tool set and an empty MCP surface."""
+    spec = {"transport": "acp", "model": "gemini-3.7-flash-low", "timeout_s": 5, "max_turns": 9}
+    prompt = tmp_path / "prompt.md"
+    argv = judge_argv({**spec, "adapter_argv": ["/bin/agy-acp", "--uid="]}, tmp_path, prompt)
+    assert argv[argv.index("--model") + 1] == "gemini-3.7-flash-low"
+    assert argv[argv.index("--max-turns") + 1] == "9"
+    assert "Agent" not in argv[argv.index("--allowed-tools") + 1]
+    assert json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text()) == {"mcpServers": []}
+    assert argv[argv.index("--agent") + 1] == "/bin/agy-acp --uid="
+    assert "operator_driver.claude_acp" not in " ".join(argv)
+
+
 def test_bridge_pins_budget_and_settings_and_forbids_resume():
     message = {
         "method": "session/new",
