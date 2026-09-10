@@ -394,7 +394,12 @@ fix scope wide enough for the intended cumulative repairs, or explicitly accept
 that an earlier-phase defect outside it parks for a new plan. Never widen a fix
 at runtime. Fix input arrives as immutable review bytes in its task description.
 Every step must declare working completion_signals; file_contains uses exactly
-`{type: file_contains, value: "relative/path :: literal needle"}`. The driver
+`{type: file_contains, value: "relative/path :: literal needle"}`. One of them
+names the step's own report and a literal that report must contain, and that
+literal must be one the brief asks for: the scorer archives the report and the
+judge reads it, so a step signalled only on its code passes with the report
+missing and the absence surfaces later as a finding no pinned fix can repair.
+The driver
 POSTs and verifies them directly because the native bootstrap drops this field.
 Derive whole-build wall, spend and attempt bounds from measured medians and a
 finite repair allowance. Native runs and judge ceremonies each count as attempts.

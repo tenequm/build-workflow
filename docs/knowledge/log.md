@@ -2,6 +2,7 @@
 
 ## 2026-09-10
 
+* **Capture**: Added [every step's completion signal names its report](decisions/completion-signals-name-the-report.md) and [an executor model below the brief's complexity fails as a clean exit](findings/executor-model-capability-floor.md), from the two builds carried to build_completed and closed through the real build-close scripts. The brief template now names the literal its own signal checks.
 * **Capture**: Added [native task bookkeeping contradicts its own delivered work](findings/engine-bookkeeping-is-not-delivery-proof.md), from seven real builds: three driver tolerances (superseded refusal, landed-work-of-a-failed-attempt with a completed retry, retry-dropped owned_files) plus the engine's incident-case write into the workspace root.
 * **Capture**: Added [a merged task is archived to CLOSED, a status the quiescence self-stop does not count](findings/merged-tasks-close-and-stall-quiescence.md), found by the first real operator build (Claude Sonnet and Codex executors, an Antigravity/agy judge over generic ACP and a Claude judge over the pinned adapter). The operator gains a fourth engine prerequisite patch, an admission check that refuses an engine without it, and upstream enabler #8. The same build showed that a refused first attempt superseded by a delivering retry must not park a run whose steps are all proven delivered.
 
