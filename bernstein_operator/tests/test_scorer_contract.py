@@ -199,6 +199,16 @@ def test_merge_surrogate_id_resolves_only_scope_preserving_admitted_retries(atte
     write()
     assert score(wt, "task-root")["title"] == "Owned step"
     assert score(wt, "task-retry")["status"] == "pass"
+    # A native retry drops owned_files (measured 2026-09-10). Ownership is scored from
+    # the frozen declaration, so an emptied retry still resolves, while the admitted
+    # task itself must always carry the frozen list.
+    retry["owned_files"] = []
+    write()
+    assert score(wt, "task-retry")["status"] == "pass"
+    task["owned_files"] = []
+    write()
+    assert ScorerGate().run([], wt, "task-retry", "").blocked
+    task["owned_files"] = ["src/code.py", "src/test_code.py"]
     retry["owned_files"] = ["src/unowned.py"]
     write()
     assert ScorerGate().run([], wt, "task-retry", "").blocked

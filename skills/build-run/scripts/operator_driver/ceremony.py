@@ -6,7 +6,7 @@ import json
 import time
 from pathlib import Path
 
-from .acp import judge_argv, transcript
+from .acp import claude_bridge, judge_argv, transcript
 from .processes import alive, cancel_acp, launch_once, owned_processes, terminate
 from .spec import Build, git
 from .storage import Ledger, Park, canonical, contained, digest, immutable
@@ -154,11 +154,16 @@ def judge(
     if not exit_path.is_file():
         raise Park("judge exited without a completion receipt")
     exit_record = json.loads(exit_path.read_text())
+    # acpx keeps a queue-owner process alive for its idle TTL after a one-shot turn, so
+    # a survivor is routine rather than proof of a runaway judge. Reap every one and
+    # require the reaping to have worked - nothing from this ceremony may still run when
+    # the tree below is validated - and record what was reaped in the receipt.
     survivors = owned_processes(wt, all_commands=True)
     for survivor in survivors:
         terminate(survivor)
-    if exit_record["residual"] or owned_processes(build.root) or survivors:
+    if owned_processes(wt, all_commands=True) or owned_processes(build.root):
         raise Park("judge left surviving child processes")
+    reaped = sorted(survivor["command"] for survivor in survivors)
     validate_tree(wt, staged, tree)
     if git(build.root, "rev-parse", build.branch) != tip:
         raise Park("integration ref moved while the judge was reviewing")
@@ -177,11 +182,14 @@ def judge(
                 "reason": "judge evidence does not reference an existing file and line",
             }
     log = (ledger.directory / "processes" / f"{operation}.log").read_bytes()
-    protocol = transcript(log)
+    protocol = transcript(log, require_cost=claude_bridge(spec))
+    # An agent that reports no cost leaves this ceremony's spend unmeasured, so the
+    # receipt keeps it null and the whole-build bound charges the full reservation
+    # rather than treating an absent number as zero.
     cost = protocol["cost_usd"]
     if protocol["stop_reason"] != "end_turn" or protocol["errors"]:
         verdict = {**verdict, "reason": "ACP prompt did not finish successfully"}
-    if cost > spec["budget_usd"]:
+    if cost is not None and cost > spec["budget_usd"]:
         raise Park("judge exceeded its reserved spend")
     artifacts = {}
     for rel in sorted(ALLOWED):
@@ -202,6 +210,7 @@ def judge(
         "tree": tree,
         "verdict": verdict,
         "cost_usd": cost,
+        "reaped": reaped,
         "acp": protocol,
         "artifacts": artifacts,
     }

@@ -77,7 +77,6 @@ def test_detached_review_binds_exact_tree_and_recovers_from_immutable_receipt(re
     [
         ("mutate", "application inputs"),
         ("move-ref", "integration ref moved"),
-        ("child", "surviving child processes"),
     ],
 )
 def test_integrity_violations_invalidate_review_and_children_are_reaped(review, mode, reason):
@@ -87,6 +86,18 @@ def test_integrity_violations_invalidate_review_and_children_are_reaped(review, 
     dest = review.build.run_dir / "judge/judge-one"
     assert not (dest / "receipt.json").exists()
     assert not owned_processes(dest / "worktree", all_commands=True)
+
+
+def test_a_surviving_judge_child_is_reaped_and_named_before_the_tree_is_read(review):
+    """acpx keeps its queue owner alive past a one-shot turn, so the ceremony reaps a
+    survivor instead of refusing the review - but nothing may still be running when the
+    tree is validated, and whatever was reaped is named in the immutable receipt."""
+    review.mode[0] = "child"
+    receipt = invoke(review)
+    assert receipt["reaped"] and any("time.sleep" in row for row in receipt["reaped"])
+    dest = review.build.run_dir / "judge/judge-one"
+    assert not owned_processes(dest / "worktree", all_commands=True)
+    assert not owned_processes(review.build.root)
 
 
 def test_changed_archived_review_cannot_trigger_a_fix(review):

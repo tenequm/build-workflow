@@ -445,9 +445,10 @@ migrates to the acceptance list, it is not dropped with the fake).
 ## Upstream enablers (separate workstream; each deletes a workaround)
 
 Filed and tracked outside this plan. Package *development* proceeds
-independently of all of them. Workflow *cutover* requires three things:
-plugin reachability (#1, with the local-patch fallback) and effective
-response-cache neutralization (#4, likewise), and local-only merge-back (#7) - fail-closed
+independently of all of them. Workflow *cutover* requires four things:
+plugin reachability (#1, with the local-patch fallback), effective
+response-cache neutralization (#4, likewise), local-only merge-back (#7),
+and a quiescence self-stop that counts merged work (#8) - fail-closed
 prerequisites, not conveniences.
 
 1. **Plugin-aware `pipeline:` validation** in the seed parser - unblocks
@@ -474,6 +475,17 @@ prerequisites, not conveniences.
    changes commit identity and its push violates the local completion contract.
    Until upstream exposes this control, the source patch makes `safe_push`
    return before any Git I/O when `BERNSTEIN_OPERATOR_LOCAL_ONLY=1`.
+8. **Count a merged task as terminal in the quiescence self-stop.** The task
+   store archives a verified, merged task to `CLOSED`
+   (`task_store_core.py:2409`), and the orchestrator's self-stop gate reads
+   only `done`/`failed` from a `fetch_all_tasks` call whose default statuses
+   omit `closed` - so a run whose every task merged idles forever, never
+   journaling `run_completed`/`run_quiescence`. Measured on the first real
+   build, 2026-09-10; the recorded-executor acceptance run reaches its
+   quiescent tick while the task is still `done`, which is why the suite
+   never saw it. The engine already treats `closed` as terminal for
+   dependency release (`orchestrator.py:1763`), so the source patch adds the
+   same status to that one check.
 
 ## Acceptance evidence before the revision is called settled
 

@@ -1,5 +1,10 @@
 # Knowledge Bundle Update Log
 
+## 2026-09-10
+
+* **Capture**: Added [native task bookkeeping contradicts its own delivered work](findings/engine-bookkeeping-is-not-delivery-proof.md), from seven real builds: three driver tolerances (superseded refusal, landed-work-of-a-failed-attempt with a completed retry, retry-dropped owned_files) plus the engine's incident-case write into the workspace root.
+* **Capture**: Added [a merged task is archived to CLOSED, a status the quiescence self-stop does not count](findings/merged-tasks-close-and-stall-quiescence.md), found by the first real operator build (Claude Sonnet and Codex executors, an Antigravity/agy judge over generic ACP and a Claude judge over the pinned adapter). The operator gains a fourth engine prerequisite patch, an admission check that refuses an engine without it, and upstream enabler #8. The same build showed that a refused first attempt superseded by a delivering retry must not park a run whose steps are all proven delivered.
+
 ## 2026-09-08
 
 * **Capture**: Added [automatic merge-back push behavior](findings/native-merge-back-pushes.md) and [merge evidence by execution path](findings/native-merge-evidence-varies-by-path.md), verified against native source and recording-executor integration tests. The operator adds a local-only prerequisite, admitted-ID resolution, exact merge-parent delivery proofs, and paired WAL closure.

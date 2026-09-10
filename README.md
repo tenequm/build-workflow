@@ -7,7 +7,7 @@ through ACP between runs, and actionable findings trigger a pinned fix mini-run.
 
 ## Install
 
-Use the verified source revision and the three compatibility patches. A registry
+Use the verified source revision and the four compatibility patches. A registry
 installation cannot satisfy the current plugin-parser and semantic-cache checks.
 These commands create an operator-owned source checkout; they do not alter an
 existing upstream clone. Replace the example checkout paths with your own.
@@ -17,8 +17,10 @@ git clone https://github.com/tenequm/build-workflow.git "$HOME/pj/build-workflow
 git clone https://github.com/sipyourdrink-ltd/bernstein.git "$HOME/pj/bernstein-operator-engine"
 git -C "$HOME/pj/bernstein-operator-engine" checkout --detach 0a6bf9f2d69daae4ad468a9ba6a2713f79d67fdf
 python3 "$HOME/pj/build-workflow/skills/build-run/scripts/prepare-engine.py" "$HOME/pj/bernstein-operator-engine"
+# --no-sources is required: the scorer package pins the engine by git revision
+# for its own development lock, which conflicts with this patched local checkout.
 uv tool install "$HOME/pj/bernstein-operator-engine" \
-  --with "$HOME/pj/build-workflow/bernstein_operator" --python 3.13 --force --reinstall
+  --with "$HOME/pj/build-workflow/bernstein_operator" --python 3.13 --force --reinstall --no-sources
 npm install -g acpx@0.15.1
 # Fetch the pinned adapter before an unattended run. Its Claude authentication
 # must already work; this help command does not make a model call.
@@ -27,17 +29,24 @@ npx -y skills add tenequm/build-workflow -y \
   --skill build-plan --skill build-run --skill build-close
 ```
 
-Set `model_reasoning_effort = "high"` in the existing `~/.codex/config.toml`
-without duplicating the key. Install/authenticate the Claude and Codex CLIs.
+The native Codex adapter passes only `-m`, so Codex effort comes from
+`~/.codex/config.toml`. Readiness requires every codex role's declared `effort`
+to equal that file's `model_reasoning_effort`, where an absent key means
+`default` (the model's own): set the key to `"high"` for a production build and
+declare `high`, without duplicating the key. Install/authenticate the Claude and
+Codex CLIs.
 Find the execution interpreter using `uv tool dir`: use the resulting
 `<tool-dir>/bernstein/bin/python` for skill scripts. The scorer and engine must
 share that environment. Do not use the package's development environment for
 a paid build: its locked upstream source is patched only in the test harness.
 
-`prepare-engine.py` applies only three exact changes and fails on unfamiliar
+`prepare-engine.py` applies only four exact changes and fails on unfamiliar
 source: seed validation consults the installed gate registry; the orchestrator
 honors `BERNSTEIN_RESPONSE_CACHE=0`; merge-back skips fetch, rebase and push when
-`BERNSTEIN_OPERATOR_LOCAL_ONLY=1`. Rebuild after patching. Readiness checks the
+`BERNSTEIN_OPERATOR_LOCAL_ONLY=1`; and the orchestrator's quiescence self-stop
+counts a merged task, which the store archives as `closed` - without it a run
+whose every task merged never stops and never journals the phase boundary this
+workflow waits for. Rebuild after patching. Readiness checks the
 installed code and exercises the real parser. Upstream replacements require a
 new verified source pin and acceptance run, not removal of admission checks.
 

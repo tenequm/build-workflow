@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 import yaml
 from bernstein.core.quality.janitor import _check_file_contains
@@ -66,7 +68,7 @@ def authored(tmp_path):
     for phase in sidecar["phases"]:
         phase["judge"] = {
             "brief": "briefs/judge.md",
-            "adapter_argv": ["claude-agent-acp"],
+            "adapter_argv": [sys.executable, "-m", "claude_agent_acp"],
             "model": "claude-opus-5",
             "max_turns": 4,
             "timeout_s": 20,
@@ -126,6 +128,46 @@ def test_broken_completion_signal_shape_fails_before_any_post(authored):
     path.write_text(yaml.safe_dump(raw))
     with pytest.raises(Park, match="signals differ"):
         Build(root, path)
+
+
+def test_judge_transport_selects_its_required_limits(authored):
+    root, path = authored
+    sidecar_path = path.with_suffix(".steps.yaml")
+    sidecar = yaml.safe_load(sidecar_path.read_text())
+    for phase in sidecar["phases"]:
+        phase["judge"].update(transport="acp", model="gemini-3.7-flash-low")
+    sidecar_path.write_text(yaml.safe_dump(sidecar))
+    Build(root, path)
+    # Every transport is turn-bounded: the bridge binds it in session metadata, acpx
+    # binds it with --max-turns, and neither may be left to the agent.
+    del sidecar["phases"][0]["judge"]["max_turns"]
+    sidecar_path.write_text(yaml.safe_dump(sidecar))
+    with pytest.raises(Park, match="max_turns"):
+        Build(root, path)
+    sidecar["phases"][0]["judge"]["max_turns"] = 4
+    sidecar["phases"][0]["judge"]["transport"] = "herdr"
+    sidecar_path.write_text(yaml.safe_dump(sidecar))
+    with pytest.raises(Park, match="transport"):
+        Build(root, path)
+
+
+def test_codex_role_effort_must_state_the_machine_config(authored, tmp_path):
+    from operator_driver.readiness import codex_effort
+
+    build = Build(*authored)
+    config = tmp_path / "config.toml"
+    with pytest.raises(Park, match=r"\['high'\].*= default"):
+        codex_effort(build, config)
+    config.write_text('model_reasoning_effort = "high"\n[features]\nhooks = true\n')
+    codex_effort(build, config)
+    build.seed["role_model_policy"]["resolver"]["effort"] = "default"
+    with pytest.raises(Park, match="= high"):
+        codex_effort(build, config)
+    config.write_text("")
+    codex_effort(build, config)
+    config.write_text("model_reasoning_effort = high\n")
+    with pytest.raises(Park, match="cannot be read"):
+        codex_effort(build, config)
 
 
 def test_future_stage_dependency_cannot_be_silently_dropped_by_native_loader(authored):

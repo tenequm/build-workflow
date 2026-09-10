@@ -20,10 +20,22 @@ engine installation or make paid model calls.
 | Evidence preservation | Native archives survive more than twenty later journals. Delivery uses native merge events or exact scored second-parent ancestry. Paired WAL claims are sealed only after proof. Close tests verify archive hashes, portable Git objects and refusal on code drift. |
 | Independent skills | Vendored helper and template comparisons run locally. Each skill has its own scripts and templates; runtime code never reads a sibling skill. Hook capture/restoration is checked and refuses unrelated configuration changes. |
 
-The source checkout used for real builds needs three prerequisite patches:
-plugin-aware seed parsing, an effective semantic-cache disable switch, and
-local-only `safe_push`. Readiness refuses an unprepared installation. The
-development lock alone does not provide those patches to a paid build.
+The source checkout used for real builds needs four prerequisite patches:
+plugin-aware seed parsing, an effective semantic-cache disable switch,
+local-only `safe_push`, and a quiescence self-stop that counts the `closed`
+status a merged task is archived to. Readiness refuses an unprepared
+installation. The development lock alone does not provide those patches to a
+paid build.
+
+The first real build (2026-09-10, a `textkit.slugify` fixture) exercised what no
+recording can: a Claude Sonnet executor, a Codex executor, an Antigravity/agy
+judge over generic ACP and a Claude judge over the pinned adapter, two phase
+boundaries and real merges. It is what found the fourth patch above - every
+recorded task reaches the quiescent tick as `done`, while a really merged one is
+already `closed` - and the `--no-sources` install requirement. Judge transports
+are `claude` (the bridge binds budget, model and turns; cumulative USD cost is
+required evidence) and `acp` (any other ACP agent, model passed to acpx;
+subscription agents report no cost, so the ceremony is recorded unmetered).
 
 The driver parks uncertain effects; it does not promise automatic recovery from
 every interrupted filesystem write. Tests inject interruption at durable-effect

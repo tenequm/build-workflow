@@ -8,9 +8,11 @@ import inspect
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 from bernstein_operator.shared import command
@@ -71,6 +73,29 @@ def globs_overlap(a: str, b: str) -> bool:
     )
     # Empty prefixes are not proof of separation: broad wildcards are conservative.
     return wildcard and (not short or long[: len(short)] == short)
+
+
+def codex_effort(build: Build, config: Path) -> None:
+    """The native Codex adapter passes only -m; effort comes from the machine config
+    (absent: the model's default), so the role policy must state what will run."""
+    policy = build.seed["role_model_policy"]
+    declared = {
+        policy[task.role]["effort"]
+        for task in build.tasks.values()
+        if policy[task.role]["cli"] == "codex"
+    }
+    if not declared:
+        return
+    try:
+        parsed = tomllib.loads(config.read_text(encoding="utf-8")) if config.exists() else {}
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        raise Park(f"machine Codex configuration cannot be read: {exc}") from exc
+    effective = parsed.get("model_reasoning_effort", "default")
+    if declared != {effective}:
+        raise Park(
+            f"Codex roles declare effort {sorted(declared)} but {config} runs "
+            f"model_reasoning_effort = {effective}"
+        )
 
 
 def check(build: Build, *, replay: bool = True) -> dict:
@@ -165,12 +190,14 @@ def check(build: Build, *, replay: bool = True) -> dict:
                     raise Park(f"phase has overlapping executor ownership: {left} and {right}")
     policy = build.seed["role_model_policy"]
     codex_config = Path.home() / ".codex/config.toml"
-    if any(policy[task.role]["cli"] == "codex" for task in build.tasks.values()):
-        raw = codex_config.read_text() if codex_config.exists() else ""
-        if not re.search(r'^\s*model_reasoning_effort\s*=\s*"high"', raw, re.M):
-            raise Park(
-                "Codex dispatch requires model_reasoning_effort = high in the machine config"
-            )
+    codex_effort(build, codex_config)
+    for phase in build.phases:
+        # A bare adapter binary must resolve here; the default transport's launcher is
+        # npx, whose presence says nothing about the pinned adapter (the install guide
+        # fetches that separately), so this check is worth only what it measures.
+        adapter = phase["judge"]["adapter_argv"][0]
+        if phase["judge"].get("transport") == "acp" and shutil.which(adapter) is None:
+            raise Park(f"judge adapter is not executable: {adapter}")
     code, out, err = command(
         [sys.executable, "-m", "bernstein", "plan", "validate", str(build.path)],
         cwd=build.root,

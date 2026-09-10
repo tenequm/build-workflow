@@ -353,7 +353,11 @@ Use one step per stage and make stage name equal step name. Carry the DAG in
 one session. Give parallel siblings different roles that resolve to different
 dispatch policies. Never write per-step `cli:`; Bernstein loses it on retry.
 Use only the persona-free roles: `resolver` and `ci-fixer` for Codex,
-`analyst` for Claude. Judges have no engine role; the sidecar pins their Claude ACP transport. Assign seam and investigation
+`analyst` for Claude. Judges have no engine role; the sidecar pins their ACP
+transport: `claude` (default, the pinned adapter with budget, model and turn
+limits bound through session metadata and measured USD cost) or `acp` (any other
+ACP agent, model passed to acpx; a subscription agent reports no cost, so its
+ceremony is recorded unmetered). Assign seam and investigation
 work to `analyst`; assign transfer, exact-line, and fix work to `resolver` or
 `ci-fixer`.
 
@@ -372,7 +376,8 @@ Tiers S and M use `defaults.gate_cmd` on every step.
 
 Define `phases` and `bounds` in the sidecar using build.steps.yaml. Each phase
 names its executor titles, one complete conditional fix title, and a tracked
-judge brief with a pinned Claude ACP adapter, model, turn, time and spend limits.
+judge brief with a pinned ACP adapter, model, time and spend limits, plus
+`max_turns` for the default `claude` transport.
 All tasks belong exactly once to an executor phase or conditional fix. No judge
 or no-op fix task exists. The final phase declares `final_regression: true` and
 runs the whole-tree command; its repair uses that same command.
@@ -456,7 +461,9 @@ evidence. Treat unexpected RED as a brief error unless the brief names that red
 window. Read every printed gate command and require the discovered whole-tree command (there is no fallback). Keep step-specific gates scoped.
 
 Preserve the dispatch guards:
-Codex effort must be high, every role needs a `role_model_policy`, fast-path
+every codex role's declared effort must equal the machine's
+`model_reasoning_effort` (absent means `default`), because the adapter passes
+only `-m`; every role needs a `role_model_policy`, fast-path
 titles must be reworded, parallel tasks must not share a role, phase judge fields must
 be complete, and every final regression fix uses the whole-tree gate.
 

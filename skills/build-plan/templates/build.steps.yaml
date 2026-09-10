@@ -19,6 +19,10 @@ phases:
     fix: "fix-implement: repair verified findings"
     judge:
       brief: .agents/build/plans/<slug>/judge-implementation.md
+      # transport: claude (default) binds budget/model/turns through the Claude
+      # session bridge and requires measured USD cost. transport: acp runs any
+      # other ACP agent (model passed to acpx, no max_turns, unmetered when the
+      # agent reports no cost), e.g. adapter_argv: [<antigravity acp server>].
       adapter_argv: [npx, --yes, "@agentclientprotocol/claude-agent-acp@0.60.0"]
       model: claude-opus-5
       max_turns: <positive integer>

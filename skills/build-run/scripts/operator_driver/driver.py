@@ -36,10 +36,14 @@ class Bounds:
             ) or self.ledger.last("judge_receipt", operation=row["operation"])
             # Native auxiliary/model accounting is not a complete final invoice.
             # Keep its whole reservation charged even when observed rows are low.
-            if settlement and settlement["event"] == "judge_receipt":
-                committed += settlement["cost_usd"]
+            # A judge that reported a cost settles at it; one whose transport reports
+            # none (a subscription agent) is unmeasured, not free, so it settles at
+            # its reservation like a native run.
+            measured = settlement["cost_usd"] if settlement else None
+            if settlement and settlement["event"] == "judge_receipt" and measured is not None:
+                committed += measured
             else:
-                committed += max(row["reserved_usd"], settlement["cost_usd"] if settlement else 0)
+                committed += max(row["reserved_usd"], measured or 0)
         if committed + amount > self.build.bounds["max_spend_usd"]:
             raise Park("whole-build spend limit cannot cover another attempt")
         self.ledger.append("reservation", operation=operation, reserved_usd=amount)

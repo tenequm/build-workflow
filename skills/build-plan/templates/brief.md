@@ -56,8 +56,11 @@ Report each command, its exit code and the last 30 lines of output.
 ## Report
 
 Write `<report path>` in the worktree root: per item DONE / DEVIATED / SKIPPED
-with file:line; Validation (per command); Deviations (with the alternative
-rejected and why); Open (walls hit, out-of-allowlist needs). The gate archives
+with file:line; a line beginning exactly `Validation:` for each command, with
+its exit code and result (a `## Validation` heading alone does not contain that
+literal, and a step whose completion signal names it then fails its own witness
+with the work already merged - measured 2026-09-10); Deviations (with the
+alternative rejected and why); Open (walls hit, out-of-allowlist needs). The gate archives
 this file to `<run>/reports/<step>/<task>-<head>/report.md` and scores its claims against the
 measured gate, so a claim you did not measure is a block.
 
