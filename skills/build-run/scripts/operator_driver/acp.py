@@ -24,6 +24,13 @@ def claude_bridge(spec: dict) -> bool:
 
 
 def judge_argv(spec: dict, worktree: Path, prompt: Path) -> list[str]:
+    # acpx otherwise resolves MCP servers from the reviewed tree itself (.acpxrc.json)
+    # and then the home config, so a repository under blind review could hand servers
+    # to its own reviewer. An empty set is passed on every transport; acpx wants a
+    # JSON array here, not the object map other tools use.
+    empty_mcp = prompt.with_name("mcp-none.json")
+    empty_mcp.write_text('{"mcpServers": []}\n')
+    mcp = ["--mcp-config", str(empty_mcp)]
     if claude_bridge(spec):
         agent = [
             sys.executable,
@@ -38,13 +45,13 @@ def judge_argv(spec: dict, worktree: Path, prompt: Path) -> list[str]:
             "--",
             *spec["adapter_argv"],
         ]
-        bounds = []
+        bounds = mcp
     else:
-        # The bridge's session metadata does not reach another agent, so acpx's own
-        # flags carry the same containment: a turn ceiling, the review tool set, and
-        # no ambient MCP servers. An empty config file is what replaces them.
-        empty_mcp = prompt.with_name("mcp-none.json")
-        empty_mcp.write_text('{"mcpServers": []}\n')
+        # The bridge's Claude session options cannot reach another agent, so the model,
+        # turn ceiling and tool set are asked for through acpx instead. Only the empty
+        # MCP set and the ceremony's own timeout bind an agent that ignores acpx's
+        # Claude-shaped session metadata; turns and tools are a request it may refuse,
+        # which is why an unmetered transport still settles at its full reservation.
         agent = spec["adapter_argv"]
         bounds = [
             "--model",
@@ -53,8 +60,7 @@ def judge_argv(spec: dict, worktree: Path, prompt: Path) -> list[str]:
             str(spec["max_turns"]),
             "--allowed-tools",
             "Read,Glob,Grep,Bash,Write,Edit",
-            "--mcp-config",
-            str(empty_mcp),
+            *mcp,
         ]
     return [
         "acpx",

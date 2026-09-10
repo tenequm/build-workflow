@@ -170,6 +170,35 @@ def test_refusal_of_an_attempt_a_later_one_superseded_does_not_park_the_step(del
             prove(delivered, events=events)
 
 
+def test_declared_witnesses_are_read_from_the_settled_tip(delivered):
+    """The engine judges a completion signal against the delivered copy while the merge
+    is still landing. The driver reads the same signals at the boundary, where the tip
+    is settled: they resolve a failed status, and an unmet one parks the phase."""
+    root, run_id, start, tip, tasks, journal, _ = delivered
+    failed = [{"id": "task-one", "title": "Owned step", "status": "failed", "metadata": {}}]
+    events = native_events(journal.path, closed=True)
+
+    def prove_with(signals, stored):
+        return prove_delivery(
+            root,
+            root / ".agents/build/runs/demo",
+            run_id,
+            start,
+            tip,
+            {"Owned step": "task-one"},
+            stored,
+            events,
+            {"Owned step": signals},
+        )
+
+    held = [{"type": "file_contains", "value": "src/code.py :: VALUE = 1"}]
+    assert prove_with(held, failed)[0]["task_id"] == "task-one"
+    with pytest.raises(Park, match="declared witnesses"):
+        prove_with([{"type": "file_contains", "value": "src/code.py :: NEVER WRITTEN"}], tasks)
+    with pytest.raises(Park, match="declared witnesses"):
+        prove_with([{"type": "path_exists", "value": "src/absent.py"}], tasks)
+
+
 def test_landed_content_of_a_failed_attempt_needs_a_completed_retry(delivered):
     """Dead-agent reaping lands a scored attempt and still records it failed, then
     retries. Measured on the first real build: the landed content held a scorer PASS
@@ -190,6 +219,48 @@ def test_landed_content_of_a_failed_attempt_needs_a_completed_retry(delivered):
     orphan = [*failed, {**retried[1], "status": "failed"}]
     with pytest.raises(Park, match="failed task obligation"):
         prove(delivered, tasks=orphan)
+
+
+def test_a_step_lands_twice_when_its_retry_branches_from_the_first_landing(delivered):
+    """An attempt whose completion signal cannot be verified fails and is retried after
+    its work already merged, so the retry branches from the tip that carries it. Both
+    landings are separately scored and sequential, so both are proven rather than
+    ambiguous - measured on the first real builds."""
+    root, run_id, start, _, tasks, journal, _ = delivered
+    second = root / ".sdd/worktrees/retry"
+    git(root, "worktree", "add", "-qb", "agent/retry", str(second))
+    (second / "src/code.py").write_text("VALUE = 2\n")
+    (second / ".agents/report.md").write_text("Validation: exit 0\n")
+    git(second, "add", "-A")
+    git(second, "commit", "-qm", "retry of the owned change")
+    assert score(second, "Owned step")["status"] == "pass"
+    result = merge_worktree_branch("retry", root)
+    assert result.success and result.merge_commit
+    journal.record("agent_spawned", agent_id="retry", task_ids=["task-two"])
+    record_task_merged(
+        journal, task_id="task-two", agent_id="retry", merge_commit=result.merge_commit
+    )
+    retried = [
+        *tasks,
+        {
+            "id": "task-two",
+            "title": "Owned step",
+            "status": "done",
+            "metadata": {"retry_of": "task-one"},
+        },
+    ]
+    tip = git(root, "rev-parse", "integration")
+    proofs = prove_delivery(
+        root,
+        root / ".agents/build/runs/demo",
+        run_id,
+        start,
+        tip,
+        {"Owned step": "task-one"},
+        retried,
+        native_events(journal.path, closed=True),
+    )
+    assert [proof["agent_id"] for proof in proofs] == ["test", "retry"]
 
 
 def test_native_retention_cannot_prune_archived_build_evidence(delivered):

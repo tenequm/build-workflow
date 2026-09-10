@@ -60,8 +60,9 @@ def run_env(build: Build, run: dict, base: str) -> dict:
             "BERNSTEIN_SERVER_URL": run["url"],
             "BERNSTEIN_RESPONSE_CACHE": "0",
             "BERNSTEIN_OPERATOR_LOCAL_ONLY": "1",
-            # Repair belongs to the driver's judged fix mini-runs. The janitor's own
-            # reopen re-runs a step whose completion signal it could not verify, and a
+            # Repair belongs to the driver's judged fix mini-runs. This budget governs
+            # both the janitor's reopen of a step whose completion signal it could not
+            # verify and the bounded re-run after a non-conflict merge-back failure; a
             # reopened step that merges after an earlier attempt already merged delivers
             # one step twice (measured 2026-09-10). Fail the step instead; its evidence
             # parks the build for the operator.
@@ -130,8 +131,23 @@ def seal(
     tip = git(build.root, "rev-parse", build.branch)
     report = canonical({"runs": [row.to_dict() for row in list_finished_runs(build.root / ".sdd")]})
     archive_native(build.root, build.run_dir, run["run_id"], tasks, report)
+    witnesses = {
+        title: [
+            {"type": signal.type, "value": signal.value}
+            for signal in build.tasks[title].completion_signals
+        ]
+        for title in expected
+    }
     proofs = prove_delivery(
-        build.root, build.run_dir, run["run_id"], run["start"], tip, expected, tasks, events
+        build.root,
+        build.run_dir,
+        run["run_id"],
+        run["start"],
+        tip,
+        expected,
+        tasks,
+        events,
+        witnesses,
     )
     close_proven_wal(build.root, run["run_id"], tasks, events)
     cost = cost_for(build.root, run["run_id"])

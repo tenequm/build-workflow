@@ -404,8 +404,10 @@ commits do not prove the combined tree passes.
   after `command_override`); `orchestration.test_followup: false` and
   `BERNSTEIN_TEST_FOLLOWUP` cleared from the launch env (default-ON
   conditional task creation at the quiescence check - an unplanned,
-  signal-less `qa` task the inventory rule would only park); janitor
-  reopens stay at default (same-id, intra-phase, re-gated every attempt).
+  signal-less `qa` task the inventory rule would only park);
+  `BERNSTEIN_JANITOR_REOPEN_MAX=0`, because a reopened step that merges
+  after an earlier attempt already merged delivers one step twice, and
+  repair belongs to the judged fix mini-runs (measured 2026-09-10).
 - **Retired assumptions**: "exit 1 is TERMINAL" is deleted from every
   skill and docstring; the gate is documented as resume-idempotent.
 
