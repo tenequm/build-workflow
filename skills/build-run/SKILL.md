@@ -1,6 +1,6 @@
 ---
 name: build-run
-description: "Execute a ready phase build unattended. Use /build-run <plan dir>, or alone in its workspace, for isolated native Bernstein runs, Claude ACP judging between phases, receipt-bound fix mini-runs, and whole-tree validation."
+description: "Execute a ready phase build unattended. Use /build-run <plan dir>, or alone in its workspace, for isolated native Bernstein runs, detached ACP judging between phases, receipt-bound fix mini-runs, and whole-tree validation."
 ---
 
 # build-run
@@ -34,7 +34,7 @@ script reads another skill's directory. Do not use an arbitrary system Python.
    exact fields: path, branch, base, base_branch, primary; current root and branch
    must equal its path and branch.
 2. Require the plan directory's report.md and no open Escalations. Require all
-   authored inputs committed, the native scorer plugin installed, and all three
+   authored inputs committed, the native scorer plugin installed, and all four
    engine compatibility patches present. The installed Python must import
    bernstein_operator and operator scripts from this skill. See the repository
    install instructions; do not mutate the engine or plugin during a live run.
@@ -73,7 +73,10 @@ server with a fresh tasks.jsonl, and full direct POSTs with completion_signals,
 metadata, model policy and concrete phase-local dependency IDs. No explicit
 IDs are reused. Only after verifying stored payloads does the driver start the
 native orchestrator. Future-phase tasks do not exist yet. Native gate repair,
-flaky deselection, test follow-ups and evolution are off. Semantic response
+flaky deselection, test follow-ups, evolution and janitor reopens are off: a
+step whose completion signal cannot be verified fails with its evidence rather
+than re-running, because a reopened step that merges after an earlier attempt
+already merged delivers that step twice. Semantic response
 reuse is disabled by the mandatory source patch. Importable root TODO.md,
 TASKS.md, .plan and native backlog contents block launch; new ingress during a
 run parks it. Quarantined expected titles also park before execution.
@@ -104,8 +107,9 @@ in a detached worktree under `<run>/judge/<attempt>/worktree`. The pinned review
 runs through acpx in a fresh one-shot session. On the default `claude` transport,
 budget, model and turn limits pass through ACP session metadata, user settings and
 saved sessions are disabled, and the measured USD cost is required evidence; on
-the `acp` transport any other ACP agent runs with the model given to acpx, and a
-subscription agent that reports no cost is recorded unmetered against its
+the `acp` transport any other ACP agent is asked for the same model, turn and
+tool limits through acpx and reviews with no MCP servers, and an agent that
+reports no cost leaves the ceremony unmeasured, so it settles at its whole
 reservation. The judge receives the frozen brief, precise
 range and tracked context. It writes only the three review artifacts. It never
 commits or becomes an engine task. The driver checks tree/index integrity, reaps

@@ -84,6 +84,31 @@ def native_events(path: Path, *, closed: bool = False) -> list[dict]:
     return load_events(path).events
 
 
+def witnessed(root: Path, tip: str, signals: list[dict]) -> bool:
+    """Whether a step's declared completion signals hold in the reviewed tree.
+
+    The native janitor evaluates the same signals against the delivered copy while the
+    merge that delivers them is still landing, so a step that creates a new file can be
+    failed for a witness its merged content satisfies (measured 2026-09-10). At the
+    boundary the tip is settled, which makes this the answerable form of that question.
+    """
+    if not signals:
+        return False
+    for signal in signals:
+        if signal["type"] not in {"file_contains", "path_exists"}:
+            return False
+        rel, _, needle = signal["value"].partition(" :: ")
+        blob = subprocess.run(
+            ["git", "show", f"{tip}:{rel.strip()}"],
+            cwd=root,
+            capture_output=True,
+            timeout=30,
+        )
+        if blob.returncode or (needle and needle not in blob.stdout.decode(errors="replace")):
+            return False
+    return True
+
+
 def retried_to_completion(tasks: list[dict], task_id: str | None) -> bool:
     """Whether a native retry of this attempt reached a terminal, non-failed status.
 
@@ -116,6 +141,7 @@ def prove_delivery(
     expected: dict[str, str],
     tasks: list[dict],
     events: list[dict],
+    witnesses: dict[str, list[dict]] | None = None,
 ) -> list[dict]:
     admitted_inventory(tasks, set(expected.values()))
     if not is_ancestor(root, start, tip):
@@ -203,6 +229,7 @@ def prove_delivery(
     proofs = []
     explained = set()
     delivered = set()
+    previous_head: dict[str, str] = {}
     for row in merges:
         task_id, agent_id = row.get("task_id"), row.get("agent_id")
         title = logical.get(task_id)
@@ -210,8 +237,10 @@ def prove_delivery(
         if not title or not commit or (agent_id, task_id) not in spawned:
             raise Park("merge has no attributable executed task attempt")
         task = task_map[task_id]
-        if task.get("status") not in {"done", "closed"} and not retried_to_completion(
-            tasks, task_id
+        if (
+            task.get("status") not in {"done", "closed"}
+            and not retried_to_completion(tasks, task_id)
+            and not witnessed(root, tip, (witnesses or {}).get(title, []))
         ):
             raise Park("landed work still has a failed task obligation")
         matching = [
@@ -238,8 +267,21 @@ def prove_delivery(
             raise Park("scorer report archive changed")
         if git(root, "rev-parse", f"{receipt['head']}^{{tree}}") != receipt["tree"]:
             raise Park("scorer receipt tree differs from its Git object")
-        if title in delivered:
-            raise Park(f"multiple delivered attempts for one logical step: {title}")
+        # A step can land more than once: when an attempt merges but its completion
+        # signal cannot be verified, the engine fails that task and retries it, and the
+        # retry branches from the tip that already carries the first attempt's work
+        # (measured 2026-09-10). Each landing is separately scored, each is an ancestor
+        # of the reviewed tip, and the judge reads the cumulative tree, so the honest
+        # requirement is that every attempt of the step is proven - not that there was
+        # only one. Concurrent delivery of one step remains impossible: a phase gives
+        # each step one executor with disjoint ownership.
+        earlier = previous_head.get(title)
+        if earlier and not (
+            is_ancestor(root, earlier, receipt["head"])
+            or is_ancestor(root, receipt["head"], earlier)
+        ):
+            raise Park(f"delivered attempts for one step are not sequential: {title}")
+        previous_head[title] = receipt["head"]
         delivered.add(title)
         explained.add(commit)
         explained.update(
@@ -261,6 +303,14 @@ def prove_delivery(
         )
     if delivered != set(expected):
         raise Park(f"expected steps lack delivery proof: {sorted(set(expected) - delivered)}")
+    # The plan declared what each step must leave behind. The driver reads those
+    # witnesses here, against the settled tip, rather than trusting the engine's
+    # timing-sensitive verdict about them.
+    unwitnessed = [
+        title for title, signals in (witnesses or {}).items() if not witnessed(root, tip, signals)
+    ]
+    if unwitnessed:
+        raise Park(f"delivered steps do not satisfy their declared witnesses: {unwitnessed}")
     # A task left claimed at closure is not a separate obligation: nothing runs after
     # the scheduler exits, every admitted task and retry maps to an expected step, and
     # each of those steps has just been proven delivered above. The native janitor
@@ -285,7 +335,7 @@ def prove_delivery(
         ):
             raise Park(
                 "native merge refusal remains in this run's evidence: "
-                f"{row['session_id']} ({row.get('reason', 'no reason recorded')})"
+                f"{row.get('session_id')} ({row.get('reason', 'no reason recorded')})"
             )
     unexplained = set(git(root, "rev-list", f"{start}..{tip}").splitlines()) - explained
     if unexplained:

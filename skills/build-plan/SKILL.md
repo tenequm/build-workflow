@@ -376,8 +376,8 @@ Tiers S and M use `defaults.gate_cmd` on every step.
 
 Define `phases` and `bounds` in the sidecar using build.steps.yaml. Each phase
 names its executor titles, one complete conditional fix title, and a tracked
-judge brief with a pinned ACP adapter, model, time and spend limits, plus
-`max_turns` for the default `claude` transport.
+judge brief with a pinned ACP adapter, model, turn, time and spend limits, which
+every transport requires.
 All tasks belong exactly once to an executor phase or conditional fix. No judge
 or no-op fix task exists. The final phase declares `final_regression: true` and
 runs the whole-tree command; its repair uses that same command.
@@ -465,7 +465,7 @@ every codex role's declared effort must equal the machine's
 `model_reasoning_effort` (absent means `default`), because the adapter passes
 only `-m`; every role needs a `role_model_policy`, fast-path
 titles must be reworded, parallel tasks must not share a role, phase judge fields must
-be complete, and every final regression fix uses the whole-tree gate.
+be complete with an `acp` transport's adapter resolvable on PATH, and every final regression fix uses the whole-tree gate.
 
 Probes (tier L): one fresh executor subagent on `claude-opus-5` per executor
 brief, in parallel batches, each in a throwaway detached worktree of the

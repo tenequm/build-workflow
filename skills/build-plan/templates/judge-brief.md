@@ -24,4 +24,5 @@ ownership from the synthetic staging commit or omit earlier changes.
 
 Only `.agents/blind-review.md`, `.agents/verdict.json`, `.agents/scorecard.md`.
 These files are archived by attempt before the driver reacts. They never merge.
-A forbidden edit, changed ref or surviving child invalidates the ceremony.
+A forbidden edit or a changed ref invalidates the ceremony. A process you leave
+running is reaped and named in the receipt, so reap your own children.

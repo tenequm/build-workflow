@@ -2,8 +2,8 @@
 
 Three self-contained skills for planning, running and landing a Bernstein build.
 The driver plans and supervises; native Bernstein executors write application
-code. Each phase gets its own engine run. Claude reviews the cumulative result
-through ACP between runs, and actionable findings trigger a pinned fix mini-run.
+code. Each phase gets its own engine run. A detached ACP reviewer judges the cumulative
+result between runs, and actionable findings trigger a pinned fix mini-run.
 
 ## Install
 
@@ -55,7 +55,7 @@ new verified source pin and acceptance run, not removal of admission checks.
 1. `/build-plan`: signed-off spec, derived plan, witnesses where needed, explicit
    phases, tracked executor/fix/judge briefs, an isolated workspace and readiness.
 2. `/build-run <plan dir>`: one authenticated server and native run per phase,
-   positive delivery reconciliation, detached Claude ACP judging, bounded fixes,
+   positive delivery reconciliation, detached ACP judging, bounded fixes,
    and a final whole-tree regression phase. Ends with a local validated branch.
 3. `/build-close <plan dir>`: authorized merge/release, outcome report, verified
    evidence preservation, then workspace cleanup.
@@ -73,7 +73,7 @@ existing user authorization or an explicit final decision.
 | Native Bernstein server/orchestrator | one fresh ID and port per phase or fix | task scheduling, retries, worktrees, janitor, gate calls, merging, reaping |
 | Native resolver/ci-fixer executors | agent worktrees | Codex gpt-5.6-sol, high effort |
 | Native analyst executors | agent worktrees | Claude claude-opus-5, high effort |
-| Claude ACP judge | detached workflow-owned worktree | fresh blind cumulative review with model/turn/time/spend limits |
+| ACP judge | detached workflow-owned worktree | fresh blind cumulative review with model/turn/time/spend limits; `claude` binds them through its session bridge, `acp` asks acpx for them |
 | Installed scorer plugin | executor worktree at both native gate call sites | observed diff, ownership, validation, report checks and immutable receipts |
 
 The Python package installs only the scorer entry point. Coordination lives in
