@@ -47,6 +47,12 @@ parked on:[^builds]
    report),[^janitor] and a retry dispatched after the work already landed is
    refused by the scorer for having no content-bound PASS. The scheduler then
    self-stops with that retry still `claimed`.
+5. **A completion signal judged against a moving target.** The janitor reads a
+   step's signals from the *delivered* copy while the merge that delivers them
+   is still landing, so a step that creates a new file can be failed for a
+   witness its own merged content satisfies. The step is then failed or
+   retried, and the retry - branching from a tip that already carries the first
+   landing - delivers that step a second time.
 
 # What the boundary may rest on
 
@@ -58,9 +64,16 @@ receipts. Those are the artifacts the driver produces or verifies itself.
 Task status answers exactly one question it alone can answer - whether an
 expected step ever reached a terminal state - and even there the honest
 predicate is per logical step across its retry chain, not per task row. Every
-tolerance added for the four cases above is bounded the same way: it accepts
-the engine losing or contradicting its own record, and never accepts a step
-that has no delivery proof, a merge with no scored parent, or a widened scope.
+tolerance added for the cases above is bounded the same way: it accepts the
+engine losing or contradicting its own record, and never accepts a step that
+has no delivery proof, a merge with no scored parent, or a widened scope.
+
+The declared completion signals are the clearest case of the thesis. They are
+the plan's own statement of what a step must leave behind, and the settled tip
+at a phase boundary is where that question has an answer, so the driver reads
+them there itself rather than inheriting a verdict formed mid-merge. Doing so
+is strictly stronger than trusting the engine: a witness that never holds now
+parks a phase the engine would have called complete.
 
 # A related engine side effect
 
