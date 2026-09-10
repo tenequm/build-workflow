@@ -1,162 +1,154 @@
 # build-workflow
 
-A three-stage pipeline for multi-phase software work. One driver plans,
-supervises, validates, and lands the build. Bernstein dispatches coding-agent
-executors into git worktrees. The driver never edits application code.
+Three self-contained skills for planning, running and landing a Bernstein build.
+The driver plans and supervises; native Bernstein executors write application
+code. Each phase gets its own engine run. A detached ACP reviewer judges the cumulative
+result between runs, and actionable findings trigger a pinned fix mini-run.
 
-This repo supplies the driver skills, readiness checks, scripted scorer, blind
-judge contract, run ledger, and generated-plan templates.
+## Install
 
-## Quickstart
+Use the verified source revision and the four compatibility patches. A registry
+installation cannot satisfy the current plugin-parser and semantic-cache checks.
+These commands create an operator-owned source checkout; they do not alter an
+existing upstream clone. Replace the example checkout paths with your own.
 
 ```sh
+git clone https://github.com/tenequm/build-workflow.git "$HOME/pj/build-workflow"
+git clone https://github.com/sipyourdrink-ltd/bernstein.git "$HOME/pj/bernstein-operator-engine"
+git -C "$HOME/pj/bernstein-operator-engine" checkout --detach 0a6bf9f2d69daae4ad468a9ba6a2713f79d67fdf
+python3 "$HOME/pj/build-workflow/skills/build-run/scripts/prepare-engine.py" "$HOME/pj/bernstein-operator-engine"
+# --no-sources is required: the scorer package pins the engine by git revision
+# for its own development lock, which conflicts with this patched local checkout.
+uv tool install "$HOME/pj/bernstein-operator-engine" \
+  --with "$HOME/pj/build-workflow/bernstein_operator" --python 3.13 --force --reinstall --no-sources
+npm install -g acpx@0.15.1
+# Fetch the pinned adapter before an unattended run. Its Claude authentication
+# must already work; this help command does not make a model call.
+npx --yes @agentclientprotocol/claude-agent-acp@0.60.0 --help
 npx -y skills add tenequm/build-workflow -y \
   --skill build-plan --skill build-run --skill build-close
-
-git clone https://github.com/sipyourdrink-ltd/bernstein.git ~/pjv/sipyourdrink-ltd/bernstein
-uv cache clean bernstein
-uv tool install ~/pjv/sipyourdrink-ltd/bernstein \
-  --with ~/pj/build-workflow/bernstein_herdr --force --reinstall
-# NEVER install Bernstein from PyPI for this workflow.
-
-grep -q 'model_reasoning_effort = "high"' ~/.codex/config.toml \
-  || echo 'model_reasoning_effort = "high"' >> ~/.codex/config.toml
 ```
 
-## Pipeline
+The native Codex adapter passes only `-m`, so Codex effort comes from
+`~/.codex/config.toml`. Readiness requires every codex role's declared `effort`
+to equal that file's `model_reasoning_effort`, where an absent key means
+`default` (the model's own): set the key to `"high"` for a production build and
+declare `high`, without duplicating the key. Install/authenticate the Claude and
+Codex CLIs.
+Find the execution interpreter using `uv tool dir`: use the resulting
+`<tool-dir>/bernstein/bin/python` for skill scripts. The scorer and engine must
+share that environment. Do not use the package's development environment for
+a paid build: its locked upstream source is patched only in the test harness.
 
-1. `/build-plan` - intake -> discover -> workspace -> witness -> derive ->
-   cut -> ready -> report. Accept an idea, a plan directory, or nothing. The
-   human signs off `spec.md`; the machine derives `plan.md`, lands acceptance
-   tests and contracts as code, generates machine artifacts and briefs,
-   probes every brief, runs readiness, and presents `report.md` in spec
-   terms. Sized by tier: S about 15 minutes, M about 40, L about 90.
-2. `/build-run <plan dir>` (or bare, inside the workspace) - execute the DAG unattended, review and
-   blind-judge the whole branch, dispatch fixes, run the whole-tree gate, end
-   local, and ask whether to open a PR.
-3. `/build-close <plan dir>` (or bare, inside the workspace) - land through an approved PR or local
-   merge, run discovered release ceremonies, regenerate `report.md` with the
-   outcome, preserve evidence, and clean up.
+`prepare-engine.py` applies only four exact changes and fails on unfamiliar
+source: seed validation consults the installed gate registry; the orchestrator
+honors `BERNSTEIN_RESPONSE_CACHE=0`; merge-back skips fetch, rebase and push when
+`BERNSTEIN_OPERATOR_LOCAL_ONLY=1`; and the orchestrator's quiescence self-stop
+counts a merged task, which the store archives as `closed` - without it a run
+whose every task merged never stops and never journals the phase boundary this
+workflow waits for. Rebuild after patching. Readiness checks the
+installed code and exercises the real parser. Upstream replacements require a
+new verified source pin and acceptance run, not removal of admission checks.
 
-Starting `/build-run` is an explicit paid decision, and the last one until
-the DAG ends. Opening a PR and merging both require explicit user consent.
+## Workflow
 
-The plan stage carries two layers with ownership by file: `spec.md` is the
-human's (problem, outcomes, approaches, scope, constraints, delegation) and
-is frozen by sign-off; `plan.md`, `facts.md` and `report.md` are the
-machine's and regenerable. Findings route through one rule: brief defects are
-fixed, delegated decisions are recorded and shown, spec conflicts are
-escalated in a batch. Nothing is escalated after the run starts.
+1. `/build-plan`: signed-off spec, derived plan, witnesses where needed, explicit
+   phases, tracked executor/fix/judge briefs, an isolated workspace and readiness.
+2. `/build-run <plan dir>`: one authenticated server and native run per phase,
+   positive delivery reconciliation, detached ACP judging, bounded fixes,
+   and a final whole-tree regression phase. Ends with a local validated branch.
+3. `/build-close <plan dir>`: authorized merge/release, outcome report, verified
+   evidence preservation, then workspace cleanup.
+
+Each skill carries its own scripts and templates. A skill never reads another
+skill's installed directory. The repository's sync check verifies shared copies.
+Starting execution authorizes its planned paid work. Publishing and merging use
+existing user authorization or an explicit final decision.
 
 ## What runs where
 
-| Piece | Process | Where it runs | Model |
-|---|---|---|---|
-| driver | your agent session | `.claude/worktrees/<slug>` on `<type>/<slug>` | the model you drive with; it never edits application code |
-| readiness, run config | `bernstein-herdr ready` / `run-config` | the workspace root, before execution | none |
-| orchestrator | `bernstein run --port N` | the workspace root, backgrounded | none |
-| executor, role `resolver` | `codex exec` spawned by Bernstein | `.sdd/worktrees/resolver-<id>/`, branch `agent/resolver-<id>` | `gpt-5.6-sol`, effort from `~/.codex/config.toml` |
-| executor, role `ci-fixer` | `codex exec` spawned by Bernstein | its own worktree and `agent/...` branch; a second Codex role keeps parallel tasks separate | `gpt-5.6-sol`, same config |
-| executor, role `analyst` | `claude -p` spawned by Bernstein | its own worktree and `agent/...` branch | `claude-opus-5`, high effort |
-| judge, role `adversary` | `claude -p` spawned by Bernstein | a worktree branched from the workspace branch after the phase merged | `claude-opus-5`, high effort |
-| whole-branch judge | a fresh driver subagent | detached from `refs/build/base/<slug>` with the branch diff applied | the driver's own model |
-| gate | `bernstein-herdr gate` | inside each step worktree, before merge | none |
+| Component | Location | Responsibility |
+|---|---|---|
+| Skill driver scripts | isolated integration workspace | admission, phase launch/poll, receipts, recovery |
+| Native Bernstein server/orchestrator | one fresh ID and port per phase or fix | task scheduling, retries, worktrees, janitor, gate calls, merging, reaping |
+| Native resolver/ci-fixer executors | agent worktrees | Codex gpt-5.6-sol, high effort |
+| Native analyst executors | agent worktrees | Claude claude-opus-5, high effort |
+| ACP judge | detached workflow-owned worktree | fresh blind cumulative review with model/turn/time/spend limits; `claude` binds them through its session bridge, `acp` asks acpx for them |
+| Installed scorer plugin | executor worktree at both native gate call sites | observed diff, ownership, validation, report checks and immutable receipts |
 
-Roles, not per-step `cli:`, are the dispatch key. The names avoid Bernstein's
-catalog personas; see the comments in `bernstein.yaml` and
-`docs/2609-02-persona-prefix.md`.
-
-## Constraints
-
-1. One ACTIVE plan per checkout. `.sdd/`, the task-server port, run config,
-   ACTIVE, and `refs/build/base/<slug>` are per checkout. A concurrent build
-   needs another workspace.
-2. Bernstein must be a source build of upstream main (the clone above), never
-   a PyPI install. Every fix the workflow once carried merged upstream - the
-   last three (exit-0 log-pattern guard #5618, pending-retry terminal guard
-   #5622, uncommitted-work veto #5619) on 2026-09-07..08 - so the fork
-   (`tenequm/bernstein`, branch `fork/main-plus-fixes`) is retired. But the
-   latest PyPI release (v3.19.1, 2026-09-03) predates all of them; a registry
-   install stays unsafe until a release ships them.
-
-## Components
-
-- `skills/` contains the three driver skills: plan, run, and close. Install
-  them per project with `npx skills add`.
-- `bernstein_herdr/` is installed into Bernstein's environment with
-  `uv tool install <clone> --with ./bernstein_herdr`. It provides
-  readiness, run config, and the pre-merge quality gate. Executors remain
-  Bernstein's own adapters.
-- `docs/research/` contains the eval, tool-survey, and design evidence.
-
-## Target repo layout
-
-```text
-<plans_dir>/<date>-<slug>/        plan directory, tracked; discovered from repo instructions
-  spec.md                         human-owned build spec, frozen by sign-off
-  plan.md                         machine-owned plan: decisions, witnesses, phases, surface block
-  facts.md                        repo facts `claim | path:line | needle`, script-verified
-  report.md                       checkpoint and final outcome, in spec terms
-.agents/build/plans/              generated machine artifacts plus ACTIVE, tracked
-.agents/build/plans/<slug>.yaml   Bernstein plan; sidecar beside it
-.agents/build/plans/<slug>/       tracked executor and judge briefs
-.agents/build/runs/<slug>/        untracked evidence, contracts, reports, ledger, handoff
-.claude/worktrees/<slug>/         workspace on <type>/<slug>
-.sdd/                             Bernstein runtime and executor worktrees
-```
-
-The sidecar pins plan.md as `defaults.doc`, spec.md as `defaults.spec`, the
-optional product spec as `defaults.design`, and the repo's whole-tree command
-as `defaults.gate_cmd`. Briefs cite `SPEC <n>`, `PLAN <n>` and `DESIGN <n>`.
-
-Unattended runs need an environment that will not die under them. Before
-readiness: at least 40 GB free on the volume holding the workspace (a Go
-build with the race detector in a fresh worktree is a full rebuild, and the
-Go cache grows one copy per worktree path unless the repo exports
-`GOFLAGS=-trimpath`), every module a brief names downloaded, hooks
-redirected. Readiness replays each distinct validation command once per
-base, in a disposable worktree. `skills/build-plan/scripts/`
-holds `plan-lint.sh` (brief cap, fenced validation, hooks) and
-`plan-check.py` (facts verifier, surface check); both run in seconds and
-replace critic rounds that used to find the same defects.
+The Python package installs only the scorer entry point. Coordination lives in
+`skills/build-run/scripts/`, admission copies in build-plan, and preservation in
+build-close. No judge task, judge gate, post-merge hook or no-op fix exists.
+Native DONE releases dependencies before merge: verified-before-start edges must
+cross phase boundaries. Per-phase roles are distinct to prevent batching.
 
 ## Commands
 
+Run from the workspace using the installed Bernstein interpreter:
+
 ```text
-bernstein-herdr ready [--plan <yaml>]          readiness, citations, dispatch, and source pins
-bernstein-herdr run-config [--plan <yaml>]     run config, port, base checks, and frozen base sha
-bernstein-herdr watch [--stall <min>]          one line per run event, STALL on quiet, exits on run end
-bernstein-herdr gate                           pre-merge gate in the executor worktree
-bernstein-herdr scorer --step "<title>"         scorer alone in a worktree
-bernstein-herdr judge-verdict --step "<title>"  verdict alone in a judge worktree
+<python> <build-plan-skill>/scripts/plan-check.py <plan-dir> --repo <workspace> --machine <plan.yaml>
+<python> <build-run-skill>/scripts/build-operator.py ready --root <workspace> --plan <plan.yaml>
+<python> <build-run-skill>/scripts/build-operator.py run --root <workspace> --plan <plan.yaml>
+<python> <build-run-skill>/scripts/build-operator.py resume --root <workspace> --plan <plan.yaml>
+<python> <build-run-skill>/scripts/build-operator.py status --root <workspace> --plan <plan.yaml>
+<python> <build-close-skill>/scripts/preserve-evidence.py --root <workspace> --run <run-dir> --dest <primary-run-dir>
 ```
 
-`gate` identifies a step from the worktree agent id through
-`.sdd/runtime/team.json` and `tasks.jsonl`. Exit 1 refuses that merge. The
-refused branch survives under `refs/graveyard/<sid>-<ts>` with a bundle under
-`.sdd/graveyard/`, and the attempt lands in `refused_merges.jsonl`. A lifecycle
-retry may already be scheduled, so the board and spawner log decide whether the
-task is terminal.
+The driver starts the server alone, POSTs full task payloads, verifies admission,
+then starts the orchestrator directly. Never run normal bootstrap or soft-drain
+alongside it. Native process closure alone is insufficient: every expected step
+needs a scorer PASS for its delivered content and ancestry in the reviewed tip.
+A missing link, unexpected task, refusal or integrity error parks the build.
+Resume reconciles durable intent against the existing server and process state;
+ambiguous absent effects park rather than creating duplicates. A parked scope
+change requires a newly authored build with a new slug.
 
-The gate always measures the sidecar command. Its extra deleted-test,
-suppression, and lint heuristics are Go- and TypeScript-shaped; Python and Rust
-plans must put equivalent guarantees in `defaults.gate_cmd`. When the sidecar
-sets no command, the fallback is `just check`; pin the repo's real check
-instead.
+## Artifacts and limits
 
-`run-config` freezes the workspace branch sha into `<run>/bernstein.json` and
-`refs/build/base/<slug>`. Judges diff the frozen ref, never the moving branch.
+```text
+<plan-dir>/spec.md, plan.md, facts.md, report.md    tracked human/machine plan layers
+.agents/build/plans/<slug>.yaml                   complete authored task inventory
+.agents/build/plans/<slug>.steps.yaml             phases, bounds, judge config, scorer policy
+.agents/build/plans/<slug>/                       tracked briefs
+.agents/build/runs/<slug>/workflow.jsonl           private durable intent/receipt journal
+.agents/build/runs/<slug>/readiness/              frozen admission evidence
+.agents/build/runs/<slug>/native/<run-id>/         native evidence archived before retention
+.agents/build/runs/<slug>/reports/<title>/<id>/    scorer attempts
+.agents/build/runs/<slug>/judge/<attempt>/         immutable review range and evidence
+.agents/build/runs/<slug>/processes/               launches, logs and exit receipts
+```
 
-## Replay isolation
+The driver freezes `refs/build/base/<slug>` once and records each phase start tip.
+Judges review cumulatively from that base. Fix inputs embed exact review bytes;
+findings outside a pinned fix allowlist park. One malformed review is retried;
+`do not merge` parks immediately. Whole-build limits count every native run and
+judge attempt, include downtime, and retain native spend reservations even when
+reported costs are low. Provider calls already in flight can exceed a requested
+budget at the turn boundary; the driver checks the final measured cost.
 
-Replay a past phase from a clone, never a worktree. A worktree shares the
-parent's object store, so a historical answer can remain reachable and make the
-replay invalid.
+Reserve at least 40 GiB free disk, cache required dependencies, and disable shared
+Git hooks before admission. Root TODO.md, TASKS.md, .plan and native backlogs must
+be absent/empty; quarantined expected titles cannot launch. A final single
+regression executor tests the combined tree. Native retention keeps only a finite
+run history, so build-close verifies the workflow archive and creates a portable
+Git bundle before deleting anything.
+
+## Development
 
 ```sh
-git clone --single-branch --no-tags --branch <base-branch> <src> <replay-root>
-git -C <replay-root> remote remove origin
+cd bernstein_operator
+just install    # Python 3.13, uv.lock, Ruff, ty, pytest
+just check      # types, lint, format and vendored skill-code consistency
+just test -q    # installed scorer + isolated patched native source; no paid agents
+just fix
 ```
 
-Real builds run forward from a base that has no answer in the repository and
-use Bernstein worktrees normally.
+The existing Lefthook setup runs the local checks. CI is intentionally omitted.
+After meaningful skill/template changes use root `just ship`, which bumps both
+plugin manifests together, commits and pushes. Internal/doc-only changes may push
+without shipping. `bernstein_herdr/` remains in the repository after the operator
+cutover; retaining it is intentional. The new skills use `bernstein_operator`.
+
+Historical replays need a separate clone without the answer in its object store.
+Normal forward builds use linked worktrees and keep the primary checkout free.

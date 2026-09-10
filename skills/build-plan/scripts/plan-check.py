@@ -13,15 +13,19 @@ outside the phase's globs is a FAIL, because that phase's gate cannot pass insid
 allowlist. Only source files count: paths under `.agents/`, `.sdd/`, `.claude/` and
 `docs/` (which holds the plan directory) are ignored.
 """
+
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-ROW = re.compile(r"^\|\s*(?P<claim>[^|]+?)\s*\|\s*(?P<path>[^|:]+):(?P<line>\d+)\s*\|\s*(?P<needle>.+?)\s*\|\s*$")
+ROW = re.compile(
+    r"^\|\s*(?P<claim>[^|]+?)\s*\|\s*(?P<path>[^|:]+):(?P<line>\d+)\s*\|\s*(?P<needle>.+?)\s*\|\s*$"
+)
 SURFACE = re.compile(r"```surface\n(.*?)```", re.S)
 IGNORED = (".agents/", ".sdd/", "docs/", ".claude/")
 
@@ -32,16 +36,45 @@ def main() -> int:
         print(__doc__)
         return 2
     plan_dir = Path(args[0]).resolve()
-    repo = Path(args[args.index("--repo") + 1]).resolve() if "--repo" in args else git_root(plan_dir)
+    repo = (
+        Path(args[args.index("--repo") + 1]).resolve() if "--repo" in args else git_root(plan_dir)
+    )
+    os.chdir(repo)
     fail = 0
     fail += check_facts(plan_dir / "facts.md", repo)
     fail += check_surface(plan_dir / "plan.md", repo)
+    if "--machine" in args and not fail:
+        import json
+
+        from operator_driver.readiness import check
+        from operator_driver.spec import Build
+        from operator_driver.storage import Ledger, Park, atomic, canonical, driver_lock
+
+        try:
+            build = Build(repo, Path(args[args.index("--machine") + 1]).resolve())
+            if (repo / build.sidecar["defaults"]["doc"]).resolve() != plan_dir / "plan.md":
+                raise Park("machine plan names a different plan directory")
+            with driver_lock(repo):
+                if Ledger(build.run_dir).last("build_started"):
+                    raise Park("cannot replace readiness after build admission")
+                receipt = check(build)
+                atomic(build.run_dir / "readiness/receipt.json", canonical(receipt))
+                print(json.dumps(receipt, indent=2))
+        except Park as exc:
+            print(f"FAIL readiness: {exc}")
+            fail += 1
     print("plan-check: clean" if not fail else f"plan-check: {fail} FAIL")
     return 1 if fail else 0
 
 
 def git_root(start: Path) -> Path:
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=start, capture_output=True, text=True, check=True)
+    out = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=start,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
     return Path(out.stdout.strip())
 
 
@@ -51,7 +84,9 @@ def check_facts(facts: Path, repo: Path) -> int:
         return 0
     text = facts.read_text()
     m = re.search(r"^pinned:\s*([0-9a-f]{7,40})", text, re.M)
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=False).stdout.strip()
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=False
+    ).stdout.strip()
     if not m:
         print("FAIL facts.md has no `pinned: <sha>` first line")
         return 1
@@ -68,11 +103,15 @@ def check_facts(facts: Path, repo: Path) -> int:
             fail += 1
             continue
         lines = path.read_text(errors="replace").splitlines()
-        if n > len(lines):
-            print(f"FAIL fact `{r.group('claim')}`: {r.group('path')} has {len(lines)} lines, no line {n}")
+        if n < 1 or n > len(lines):
+            print(
+                f"FAIL fact `{r.group('claim')}`: {r.group('path')} has {len(lines)} lines, no line {n}"
+            )
             fail += 1
         elif r.group("needle") not in lines[n - 1]:
-            print(f"FAIL fact `{r.group('claim')}`: {r.group('path')}:{n} does not contain `{r.group('needle')}`")
+            print(
+                f"FAIL fact `{r.group('claim')}`: {r.group('path')}:{n} does not contain `{r.group('needle')}`"
+            )
             fail += 1
     print(f"{'PASS' if not fail else 'FAIL'} facts: {len(rows)} rows, {fail} stale")
     return fail
@@ -97,15 +136,23 @@ def check_surface(plan: Path, repo: Path) -> int:
             continue
         phase, globs, regex = parts
         globs = globs.split()
-        r = subprocess.run(["rg", "-l", "-e", regex, "."], cwd=repo, capture_output=True, text=True, check=False)
+        r = subprocess.run(
+            ["rg", "-l", "-e", regex, "."], cwd=repo, capture_output=True, text=True, check=False
+        )
+        if r.returncode not in (0, 1):
+            print(f"FAIL surface {phase}: rg failed: {r.stderr.strip()}")
+            fail += 1
+            continue
         hits = [h[2:] if h.startswith("./") else h for h in r.stdout.splitlines()]
         hits = [h for h in hits if not h.startswith(IGNORED)]
         # Plain fnmatch, the same rule the merge gate's scorer enforces, so one
         # allowlist string means one thing across the toolchain.
         outside = [h for h in hits if not any(fnmatch.fnmatch(h, g) for g in globs)]
         if outside:
-            print(f"FAIL surface {phase}: `{regex}` matches outside its allowlist: {', '.join(outside[:8])}"
-                  + (f" (+{len(outside) - 8})" if len(outside) > 8 else ""))
+            print(
+                f"FAIL surface {phase}: `{regex}` matches outside its allowlist: {', '.join(outside[:8])}"
+                + (f" (+{len(outside) - 8})" if len(outside) > 8 else "")
+            )
             fail += 1
         else:
             print(f"PASS surface {phase}: {len(hits)} file(s), all inside allowlist")

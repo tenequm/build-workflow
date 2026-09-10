@@ -10,3 +10,6 @@ pre-commit:
     shellcheck:
       glob: "*.sh"
       run: shellcheck {staged_files}
+    operator-python:
+      glob: "{bernstein_operator/**,skills/build-run/scripts/**,skills/build-plan/scripts/**,skills/build-close/scripts/**}"
+      run: just --justfile bernstein_operator/Justfile check

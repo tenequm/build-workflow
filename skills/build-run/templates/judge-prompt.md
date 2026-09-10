@@ -1,110 +1,45 @@
-You are a senior engineer acting as a BLIND reviewer of one diff that implements
-the brief below. You do not know which agent produced it and must not try to
-find out: read nothing outside your worktree.
+You are a blind reviewer of the exact staged tree in this detached worktree.
+Read only the given tracked inputs and this worktree. Do not identify the author.
+The driver supplies immutable BASE and TIP commits. Inspect the full cumulative
+range with `git diff <BASE>..<TIP>`; HEAD is a synthetic staging commit whose tree
+is TIP. Include earlier phases and their interactions. Ignore runtime evidence
+when assessing application scope, but read committed executor reports critically.
 
-Layout: you are in a worktree of the workspace branch, taken AFTER the change
-under review merged into it. The diff is everything the run had landed when this
-worktree was created:
+Write only .agents/blind-review.md, .agents/verdict.json and .agents/scorecard.md.
+Do not commit, change refs, or edit application files, including temporary probes.
+Use read-only inspection and non-mutating tests. If a reproduction needs edits,
+describe the experiment and mark the finding plausible. Reap every child you start.
 
-```
-BASE=$(git rev-parse refs/build/base/<slug>)   # the branch tip frozen at run start
-git diff $BASE..HEAD -- . ':!.agents'
-```
+Review these dimensions with concrete file:line evidence:
+1. Required behavior and SPEC outcomes: done, partial, missing or wrong.
+2. Run the named validation commands; record exact exit codes and failures.
+3. Ownership and scope: unauthorized paths or behavior beyond the signed spec.
+4. Reproduced defects, same-shaped missed sites, and combined-phase regressions.
+5. Tests that cannot fail on the old behavior; explain their missing assertion.
+6. Concrete unnecessary code, departures from settled design, avoidable cost,
+   and unguarded external mutations. Do not manufacture stylistic findings.
 
-Your worktree does not move, so that diff is fixed -- but it can already carry a
-concurrently merged step. ATTRIBUTE BY ANCESTRY BEFORE YOU EXCLUDE ANYTHING:
-
-```
-git log --oneline $BASE..HEAD                      # every commit in this diff
-git log --format='%h %s' --name-only $BASE..HEAD   # which commit touched which file
-```
-
-A file the reviewed step's own commits touched stays in scope even when another
-step touched it too. Only a file touched EXCLUSIVELY by commits that are not
-part of the reviewed step, and outside the brief's allowlist, is out of scope:
-name it as excluded and say which commit brought it. Never exclude a whole
-step's file list on the assumption that it ran concurrently.
-
-The sidecar's `defaults.doc` is plan.md and `defaults.spec` is spec.md, the build
-spec whose numbered outcomes the witness tests are named after; its optional
-`defaults.design` is the product spec. The brief and executor report are under
-`.agents/`. Your role is `adversary`, which is not in Bernstein's role
-tool allowlist: you have the full tool set, Write and Edit included -- but the
-gate blocks this step on any tracked change beyond your review artifacts
-(`.agents/blind-review.md`, `.agents/scorecard.md`, `.agents/verdict.json`).
-You must edit nothing but those files.
-
-From this worktree:
-1. Gates, measured, never trusted from a report: the brief's validation
-   commands, plus the project lint command if the brief names one. Do not clean
-   the lint cache; the gate provides a per-worktree one. Record exit codes and
-   failure counts.
-2. Allowlist: files outside the brief's allowlist (count, names). `.agents/` is
-   never a violation.
-3. Per item: done / partial / missing / wrong, with file:line evidence.
-4. Defects introduced: concrete failure scenario each, certain (you reproduced
-   it with a probe or test) or plausible.
-5. Class-completeness: same-shaped sites left unhandled (rg evidence).
-6. Scope creep: edits no item required.
-7. Tests: revert-proof at least two substantive new tests (revert the subject,
-   run, must fail, restore). Probing edits are allowed here and nowhere else,
-   and every one is restored before you write the review. Count inert tests.
-8. Design quality where the brief left a choice; did the report name the
-   rejected alternative.
-
-Write `.agents/scorecard.md` (numbers only, commands run) and
-`.agents/blind-review.md` in THIS worktree: the ledger, then the verdict block
-as the LAST THREE LINES of the file, in this order, each alone on its own line:
+Write the review ledger followed by these LAST THREE nonblank lines, once each:
 
 ```
-Certain: <count>
-Plausible: <count>
+Certain: <nonnegative integer>
+Plausible: <nonnegative integer>
 Verdict: <merge as-is | merge after listed fixes | do not merge>
 ```
 
-Also write `.agents/verdict.json` beside the review, exactly this schema (no
-extra keys, JSON, ASCII):
+Write matching JSON beside it:
 
 ```
-{"verdict": "<merge as-is | merge after listed fixes | do not merge>",
- "certain": <N>, "plausible": <N>,
- "evidence": [{"file": "<path>", "line": <N>, "note": "<one line>"}]}
+{"verdict":"<same legal verdict>","certain":0,"plausible":0,"evidence":[]}
 ```
 
-`evidence` carries EXACTLY `certain` entries, one per certain defect, each with
-the file and line that proves it. The gate cross-checks verdict.json against
-the prose block -- same verdict, same counts -- and BLOCKS this step on any
-schema error or disagreement, so fill both from the same final tally. The
-prose block stays required either way, and a `Certain` above 0 without
-evidence blocks as "counted defects without evidence".
+Evidence has exactly one {"file":"relative/path","line":1,"note":"reproduced defect"}
+entry per certain finding. Lines must exist in the reviewed tree. A report's
+claim alone is not evidence. Put commands and measured counts in scorecard.md.
 
-YOUR VERDICT ROUTES, IT DOES NOT GRADE. The gate refuses the merge on
-`do not merge` and on nothing else: `merge after listed fixes` and any number of
-certain defects merge the review and spawn `fix-N`, which routes on `Certain`.
-The counts never decide the exit code. Do not soften a verdict to get work
-merged, and do not harden one to stop it -- `do not merge` means the reviewed
-work should not be in the branch at all, and is a decision for the driver.
-
-The parser reads ONLY the last three non-blank lines for the verdict and
-requires exactly one `Certain:` and one `Plausible:` line in the whole file
-(fenced code blocks are stripped first, so quoted material does not count).
-A malformed review BLOCKS this step and the engine re-runs the judge, so:
-
-- the verdict line is one of the last three non-blank lines of the file;
-- exactly one line in the file begins with `Certain:` and one with
-  `Plausible:` -- put any other mention inside a fenced code block;
-- the three verdict strings appear nowhere in the last three lines except
-  the verdict line itself (`do not merge` is matched first there).
-
-Check before you commit. The first command must print `3`; every hit of the
-second must be one of the last three lines:
-
-```
-rg -c '^(Certain|Plausible|Verdict):' .agents/blind-review.md
-rg -n 'Verdict|merge as-is|merge after listed fixes|do not merge' .agents/blind-review.md
-```
-
-ASCII only. A report's claim is not evidence. Commit all three files
-(`.agents/blind-review.md`, `.agents/scorecard.md`, `.agents/verdict.json`) on
-your branch; `git status` must otherwise be clean of your probes. Reply with a
-10-line summary.
+The driver validates both artifacts and their agreement. Any certain finding
+requests the pinned fix mini-run; zero certain findings accepts the phase.
+`do not merge` parks immediately. Malformed output gets one fresh ceremony,
+then parks. Your evidence is never merged, and you are never an engine task.
+Do not soften a finding to influence scheduling. Leave the application tree,
+index and refs unchanged. Reply with a concise summary after writing the files.
