@@ -1,0 +1,51 @@
+# Fixtures
+
+A fixture is a complete, ready build that a workflow change can be verified
+against end to end, with real executors and a real judge. The acceptance suite
+proves the driver's contracts against recorded agents; a fixture proves the
+parts no recording reaches - dispatch, merges, quiescence timing, judge
+transports, and the shape of a brief a model can actually follow.
+
+Read [the acceptance map](../docs/operator-acceptance.md) for what each layer
+covers, and run a fixture whenever a change touches the phase boundary, the
+scorer, the judge ceremony, or a template a plan author copies.
+
+## slugify
+
+A stdlib-only Python package that starts with `word_count` and gains
+`slugify` in one phase. The build is deliberately small - one executor step,
+its pinned fix, one judge - so a full run is minutes and a failure has few
+possible causes.
+
+```sh
+python3 fixtures/slugify/setup.py /tmp/fx
+```
+
+That materializes what `/build-plan` would have produced by hand: a primary
+checkout, a linked workspace on `feat/slugify`, a committed seed, a sign-off
+commit pinned into the sidecar, disabled Git hooks and a `workspace.json`. It
+prints the readiness and run commands, which need the interpreter from the
+installed Bernstein uv tool (`uv tool dir`, then `bernstein/bin/python`) - see
+the repository [install guide](../README.md#install).
+
+Options:
+
+| flag | default | why |
+|---|---|---|
+| `--role` | `analyst` | `resolver` runs the step on Codex instead of Claude |
+| `--analyst-model` | `claude-sonnet-5` | the Claude role's model |
+| `--resolver-model` | `gpt-5.6-terra` | the Codex role's model |
+| `--judge claude\|agy` | `claude` | `agy` needs `--judge-adapter '<path to the Antigravity ACP server>'` |
+
+An executor model below the brief's complexity fails as a clean exit with
+nothing committed, which reads like a sandbox fault - see
+[the capability floor](../docs/knowledge/findings/executor-model-capability-floor.md)
+before blaming the harness.
+
+A run ends at `build_completed` with the step merged, its report committed and
+a judge verdict of `merge as-is`. Anything else parks with its evidence under
+`<workspace>/.agents/build/runs/slugify/`; `workflow.jsonl` is the authority
+and the park reason names the contract that refused.
+
+Each run costs real provider tokens. The workspace is disposable: delete the
+target directory when you are done.

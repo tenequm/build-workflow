@@ -144,6 +144,18 @@ just test -q    # installed scorer + isolated patched native source; no paid age
 just fix
 ```
 
+`just test` proves the driver's contracts against recorded agents. What no
+recording reaches - dispatch, real merges, quiescence timing, judge transports
+and whether a model can follow a brief - is proven by a fixture:
+
+```sh
+python3 fixtures/slugify/setup.py /tmp/fx   # a ready workspace, then its printed commands
+```
+
+It builds one step with one judge in minutes against real providers. Run it
+when a change touches the phase boundary, the scorer, the judge ceremony or a
+template a plan author copies; see [fixtures/README.md](fixtures/README.md).
+
 The existing Lefthook setup runs the local checks. CI is intentionally omitted.
 After meaningful skill/template changes use root `just ship`, which bumps both
 plugin manifests together, commits and pushes. Internal/doc-only changes may push

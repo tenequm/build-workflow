@@ -1,0 +1,44 @@
+name: slugify
+description: Add slugify to textkit
+cli: codex
+max_agents: 4
+context_files:
+- docs/plans/2609-10-slugify/plan.md
+- docs/plans/2609-10-slugify/spec.md
+constraints:
+- Read your tracked brief. Never edit the plan directory or bernstein.yaml.
+- Commit on your agent branch. Never push or move the integration branch.
+stages:
+- name: implement
+  steps:
+  - title: 'implement: slugify'
+    role: analyst
+    scope: small
+    description: Execute .agents/build/plans/slugify/implement.md and commit the result.
+    files:
+    - textkit/slug.py
+    - textkit/__init__.py
+    - tests/test_slug.py
+    - reports/implement.md
+    completion_signals:
+    - type: file_contains
+      value: 'textkit/slug.py :: def slugify'
+    - type: file_contains
+      value: 'reports/implement.md :: Validation:'
+- name: fix-implement
+  depends_on:
+  - implement
+  steps:
+  - title: 'fix-implement: repair verified findings'
+    role: resolver
+    scope: small
+    description: Execute .agents/build/plans/slugify/fix-implement.md using the immutable
+      review input in this task.
+    files:
+    - textkit/slug.py
+    - textkit/__init__.py
+    - tests/test_slug.py
+    - reports/fix-implement.md
+    completion_signals:
+    - type: file_contains
+      value: 'reports/fix-implement.md :: Validation:'

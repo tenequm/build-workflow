@@ -53,7 +53,7 @@ def delivered(attempt):
     return root, run_id, start, result.merge_commit, tasks, journal, writer
 
 
-def prove(fixture, events=None, tasks=None):
+def prove_all(fixture, events=None, tasks=None, witnesses=None):
     root, run_id, start, tip, stored, journal, _ = fixture
     return prove_delivery(
         root,
@@ -64,7 +64,12 @@ def prove(fixture, events=None, tasks=None):
         {"Owned step": "task-one"},
         stored if tasks is None else tasks,
         native_events(journal.path, closed=True) if events is None else events,
+        witnesses,
     )
+
+
+def prove(fixture, **kwargs):
+    return prove_all(fixture, **kwargs)[0]
 
 
 def test_real_native_merge_and_journal_prove_delivery_and_seal_paired_wal(delivered):
@@ -160,7 +165,17 @@ def test_refusal_of_an_attempt_a_later_one_superseded_does_not_park_the_step(del
     )
     events = native_events(journal.path, closed=True)
     events.insert(0, {"event": "agent_spawned", "agent_id": "first-try", "task_ids": ["task-one"]})
-    assert prove(delivered, events=events)[0]["agent_id"] == "test"
+    proofs, waivers = prove_all(delivered, events=events)
+    assert proofs[0]["agent_id"] == "test"
+    # The tolerance is named in the driver's own receipt, not left to the native journal.
+    assert waivers == [
+        {
+            "waiver": "refusal_superseded",
+            "session_id": "first-try",
+            "reason": "quality-gates-blocked",
+            "titles": ["Owned step"],
+        }
+    ]
     # Only the gates blocking an attempt is explained by a later delivery. Scope,
     # blast radius and a merge aimed at the default branch are not.
     for reason in ("allowed-files-scope", "target-is-default-branch", None):
@@ -174,25 +189,25 @@ def test_declared_witnesses_are_read_from_the_settled_tip(delivered):
     """The engine judges a completion signal against the delivered copy while the merge
     is still landing. The driver reads the same signals at the boundary, where the tip
     is settled: they resolve a failed status, and an unmet one parks the phase."""
-    root, run_id, start, tip, tasks, journal, _ = delivered
+    _, _, _, _, tasks, journal, _ = delivered
     failed = [{"id": "task-one", "title": "Owned step", "status": "failed", "metadata": {}}]
     events = native_events(journal.path, closed=True)
 
     def prove_with(signals, stored):
-        return prove_delivery(
-            root,
-            root / ".agents/build/runs/demo",
-            run_id,
-            start,
-            tip,
-            {"Owned step": "task-one"},
-            stored,
-            events,
-            {"Owned step": signals},
-        )
+        return prove_all(delivered, events=events, tasks=stored, witnesses={"Owned step": signals})
 
     held = [{"type": "file_contains", "value": "src/code.py :: VALUE = 1"}]
-    assert prove_with(held, failed)[0]["task_id"] == "task-one"
+    proofs, waivers = prove_with(held, failed)
+    assert proofs[0]["task_id"] == "task-one"
+    assert waivers == [
+        {
+            "waiver": "unterminated_task_status",
+            "title": "Owned step",
+            "task_id": "task-one",
+            "status": "failed",
+            "resolved_by": "declared_witnesses",
+        }
+    ]
     with pytest.raises(Park, match="declared witnesses"):
         prove_with([{"type": "file_contains", "value": "src/code.py :: NEVER WRITTEN"}], tasks)
     with pytest.raises(Park, match="declared witnesses"):
@@ -215,7 +230,17 @@ def test_landed_content_of_a_failed_attempt_needs_a_completed_retry(delivered):
             "metadata": {"retry_of": "task-one"},
         },
     ]
-    assert prove(delivered, tasks=retried)[0]["task_id"] == "task-one"
+    proofs, waivers = prove_all(delivered, tasks=retried)
+    assert proofs[0]["task_id"] == "task-one"
+    assert waivers == [
+        {
+            "waiver": "unterminated_task_status",
+            "title": "Owned step",
+            "task_id": "task-one",
+            "status": "failed",
+            "resolved_by": "retry_completed",
+        }
+    ]
     orphan = [*failed, {**retried[1], "status": "failed"}]
     with pytest.raises(Park, match="failed task obligation"):
         prove(delivered, tasks=orphan)
@@ -250,7 +275,7 @@ def test_a_step_lands_twice_when_its_retry_branches_from_the_first_landing(deliv
         },
     ]
     tip = git(root, "rev-parse", "integration")
-    proofs = prove_delivery(
+    proofs, waivers = prove_delivery(
         root,
         root / ".agents/build/runs/demo",
         run_id,
@@ -261,6 +286,13 @@ def test_a_step_lands_twice_when_its_retry_branches_from_the_first_landing(deliv
         native_events(journal.path, closed=True),
     )
     assert [proof["agent_id"] for proof in proofs] == ["test", "retry"]
+    assert [(row["waiver"], row["title"]) for row in waivers] == [
+        ("repeated_landing", "Owned step")
+    ]
+    assert (waivers[0]["previous_head"], waivers[0]["head"]) == (
+        proofs[0]["head"],
+        proofs[1]["head"],
+    )
 
 
 def test_native_retention_cannot_prune_archived_build_evidence(delivered):

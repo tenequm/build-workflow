@@ -1,0 +1,6 @@
+.claude/worktrees/
+.claude/settings.local.json
+__pycache__/
+.sdd/
+.agents/build/runs/
+.agents/build/nohooks/

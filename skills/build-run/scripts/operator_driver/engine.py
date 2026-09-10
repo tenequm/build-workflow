@@ -138,7 +138,7 @@ def seal(
         ]
         for title in expected
     }
-    proofs = prove_delivery(
+    proofs, waivers = prove_delivery(
         build.root,
         build.run_dir,
         run["run_id"],
@@ -160,6 +160,10 @@ def seal(
         start=run["start"],
         tip=tip,
         proofs=proofs,
+        # Every native-retry tolerance the proof leaned on is journaled beside the
+        # proofs: the boundary rests on artifacts the driver produces itself, so a
+        # waiver belongs in the same receipt rather than only in the engine's evidence.
+        waivers=waivers,
         cost_usd=cost,
     )
 

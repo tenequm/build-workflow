@@ -14,7 +14,7 @@ import shlex
 import sys
 from pathlib import Path
 
-from .storage import Park
+from .storage import Park, atomic
 
 
 def claude_bridge(spec: dict) -> bool:
@@ -29,7 +29,7 @@ def judge_argv(spec: dict, worktree: Path, prompt: Path) -> list[str]:
     # to its own reviewer. An empty set is passed on every transport; acpx wants a
     # JSON array here, not the object map other tools use.
     empty_mcp = prompt.with_name("mcp-none.json")
-    empty_mcp.write_text('{"mcpServers": []}\n')
+    atomic(empty_mcp, b'{"mcpServers": []}\n')
     mcp = ["--mcp-config", str(empty_mcp)]
     if claude_bridge(spec):
         agent = [

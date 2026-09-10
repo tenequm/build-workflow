@@ -62,44 +62,56 @@ class Server:
                 raise Park(f"stored task lost metadata: {key}")
 
 
+def retry_chain(tasks: list[dict], roots: dict[str, str]) -> dict[str, str]:
+    """Carry each admitted root's label down its retry_of chain to every descendant.
+
+    Three questions about the chain are the same walk: which admitted task a retry is
+    judged against, which planned step a retry belongs to, and whether a later attempt
+    of one attempt completed. The inventory is unordered - a retry can appear before
+    the attempt it retries - so this is a fixpoint, not a single pass. A task that is
+    itself a root keeps its own label; a chain that never reaches a root is absent,
+    which is how each caller recognises work it never admitted.
+    """
+    labels = dict(roots)
+    while True:
+        previous = len(labels)
+        for task in tasks:
+            parent = task.get("metadata", {}).get("retry_of")
+            if parent in labels:
+                labels.setdefault(task["id"], labels[parent])
+        if previous == len(labels):
+            return labels
+
+
 def admitted_inventory(tasks: list[dict], expected: set[str]) -> None:
     """Only genuine retry lineage may extend the posted set; no repair/QA wildcard."""
-    allowed = set(expected)
     by_id = {task["id"]: task for task in tasks}
     if len(by_id) != len(tasks):
         raise Park("task inventory contains duplicate IDs")
     # Every retry is compared against the ADMITTED task at the root of its chain, not
     # its immediate parent: a middle retry that dropped owned_files must not become
-    # the anchor a later retry carrying the frozen list is judged against.
-    root = {task_id: task_id for task_id in allowed}
-    pending = [task for task in tasks if task["id"] not in allowed]
-    while pending:
-        next_pending = []
-        for task in pending:
-            parent = task.get("metadata", {}).get("retry_of")
-            if parent in allowed and parent in by_id:
-                original = by_id[root[parent]]
-                root[task["id"]] = root[parent]
-                for key in ("title", "description", "role", "completion_signals"):
-                    if task.get(key) != original.get(key):
-                        raise Park(f"native retry changed frozen task {key}")
-                # The native retry path drops owned_files (measured 2026-09-10: a retry
-                # of a three-file step carried []). Ownership is enforced by the scorer
-                # from the frozen plan, not from the task, so an emptied list is the
-                # engine losing a field. A DIFFERENT list would be a widened scope.
-                if task.get("owned_files") not in (original.get("owned_files"), [], None):
-                    raise Park("native retry changed frozen task owned_files")
-                for key in ("operator_run", "operator_spec", "context_files"):
-                    if task.get("metadata", {}).get(key) != original.get("metadata", {}).get(key):
-                        raise Park(f"native retry changed frozen metadata {key}")
-                allowed.add(task["id"])
-            else:
-                next_pending.append(task)
-        if len(next_pending) == len(pending):
-            raise Park(
-                "unexpected task inventory: " + ", ".join(task["title"] for task in next_pending)
-            )
-        pending = next_pending
-    missing = expected - {task["id"] for task in tasks}
+    # the anchor a later retry carrying the frozen list is judged against. Only a root
+    # the inventory still holds anchors anything; a vanished one is reported below.
+    root = retry_chain(tasks, {task_id: task_id for task_id in expected if task_id in by_id})
+    unattached = [task for task in tasks if task["id"] not in root]
+    if unattached:
+        raise Park("unexpected task inventory: " + ", ".join(task["title"] for task in unattached))
+    for task in tasks:
+        if task["id"] in expected:
+            continue
+        original = by_id[root[task["id"]]]
+        for key in ("title", "description", "role", "completion_signals"):
+            if task.get(key) != original.get(key):
+                raise Park(f"native retry changed frozen task {key}")
+        # The native retry path drops owned_files (measured 2026-09-10: a retry of a
+        # three-file step carried []). Ownership is enforced by the scorer from the
+        # frozen plan, not from the task, so an emptied list is the engine losing a
+        # field. A DIFFERENT list would be a widened scope.
+        if task.get("owned_files") not in (original.get("owned_files"), [], None):
+            raise Park("native retry changed frozen task owned_files")
+        for key in ("operator_run", "operator_spec", "context_files"):
+            if task.get("metadata", {}).get(key) != original.get("metadata", {}).get(key):
+                raise Park(f"native retry changed frozen metadata {key}")
+    missing = expected - by_id.keys()
     if missing:
         raise Park(f"posted tasks disappeared: {sorted(missing)}")

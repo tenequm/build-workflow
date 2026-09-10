@@ -28,6 +28,15 @@ have, wrote its report to a path outside the declared one, and exited 0 with
 its work uncommitted. The engine reads that as a dead agent, salvages the
 worktree as a `[WIP]` commit, and retries.
 
+# What it cost
+
+About two hours of the session that found it, spent on the wrong layer:
+reproducing Codex commits inside a nested agent worktree, reading the engine's
+writable-root grant, probing the sandbox, and re-running builds to watch a
+worktree vanish. The model was never the suspect, because a weak model does not
+announce itself - it produces the same evidence a broken environment does. The
+step that ended it took one build: swap the model, change nothing else.
+
 # Why it reads as an infrastructure fault
 
 Every visible symptom points somewhere else. The agent reports sandbox
@@ -49,7 +58,9 @@ the integration branch and consume the whole-build retry budget before
 anything is delivered. Prefer the strongest model the budget allows for
 executor roles, and treat a repeated "agent died, nothing committed" cycle as
 a capability signal before investigating the sandbox. The reverse case is
-cheap to test: one build against one step is enough to separate the two.
+cheap to test: [the slugify fixture](/fixtures/README.md) runs one step against
+one judge, so swapping `--resolver-model` and re-running separates the two in a
+single build.
 
 [^builds]: Operator builds on the fixture, 2026-09-10
 [^probe]: Direct codex exec probe in an agent worktree

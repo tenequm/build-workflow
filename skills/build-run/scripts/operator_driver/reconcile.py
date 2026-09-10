@@ -12,7 +12,7 @@ from bernstein.core.replay.journal import load_events, verify_journal
 
 from .spec import git
 from .storage import Park, canonical, contained, digest, immutable
-from .transport import admitted_inventory
+from .transport import admitted_inventory, retry_chain
 
 
 def close_proven_wal(root: Path, run_id: str, tasks: list[dict], events: list[dict]) -> None:
@@ -117,19 +117,11 @@ def retried_to_completion(tasks: list[dict], task_id: str | None) -> bool:
     PASS and merge ancestry; the failed status is engine bookkeeping about the
     session, so it is only unresolved when no retry of it ever completed.
     """
-    frontier, seen = [task_id], set()
-    while frontier:
-        current = frontier.pop()
-        if current in seen:
-            continue
-        seen.add(current)
-        for task in tasks:
-            if task.get("metadata", {}).get("retry_of") != current:
-                continue
-            if task.get("status") in {"done", "closed"}:
-                return True
-            frontier.append(task["id"])
-    return False
+    chain = retry_chain(tasks, {task_id: task_id} if task_id else {})
+    return any(
+        task["id"] in chain and task["id"] != task_id and task.get("status") in {"done", "closed"}
+        for task in tasks
+    )
 
 
 def prove_delivery(
@@ -142,7 +134,15 @@ def prove_delivery(
     tasks: list[dict],
     events: list[dict],
     witnesses: dict[str, list[dict]] | None = None,
-) -> list[dict]:
+) -> tuple[list[dict], list[dict]]:
+    """Positive proofs for every expected step, and the tolerances that were exercised.
+
+    Each tolerance below accepts evidence that is not the simple shape (one attempt,
+    one landing, a done task, no refusal). The phase boundary rests on artifacts the
+    driver produces itself, so every one of them is returned as a waiver for the
+    caller to journal: a reader of the receipt sees WHICH native retry behaviour this
+    phase leaned on without re-deriving it from the archived native evidence.
+    """
     admitted_inventory(tasks, set(expected.values()))
     if not is_ancestor(root, start, tip):
         raise Park("integration moved outside the phase start ancestry")
@@ -155,15 +155,7 @@ def prove_delivery(
     if completions[-1].get("outcome") != "completed":
         raise Park("native scheduler closure was not successful")
     task_map = {task["id"]: task for task in tasks}
-    logical = {task_id: title for title, task_id in expected.items()}
-    while True:
-        previous = len(logical)
-        for task in tasks:
-            parent = task.get("metadata", {}).get("retry_of")
-            if parent in logical:
-                logical[task["id"]] = logical[parent]
-        if previous == len(logical):
-            break
+    logical = retry_chain(tasks, {task_id: title for title, task_id in expected.items()})
     receipts: list[dict] = [
         {**json.loads(path.read_text()), "_receipt_path": path}
         for path in (run_dir / "reports").glob("*/*/receipt.json")
@@ -227,6 +219,7 @@ def prove_delivery(
             }
         )
     proofs = []
+    waivers: list[dict] = []
     explained = set()
     delivered = set()
     previous_head: dict[str, str] = {}
@@ -237,12 +230,22 @@ def prove_delivery(
         if not title or not commit or (agent_id, task_id) not in spawned:
             raise Park("merge has no attributable executed task attempt")
         task = task_map[task_id]
-        if (
-            task.get("status") not in {"done", "closed"}
-            and not retried_to_completion(tasks, task_id)
-            and not witnessed(root, tip, (witnesses or {}).get(title, []))
-        ):
-            raise Park("landed work still has a failed task obligation")
+        if task.get("status") not in {"done", "closed"}:
+            if retried_to_completion(tasks, task_id):
+                resolved = "retry_completed"
+            elif witnessed(root, tip, (witnesses or {}).get(title, [])):
+                resolved = "declared_witnesses"
+            else:
+                raise Park("landed work still has a failed task obligation")
+            waivers.append(
+                {
+                    "waiver": "unterminated_task_status",
+                    "title": title,
+                    "task_id": task_id,
+                    "status": task.get("status"),
+                    "resolved_by": resolved,
+                }
+            )
         matching = [
             receipt
             for receipt in receipts
@@ -276,11 +279,21 @@ def prove_delivery(
         # only one. Concurrent delivery of one step remains impossible: a phase gives
         # each step one executor with disjoint ownership.
         earlier = previous_head.get(title)
-        if earlier and not (
-            is_ancestor(root, earlier, receipt["head"])
-            or is_ancestor(root, receipt["head"], earlier)
-        ):
-            raise Park(f"delivered attempts for one step are not sequential: {title}")
+        if earlier:
+            if not (
+                is_ancestor(root, earlier, receipt["head"])
+                or is_ancestor(root, receipt["head"], earlier)
+            ):
+                raise Park(f"delivered attempts for one step are not sequential: {title}")
+            waivers.append(
+                {
+                    "waiver": "repeated_landing",
+                    "title": title,
+                    "task_id": task_id,
+                    "previous_head": earlier,
+                    "head": receipt["head"],
+                }
+            )
         previous_head[title] = receipt["head"]
         delivered.add(title)
         explained.add(commit)
@@ -337,10 +350,18 @@ def prove_delivery(
                 "native merge refusal remains in this run's evidence: "
                 f"{row.get('session_id')} ({row.get('reason', 'no reason recorded')})"
             )
+        waivers.append(
+            {
+                "waiver": "refusal_superseded",
+                "session_id": row["session_id"],
+                "reason": row["reason"],
+                "titles": sorted(title for title in titles if title),
+            }
+        )
     unexplained = set(git(root, "rev-list", f"{start}..{tip}").splitlines()) - explained
     if unexplained:
         raise Park(f"unexpected integration commits: {sorted(unexplained)}")
-    return proofs
+    return proofs, waivers
 
 
 def archive_native(

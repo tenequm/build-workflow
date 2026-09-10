@@ -108,4 +108,7 @@ def test_real_native_quiescence_then_fresh_phase_in_same_workspace(authored, mon
             )
             assert [task["title"] for task in tasks] == [title]
             assert closed["proofs"][0]["title"] == title
+            # A run that needed no tolerance still journals the field, so a reader of
+            # the receipt can tell "none exercised" from "an older row that never said".
+            assert closed["waivers"] == []
         assert not owned_processes(root)
