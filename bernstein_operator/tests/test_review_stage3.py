@@ -312,6 +312,40 @@ class TestAuthorityBriefs:
             assert "{{" not in brief
 
 
+class TestChangedFileSection:
+    """What the list of files in scope costs the brief. It is the only section sized by
+    the pull request rather than by the repository, and every brief carries it."""
+
+    side = dict(TestAuthorityBriefs.side)
+    paths = dict(TestAuthorityBriefs.paths)
+
+    def test_a_pathological_changed_file_list_truncates_instead_of_parking(self):
+        """The changed-file list is the only section that scales with the pull request,
+        and the tool reviews arbitrary ones. A count cap said nothing about path length,
+        so a wide enough change parked the brief before any lens launched."""
+        from review_pr import briefs, checkout
+
+        side = {
+            **self.side,
+            "reviewable_files": ["src/" + "d" * 60 + f"/module_{i}.py" for i in range(5000)],
+            "authority_files": ["docs/knowledge/decisions/" + "g" * 55 + ".md"]
+            * checkout.AUTHORITY_CAP,
+        }
+        brief = briefs.reviewer("implementation", side, self.paths)[0]
+        assert len(brief) <= briefs.BRIEF_CAP
+        marker = [line for line in brief.splitlines() if "list truncated" in line]
+        assert len(marker) == 1, "a list cut short in silence reads as a complete one"
+        assert str(self.paths["files"]) in marker[0], "the full list must stay reachable"
+
+    def test_a_list_that_fits_is_never_truncated(self):
+        from review_pr import briefs
+
+        side = {**self.side, "reviewable_files": ["src/a.py", "src/b.py"]}
+        brief = briefs.reviewer("implementation", side, self.paths)[0]
+        assert "- `src/a.py`" in brief and "- `src/b.py`" in brief
+        assert "list truncated" not in brief
+
+
 class TestDualFamily:
     def row(self, file, line, producer, rubric=None, suggestion=None):
         return {

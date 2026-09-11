@@ -100,33 +100,56 @@ def authority_section(files: list[str]) -> str:
     )
 
 
+def changed_section(files: list[str], budget: int, listing: Path) -> str:
+    """The changed files in scope, bounded by characters rather than by entry count.
+
+    This is the one section that scales with the pull request instead of with the
+    repository, and the tool's whole job is arbitrary pull requests: a count cap says
+    nothing about how long the paths under it are, so a wide enough change used to push
+    the brief past BRIEF_CAP and park the run before a single lens launched. Truncation
+    is announced, because a list silently cut short reads as a complete one and the
+    implementation lens draws conclusions from what is absent.
+    """
+    rows: list[str] = []
+    used = 0
+    for index, path in enumerate(files):
+        row = f"- `{path}`"
+        marker = f"- ... and {len(files) - index} more files (list truncated; read `{listing}`)"
+        if used + len(row) + 1 + len(marker) > budget:
+            rows.append(marker)
+            break
+        rows.append(row)
+        used += len(row) + 1
+    return "\n".join(rows)
+
+
 def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tuple[str, str, str]:
     """Returns (brief, report path, witness literal) for one lens."""
     if lens not in LENS_TEMPLATE:
         raise Park(f"unknown lens: {lens!r}")
     report = f"reports/findings-{lens}.json"
     witness = f'"lens": "{lens}"'
-    listed = sidecar["reviewable_files"]
-    shown = listed[:200]
-    changed = "\n".join(f"- `{path}`" for path in shown)
-    if len(listed) > len(shown):
-        changed += f"\n- ... and {len(listed) - len(shown)} more (read `{paths['files']}`)"
-    authority = authority_section(sidecar.get("authority_files") or [])
-    brief = render(
-        "reviewer-brief.md",
-        {
-            "NUMBER": str(sidecar["number"]),
-            "DIFF_PATH": str(paths["diff"]),
-            "BASE_TREE": sidecar["base_tree"],
-            "BODY_PATH": str(paths["body"]),
-            "CHANGED_FILES": changed,
-            "RULES": config.template("rules.md").split("-->", 1)[-1].strip(),
-            "LENS": config.template(LENS_TEMPLATE[lens]).split("-->", 1)[-1].strip(),
-            "LENS_NAME": lens,
-            "REPORT_PATH": report,
-            "AUTHORITY_FILES": authority,
-        },
+    values = {
+        "NUMBER": str(sidecar["number"]),
+        "DIFF_PATH": str(paths["diff"]),
+        "BASE_TREE": sidecar["base_tree"],
+        "BODY_PATH": str(paths["body"]),
+        "CHANGED_FILES": "",
+        "RULES": config.template("rules.md").split("-->", 1)[-1].strip(),
+        "LENS": config.template(LENS_TEMPLATE[lens]).split("-->", 1)[-1].strip(),
+        "LENS_NAME": lens,
+        "REPORT_PATH": report,
+        "AUTHORITY_FILES": authority_section(sidecar.get("authority_files") or []),
+    }
+    # The file list gets whatever the rest of this brief leaves, measured rather than
+    # guessed: every other section is fixed by the repository, so rendering once with
+    # no list is what the budget is. If even that parks, no truncation would have saved
+    # it and the park is the honest answer.
+    skeleton = render("reviewer-brief.md", values)
+    changed = changed_section(
+        sidecar["reviewable_files"], BRIEF_CAP - len(skeleton), paths["files"]
     )
+    brief = render("reviewer-brief.md", {**values, "CHANGED_FILES": changed})
     return guard(brief, sidecar), report, witness
 
 
