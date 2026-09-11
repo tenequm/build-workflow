@@ -266,7 +266,9 @@ def cmd_abort(args: argparse.Namespace) -> int:
             cancel_acp(receipt)
             stopped += 1
             print(f"stopped {path.stem} (pid {receipt['pid']})")
-    for survivor in owned_processes(dest, all_commands=True):
+    # Agent commands only: all_commands=True would also match a shell or editor the
+    # operator happens to have cd'd into the workspace (cross-family review, 2026-09-11).
+    for survivor in owned_processes(dest):
         terminate(survivor)
         stopped += 1
         print(f"stopped stray pid {survivor['pid']}: {survivor['command'][:80]}")

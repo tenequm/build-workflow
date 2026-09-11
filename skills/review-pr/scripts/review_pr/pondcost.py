@@ -14,6 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from . import pondsync
 from .proc import command
 
 METHOD_TEXT = (
@@ -90,20 +91,18 @@ def _run_pond_query(
 
     Catches execution and parsing failures gracefully to guarantee observability semantics.
     """
+    # The pinned binary, resolved the same way capture resolves it: a bare "pond"
+    # from PATH would price with whatever the host has, which is exactly the drift
+    # the pin exists to prevent - and fails outright where pond lives only in the
+    # operator venv (cross-family review, 2026-09-11).
+    try:
+        pond = str(pondsync.binary())
+    except Exception:
+        pond = "pond"
     if store is not None:
-        argv = [
-            "pond",
-            "--storage-path",
-            store,
-            "sql",
-            "--format",
-            "ndjson",
-            "--timeout",
-            "120",
-            sql,
-        ]
+        argv = [pond, "--storage-path", store, "sql", "--format", "ndjson", "--timeout", "120", sql]
     else:
-        argv = ["pond", "sql", "--format", "ndjson", "--timeout", "120", sql]
+        argv = [pond, "sql", "--format", "ndjson", "--timeout", "120", sql]
 
     try:
         code, out_bytes, err_bytes = run(argv, Path.cwd(), 120)
@@ -299,6 +298,7 @@ def _process_anthropic_session(
 def _process_codex_session(
     session_id: str,
     source_agent: str,
+    input_model: str | None,
     store: str | None,
     run: Callable[..., tuple[int, bytes, bytes]],
     providers: dict[str, Any] | None,
@@ -362,12 +362,12 @@ def _process_codex_session(
         raw_input = int(usage_data.get("input_tokens") or 0)
         cached = int(usage_data.get("cached_input_tokens") or 0)
         output = int(usage_data.get("output_tokens") or 0)
-        model = row.get("model") or usage_data.get("model")
+        model = row.get("model") or usage_data.get("model") or input_model
     else:
         raw_input = int(row.get("input_tokens") or 0)
         cached = int(row.get("cached_input_tokens") or 0)
         output = int(row.get("output_tokens") or 0)
-        model = row.get("model")
+        model = row.get("model") or input_model
 
     uncached_input = max(0, raw_input - cached)
     tokens = {
@@ -571,7 +571,9 @@ def usage(
         ):
             res = _process_anthropic_session(sid, agent, store, run, providers, registry_note)
         elif agent == "codex-cli" or agent.startswith("codex-cli"):
-            res = _process_codex_session(sid, agent, store, run, providers, registry_note)
+            res = _process_codex_session(
+                sid, agent, input_model, store, run, providers, registry_note
+            )
         elif agent == "agy" or agent.startswith("agy"):
             res = _process_agy_session(
                 sid, agent, input_model, store, run, providers, registry_note
@@ -590,6 +592,8 @@ def usage(
 
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_read = 0
+    total_cache_write = 0
     priced_values: list[float] = []
 
     for s in session_results:
@@ -597,6 +601,10 @@ def usage(
         if toks:
             total_input_tokens += int(toks.get("input") or 0)
             total_output_tokens += int(toks.get("output") or 0)
+            total_cache_read += int(toks.get("cache_read") or 0)
+            total_cache_write += int(toks.get("cache_write_5m") or 0) + int(
+                toks.get("cache_write_1h") or 0
+            )
         price = s.get("usd_list_price")
         if price is not None:
             priced_values.append(price)
@@ -606,9 +614,15 @@ def usage(
     return {
         "sessions": session_results,
         "totals": {
+            # The floor is a floor over the PRICED sessions only; the counts beside it
+            # say how much of the run that covers, so a partial sum never reads whole.
             "usd_list_price": total_usd,
+            "priced_sessions": len(priced_values),
+            "unpriced_sessions": len(session_results) - len(priced_values),
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
+            "cache_read_tokens": total_cache_read,
+            "cache_write_tokens": total_cache_write,
         },
         "method": METHOD_TEXT,
     }

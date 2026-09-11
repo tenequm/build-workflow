@@ -238,13 +238,28 @@ def settle(
             },
         }
     if mechanical:
+        # A two-sided claim's rubric reaches only the implementation half, so a passing
+        # rubric confirms it only when the verifier - who read the claim half - also
+        # confirmed. Found by the cross-family review of 2026-09-11: the rubric was
+        # overriding a verifier that had just said PLAUSIBLE.
+        if not findings_mod.needs_verifier(finding) or report["verdict"] == "CONFIRMED":
+            return {
+                **finding,
+                "verdict": "CONFIRMED",
+                "verify": {
+                    **evidence,
+                    "verifier": session["family"],
+                    "reason": "a rubric decided it: " + report["reason"],
+                },
+            }
         return {
             **finding,
-            "verdict": "CONFIRMED",
+            "verdict": "PLAUSIBLE",
             "verify": {
                 **evidence,
                 "verifier": session["family"],
-                "reason": "a rubric decided it: " + report["reason"],
+                "reason": "the rubric checked the implementation side, and the verifier "
+                "did not confirm the claim side: " + report["reason"],
             },
         }
     return {

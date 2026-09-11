@@ -135,7 +135,15 @@ def execute(
             )
         except Park as exc:
             return {"ran": False, "passed": False, "reason": str(exc), "legs": legs}
-        result = sandbox.run(check["test"], reverted, tier_name=tier, image=image, timeout=timeout)
+        try:
+            result = sandbox.run(
+                check["test"], reverted, tier_name=tier, image=image, timeout=timeout
+            )
+        finally:
+            # The reverted worktree registers a ref in the reviewed repo's .git; leaving
+            # it accumulates locks across findings and across runs (suggestions.prove
+            # already removes its own).
+            git(Path(sidecar["repo_path"]), "worktree", "remove", "--force", str(reverted))
         legs.append({"leg": "reverted", **result})
         passed = _evaluate(check["expect"], result, check.get("contains"))
     else:

@@ -442,6 +442,37 @@ class TestAgreementSettles:
         queued, settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
         assert queued == [row], "a PoC class always queues: agreement is opinions, not a demo"
 
+    def test_a_verifier_that_did_not_confirm_is_never_overridden_by_the_rubric(self):
+        """The rubric reaches only the implementation half of a two-sided claim, so a
+        passing rubric plus a verifier's PLAUSIBLE settles PLAUSIBLE, not CONFIRMED."""
+        row = {**self.two_sided(), "agreement": ["claude"]}
+        report = {
+            "verdict": "PLAUSIBLE",
+            "reason": "the claim side did not hold up",
+            "repro": None,
+            "rubric": None,
+            "rejected_rubric": None,
+        }
+        done = verify.settle(
+            row, observed(passed=True), session(verification=report), {}, tier="none"
+        )
+        assert done["verdict"] == "PLAUSIBLE"
+        assert "did not confirm the claim side" in done["verify"]["reason"]
+
+    def test_a_verifier_confirmation_with_a_passing_rubric_confirms(self):
+        row = {**self.two_sided(), "agreement": ["claude"]}
+        report = {
+            "verdict": "CONFIRMED",
+            "reason": "the claim holds against the code",
+            "repro": None,
+            "rubric": None,
+            "rejected_rubric": None,
+        }
+        done = verify.settle(
+            row, observed(passed=True), session(verification=report), {}, tier="none"
+        )
+        assert done["verdict"] == "CONFIRMED"
+
     def test_contested_claims_outrank_agreed_ones_in_the_queue(self):
         alone = {**self.two_sided(claim="One family made this claim."), "agreement": ["claude"]}
         both = {

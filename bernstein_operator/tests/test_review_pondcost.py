@@ -641,8 +641,12 @@ def test_empty_sessions_list(registry_path: Path) -> None:
     assert result["sessions"] == []
     assert result["totals"] == {
         "usd_list_price": None,
+        "priced_sessions": 0,
+        "unpriced_sessions": 0,
         "input_tokens": 0,
         "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
     }
     assert result["method"] == METHOD_TEXT
 

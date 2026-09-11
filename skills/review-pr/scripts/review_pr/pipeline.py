@@ -174,7 +174,7 @@ def fuse(
     return findings_mod.merge(produced), report
 
 
-def _product(workspace: Path, name: str, compute: Callable[[], Any]) -> Any:
+def _product(workspace: Path, name: str, compute: Callable[[], Any], *, guard: Any = None) -> Any:
     """A stage's output, durable the moment the stage finishes.
 
     Bernstein's restart law, at this workflow's scale: a rerun re-derives from what is
@@ -187,9 +187,16 @@ def _product(workspace: Path, name: str, compute: Callable[[], Any]) -> Any:
     """
     path = workspace / "products" / f"{name}.json"
     if path.is_file():
-        return json.loads(path.read_bytes())
+        data = json.loads(path.read_bytes())
+        if isinstance(data, dict) and set(data) == {"guard", "result"}:
+            if data["guard"] == guard:
+                return data["result"]
+            # A product computed under other conditions (a different sandbox tier) is
+            # not this run's product: recompute rather than resume over it.
+        else:
+            return data
     result = compute()
-    atomic(path, canonical(result), mode=0o644)
+    atomic(path, canonical({"guard": guard, "result": result}), mode=0o644)
     return result
 
 
@@ -222,9 +229,16 @@ def run(
     pr = json.loads((workspace / "pr.json").read_text())
     paths = briefs.inputs(workspace, sidecar, diff, str(pr.get("body") or ""))
 
-    lint = _product(workspace, "stage0-lint", lambda: houserules.lint(sidecar, pr, diff, tier=tier))
+    lint = _product(
+        workspace,
+        "stage0-lint",
+        lambda: houserules.lint(sidecar, pr, diff, tier=tier),
+        guard={"tier": tier},
+    )
     ledger.append("stage_complete", operation="stage0", findings=len(lint["findings"]))
-    gate = _product(workspace, "stage1-gate", lambda: gate_mod.run(sidecar, tier=tier))
+    gate = _product(
+        workspace, "stage1-gate", lambda: gate_mod.run(sidecar, tier=tier), guard={"tier": tier}
+    )
     ledger.append("stage_complete", operation="stage1", returncode=gate["returncode"])
 
     tasks, routing = stage2(sidecar, plan, paths)
@@ -240,7 +254,10 @@ def run(
         # or not the extraction session came back.
         extracted = claims_mod.extract(str(pr.get("body") or ""))
     claim_results = _product(
-        workspace, "stage2-claims", lambda: claims_mod.check(extracted, sidecar, tier=tier)
+        workspace,
+        "stage2-claims",
+        lambda: claims_mod.check(extracted, sidecar, tier=tier),
+        guard={"tier": tier},
     )
 
     script_findings = [
@@ -261,6 +278,7 @@ def run(
             tier=tier,
             launch=launcher,
         ),
+        guard={"tier": tier},
     )
     ledger.append("stage_complete", operation="stage3", sessions=verified["sessions"])
 
@@ -273,6 +291,7 @@ def run(
             tier=tier,
             cap=int(bounds["max_proven_suggestions"]),
         ),
+        guard={"tier": tier},
     )
     evidence = {
         "lint": lint,
@@ -378,13 +397,23 @@ def pond_capture(
         # floor, and zero real dollars on subscription lanes.
         "usage_totals": priced.get("totals"),
     }
+
+    def attempts(operation: str) -> list[dict[str, Any]]:
+        # A retried session's receipt carries the attempt-suffixed operation name
+        # (review-design-codex#2), so provenance matches on the base name or a
+        # suffixed variant - otherwise every retried finding lost its sessions.
+        return [
+            session
+            for op, row in resolved.items()
+            if op == operation or op.startswith(operation + "#")
+            for session in row.get("sessions", [])
+        ]
+
     by_finding: dict[str, Any] = {}
     for finding in summary["findings"]:
-        produced = f"review-{finding['lens']}-{finding['producer']}"
-        verified = f"verify-{finding['id']}"
         by_finding[finding["id"]] = {
-            "produced_by": resolved.get(produced, {}).get("sessions", []),
-            "verified_by": resolved.get(verified, {}).get("sessions", []),
+            "produced_by": attempts(f"review-{finding['lens']}-{finding['producer']}"),
+            "verified_by": attempts(f"verify-{finding['id']}"),
         }
     return by_finding
 
