@@ -171,3 +171,33 @@ class TestOpencodeSource:
             receipts(ledger_dir, (operation, "pi"), adapter="agy"), ledger_dir
         )
         assert set(sources) == {"agy"}
+
+
+class TestPiSource:
+    """pi keeps one sessions root for every project it has ever run in, so the narrow
+    source is manufactured the same way opencode's is: the family redirects
+    PI_CODING_AGENT_SESSION_DIR per session and capture reads the root that leaves."""
+
+    def test_the_pi_source_is_the_session_s_own_redirected_root(self, tmp_path):
+        ledger_dir = tmp_path / "workspace"
+        operation = "review-implementation-pi"
+        root = ledger_dir / "sessions" / operation / "env" / "pi_coding_agent_session_dir"
+        root.mkdir(parents=True)
+        # pond's pi-coding-agent adapter reads a sessions root, not the config root above
+        # it: its configured default is `~/.pi/agent/sessions`, which is exactly what the
+        # redirect replaces, so the redirected directory is handed over as it stands.
+        (root / "2026-09-11T13-41-01-776Z_01a090b3-40cf-7665-9ea1-235dd0c422a4.jsonl").write_text(
+            '{"type": "session", "version": 3}\n'
+        )
+        sources = pondsync._sources(receipts(ledger_dir, (operation, "pi")), ledger_dir)
+        assert sources == {"pi-coding-agent": {root}}
+
+    def test_the_operator_s_own_pi_history_is_never_a_source(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
+        history = tmp_path / "home" / ".pi/agent/sessions/--home-tenequm--"
+        history.mkdir(parents=True)
+        (history / "session.jsonl").write_text('{"type": "session", "version": 3}\n')
+        ledger_dir = tmp_path / "workspace"
+        sources = pondsync._sources(receipts(ledger_dir, ("review-design-pi", "pi")), ledger_dir)
+        assert sources == {}, "a session that wrote no root of its own contributes none"

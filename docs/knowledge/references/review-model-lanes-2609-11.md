@@ -19,6 +19,9 @@ sources:
   - id: lane
     resource: ../../../skills/review-pr/templates/stages-opencode.yaml
     title: The committed opencode trial lane
+  - id: pilane
+    resource: ../../../skills/review-pr/templates/stages-pi.yaml
+    title: The committed pi trial lane
   - id: policy
     resource: ../decisions/free-tier-models-are-open-source-only-lanes.md
     title: The open-source-only fence for free routes
@@ -86,9 +89,25 @@ session-dir redirects with precedence (`--session-dir` flag >
 `pi-coding-agent` adapter synced exactly one redirected session into a
 fresh store while the host's existing sessions stayed untouched - both
 directly and over the real acpx transport via the third-party `pi-acp`
-adapter.[^pidig] Wiring it as a review family needs roughly six lines plus
-a family block; config isolation additionally needs `PI_CODING_AGENT_DIR`,
-because a pi session otherwise loads the operator's skills and extensions.
+adapter.[^pidig] It is now wired as a family: both roots are redirected per session
+(`PI_CODING_AGENT_DIR` too, so the session opens on none of the operator's
+providers and no saved project trust), capture points pond's
+`pi-coding-agent` adapter straight at the redirected session root, and `.pi`
+plus project `.agents/skills` are stripped from the reviewed tree.[^pilane]
+The effort knob is pi-acp's `thought_level` - Codex's `reasoning_effort` is a
+-32602 - and pi-acp rejects pi's own `max` level, accepting only off through
+xhigh.
+
+The config redirect is narrower than the earlier note claimed, and the gap is
+larger than opencode's. Probed over the real acpx transport on 2026-09-11 with
+both variables pointed at fresh directories: the session still loaded every
+skill under `~/.agents/skills/` and still executed the operator's
+`~/.pi/agent/extensions/*.ts`, from the very root `PI_CODING_AGENT_DIR` had
+been pointed away from. Skills are text; an extension is TypeScript running in
+the reviewer's process. pi has `--no-skills` and `--no-extensions`, but pi-acp
+spawns a fixed `pi --mode rpc --no-themes` and forwards neither, so no family
+block can close it - only a different adapter, or a session HOME of its
+own, would.[^pidig]
 
 bernstein itself ships a `pi` adapter, but a shallow, dated one: it targets
 the npm-deprecated pre-rename package and builds an interactive (not

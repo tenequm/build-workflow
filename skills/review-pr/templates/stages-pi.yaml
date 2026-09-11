@@ -1,0 +1,146 @@
+# TRIAL template: every lens on pi, the fallback harness.
+#
+# Same pipeline, same stages, same briefs as stages.yaml; only the routing differs, as
+# in stages-fast.yaml. What this template buys is a second route to the metered Gemini
+# key that does not go through the agy ACP wrapper: pi-acp is a plain npm package that
+# spawns `pi --mode rpc`, so this lane still runs when the `.par` wrapper will not.
+#
+# A number produced here is comparable only with other numbers produced here.
+version: 1
+
+families:
+  # Verifier only - no lens routes here. verify.opposite() refuses to verify a pi
+  # finding with pi; the opposite family must not be gemini either, because this lane's
+  # model IS a Gemini model and that would be one model judging itself in two harnesses.
+  claude:
+    transport: claude
+    adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
+    # Without this the Claude harness saves nothing, so pond has nothing to ingest and
+    # a finding verified on this family cannot point at the transcript behind it.
+    persist_session: true
+  pi:
+    transport: acp
+    # Third-party adapter (svkozak/pi-acp), pinned: it spawns the `pi` on PATH as
+    # `pi --mode rpc` and that child inherits this session's environment, which is what
+    # makes the two redirects below reach pi at all.
+    adapter_argv: [npx, --yes, 'pi-acp@0.0.33']
+    # pi-acp's config option id is `thought_level`, not Codex's `reasoning_effort`, and
+    # it answers an unknown id with -32602. Its levels are off, minimal, low, medium,
+    # high and xhigh; pi's own `max` is NOT among them and would be refused.
+    effort_option: thought_level
+    # pi keeps providers, auth, settings and project-trust decisions under
+    # PI_CODING_AGENT_DIR (default `~/.pi/agent`) and its transcripts under
+    # PI_CODING_AGENT_SESSION_DIR (default `<config>/sessions`). Redirected per session,
+    # the reviewer opens on none of the operator's providers and no saved trust, and
+    # capture gets a session root holding this run and nothing else. Verified over the
+    # real acpx transport 2026-09-11: a fresh config dir advertised only pi's built-in
+    # catalogue, and pond's pi-coding-agent adapter ingests the redirected session root
+    # directly, since that root is the same shape as its configured default.
+    #
+    # What the redirects do NOT close is resource discovery rooted at HOME, and pi is
+    # worse here than opencode's leftover `~/.claude`: the same probe showed the session
+    # loading every skill under the operator's `~/.agents/skills/` AND executing the
+    # operator's `~/.pi/agent/extensions/*.ts` - TypeScript, in the reviewer's process,
+    # from a root PI_CODING_AGENT_DIR was pointed away from. pi has `--no-skills` and
+    # `--no-extensions`, but pi-acp spawns a fixed `pi --mode rpc --no-themes` and
+    # forwards neither, so nothing in this template can switch them off. Read this
+    # lane's findings knowing the operator's own extensions ran beside them.
+    env: [PI_CODING_AGENT_DIR, PI_CODING_AGENT_SESSION_DIR]
+    # The reviewed tree must never choose what runs. Once a project is trusted pi loads
+    # `.pi/settings.json`, `.pi/{extensions,skills,prompts,themes}`, `.pi/SYSTEM.md`,
+    # `.pi/APPEND_SYSTEM.md` and `.agents/skills` from its cwd - which IS the pull
+    # request's worktree - and a project extension is TypeScript pi executes. A
+    # non-interactive pi ignores all of it without a saved trust decision and a
+    # redirected config dir has none, so this is the third guard rather than the only
+    # one. Removed before launch; the receipt records what went.
+    strip_paths: [.pi, .agents/skills]
+
+# The same three lenses production enables, so a trial score and a milestone score
+# measure the same review. cleanliness and efficiency stay parked here for the reason
+# they are parked there: against the ground-truth replay they produced nit-tier noise
+# and none of the correctness or design signal.
+#
+# This lane's credential is GEMINI_API_KEY, already on the session env allowlist for the
+# metered agy lane and carried here under the same exposure-parity note: the redirected
+# config dir holds no auth file, so the environment is the only place the key lives, and
+# a session that can be talked into printenv can equally read the token files HOME still
+# exposes. No new leak class, and no GitHub token, ever.
+#
+# Every lens states `effort: high`, parked ones included: pi defaults a session to
+# `medium`, and a lens re-admitted later must not inherit that default in silence.
+lenses:
+  cleanliness:
+    enabled: false
+    family: pi
+    model: google/gemini-3.7-flash
+    effort: high
+    budget_usd: 5.0
+    max_turns: 40
+    timeout_s: 900
+  efficiency:
+    enabled: false
+    family: pi
+    model: google/gemini-3.7-flash
+    effort: high
+    budget_usd: 5.0
+    max_turns: 40
+    timeout_s: 900
+  design:
+    family: pi
+    model: google/gemini-3.7-flash
+    effort: high
+    budget_usd: 5.0
+    max_turns: 60
+    timeout_s: 1800
+  gating:
+    family: pi
+    model: google/gemini-3.7-flash
+    effort: high
+    budget_usd: 5.0
+    max_turns: 60
+    timeout_s: 1800
+    forbid_families: [codex]
+  implementation:
+    family: pi
+    model: google/gemini-3.7-flash
+    effort: high
+    budget_usd: 8.0
+    max_turns: 120
+    timeout_s: 2700
+
+roles:
+  verifier:
+    budget_usd: 5.0
+    max_turns: 40
+    timeout_s: 900
+    models:
+      claude: claude-sonnet-5
+      pi: google/gemini-3.7-flash
+  claims:
+    family: pi
+    model: google/gemini-3.7-flash
+    effort: high
+    budget_usd: 3.0
+    max_turns: 30
+    timeout_s: 900
+
+# Every lens runs on pi, so there is nothing to reroute and nothing to disagree with:
+# the verifier's claude entry is the opposite family verify.opposite() picks, and it
+# produces no second reading of its own. Both are stated rather than omitted.
+routing:
+  opposite: {}
+  reroute_lenses: []
+
+dual_family:
+  lenses: []
+  enabled: false
+
+bounds:
+  max_verifier_sessions: 20
+  max_proven_suggestions: 10
+  max_wall_s: 5400
+  attempts_per_task: 2
+
+sandbox:
+  tier: userns
+  image: null
