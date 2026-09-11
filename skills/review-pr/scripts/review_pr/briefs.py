@@ -88,14 +88,13 @@ def authority_section(files: list[str]) -> str:
             "No authority file was found in this repository. Phase 1 has nothing to\n"
             "extract from; check the diff's claims against the implementation directly."
         )
-    # A block names its path once and states no category: this section scales with
-    # AUTHORITY_CAP and the brief has a hard cap, so the categories are spelled out
-    # once, in the template, and the per-file blocks only bind the work to a file.
+    # A block names its path once and repeats no rule: this section scales with
+    # AUTHORITY_CAP and the brief has a hard cap, so how to extract is stated once, in
+    # the template, and a block only binds that work to a file that can be named back.
     return "\n\n".join(
         f"### `{path}`\n"
-        f"Read it whole before any diff hunk, then write out its claims in all five\n"
-        f"categories, each with its line number here. A category it is silent on is\n"
-        f"written down as silent."
+        f"Read this file whole before any hunk, then write out its claims\n"
+        f"in the five categories above."
         for path in files
     )
 
@@ -129,6 +128,14 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
         raise Park(f"unknown lens: {lens!r}")
     report = f"reports/findings-{lens}.json"
     witness = f'"lens": "{lens}"'
+    # The authority section is expanded into the lens text here, before that text
+    # becomes a value of the outer brief. render() is one sequential pass, so a
+    # placeholder nested inside another value resolves only while the dict happens to
+    # be ordered in its favour - and an unresolved one parks the run.
+    lens_text = config.template(LENS_TEMPLATE[lens]).split("-->", 1)[-1].strip()
+    lens_text = lens_text.replace(
+        "{{AUTHORITY_FILES}}", authority_section(sidecar.get("authority_files") or [])
+    )
     values = {
         "NUMBER": str(sidecar["number"]),
         "DIFF_PATH": str(paths["diff"]),
@@ -136,10 +143,9 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
         "BODY_PATH": str(paths["body"]),
         "CHANGED_FILES": "",
         "RULES": config.template("rules.md").split("-->", 1)[-1].strip(),
-        "LENS": config.template(LENS_TEMPLATE[lens]).split("-->", 1)[-1].strip(),
+        "LENS": lens_text,
         "LENS_NAME": lens,
         "REPORT_PATH": report,
-        "AUTHORITY_FILES": authority_section(sidecar.get("authority_files") or []),
     }
     # The file list gets whatever the rest of this brief leaves, measured rather than
     # guessed: every other section is fixed by the repository, so rendering once with

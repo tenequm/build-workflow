@@ -35,15 +35,21 @@ Anything the diff adds or changes that a reader would act on and could be wrong:
 
 These files state what this project claims about itself, and the misses this lens was
 built to close all lived in one of them. This is the one part of your scope that is not
-optional and not grep-first, and both phases below are mandatory, in this order: a hunk
-judged before Phase 1 is done is judged against the author's framing of the rule rather
-than against the rule.
+optional and not grep-first. Whenever a file is listed below, both phases are mandatory
+and in this order: a hunk judged before Phase 1 is done is judged against the author's
+framing of the rule rather than against the rule. When the section below says none was
+found, Phase 1 has nothing to extract and Phase 2 runs anyway, against the
+implementation itself.
 
 ### Phase 1 - extract the normative claims, one authority file at a time
 
-Read each file below whole, the statements the diff does not touch included - a claim
-the diff sits next to has already been read by someone. Write down what each file
-requires, under all five of these categories, quoting every claim with its `file:line`:
+The paths below are the versions on the BASE branch, so read them under the base tree
+named in Inputs and not in your working directory. This pull request's own edits to any
+of them are hunks to audit in Phase 2 like any other, never ground truth to judge by.
+
+Read each file whole, the statements the diff does not touch included - a claim the diff
+sits next to has already been read by someone. Write down what each file requires, under
+all five of these categories, quoting every claim with its `file:line`:
 
 1. **Quorums and numeric floors** - approval counts, thresholds, timeouts, retention
    windows, and exactly whom or what each applies to.
@@ -55,11 +61,16 @@ requires, under all five of these categories, quoting every claim with its `file
 5. **Carve-outs and invariants** - exceptions, pinned names, grandfathered cases, and
    anything the file says must always or never hold.
 
+Most of these files are single purpose and are silent on most of these categories - a
+roster states no numeric floor. A silent category is recorded as silent; never invent a
+claim to fill one.
+
 {{AUTHORITY_FILES}}
 
 ### Phase 2 - audit every diff hunk against the extracted claims
 
-Only now open the diff. Take each hunk in turn and ask what Phase 1 says about it:
+Only now open the diff. Take each hunk in turn and ask what Phase 1 says about it - or,
+where Phase 1 had nothing to read, ask the same questions of the implementation:
 
 - Does it **contradict** an extracted claim outright?
 - Does it **generalize** one - a rule stated for one role, tier or path, restated as if
@@ -69,8 +80,8 @@ Only now open the diff. Take each hunk in turn and ask what Phase 1 says about i
   calls the copy, or reversing which of two things derives from the other?
 - Does it **omit a member** of a mandatory list it claims to reproduce in full?
 
-Cite both sides: the diff line, and the authority line it fails against. A claim you
-never extracted is a claim you will not check.
+Cite both sides: the diff line, and the authority line it fails against. An authority
+claim you never extracted is one you will not catch the diff breaking.
 
 A file listed here that the repository no longer honours is a finding even when the
 diff never mentions it, tagged `out-of-diff` if the diff is unrelated to it.

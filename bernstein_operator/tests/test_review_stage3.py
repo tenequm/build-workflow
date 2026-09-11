@@ -281,7 +281,7 @@ class TestAuthorityBriefs:
         brief = self.brief("implementation", found)
         for path in found:
             assert f"### `{path}`" in brief, f"{path} was named but not addressed"
-        assert brief.count("Read it whole before any diff hunk") == len(found)
+        assert brief.count("Read this file whole before any hunk") == len(found)
 
     def test_extraction_is_ordered_before_the_hunk_audit(self):
         brief = self.brief("implementation", ["GOVERNANCE.md"])
@@ -290,11 +290,21 @@ class TestAuthorityBriefs:
         assert "quorums and numeric floors" in brief.lower()
         assert "carve-outs and invariants" in brief.lower()
 
-    def test_a_repo_with_no_authority_files_still_renders(self):
+    def test_a_repo_with_no_authority_files_still_audits_the_diff(self):
+        """Nothing to extract must not read as nothing to check: the lens owns claim
+        against implementation, and most repositories have no governance document."""
         brief = self.brief("implementation", [])
         assert "{{" not in brief
         assert "No authority file was found" in brief
+        assert "Phase 2 runs anyway" in brief
         assert "###" not in brief.split("### Phase 1")[1].split("### Phase 2")[0]
+
+    def test_the_listed_versions_are_declared_to_be_the_base_branch_ones(self):
+        """The pull request never supplies its own ground truth, and the brief has to
+        say so: the head's copy of an authority file is a hunk, not an authority."""
+        brief = self.brief("implementation", ["GOVERNANCE.md"])
+        assert "BASE branch" in brief
+        assert "hunks to audit" in brief
 
     def test_a_full_cap_of_long_paths_stays_inside_the_brief_cap(self):
         """AUTHORITY_CAP blocks times their size is what keeps this section under

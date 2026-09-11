@@ -163,21 +163,37 @@ def gate_edited(root: Path, provenance: dict[str, Any], head: str) -> bool:
 # swallowed and test_governance.py stays out.
 # "requirements" is deliberately absent: requirements.txt is a dependency manifest, and
 # it would outrank real authority docs under the root-first cap in most Python trees.
+# policy, standards and guidelines take prose extensions only, and both numbers: the
+# same words name infrastructure manifests (network-policy.yaml, iam-policy.yaml,
+# retry-policy.toml) which are configuration to check, not documents that govern.
 AUTHORITY_NAMES = re.compile(
     r"(?i)^(?:"
+    r"(?:"
     r"(?:[a-z0-9_-]+[-_])?"
-    r"(?:governance|charter|roster|maintainers|codeowners|contributing|code_of_conduct"
-    r"|policy|standards|guidelines)"
+    r"(?:governance|charter|roster|maintainers|codeowners|contributing|code_of_conduct)"
     r"(?:[-_][a-z0-9_-]+)?"
     r"|owners|security"
-    r")(\.(md|rst|txt|toml|ya?ml))?$"
+    r")(?:\.(?:md|rst|txt|toml|ya?ml))?"
+    r"|(?:"
+    r"(?:[a-z0-9_-]+[-_])?"
+    r"(?:polic(?:y|ies)|standards?|guidelines?)"
+    r"(?:[-_][a-z0-9_-]+)?"
+    r")\.(?:md|rst|txt)"
+    r")$"
 )
 AUTHORITY_CAP = 12
 
 
-def authority_files(root: Path, head: str) -> list[str]:
-    """Repository-relative authority docs present at the reviewed head, root first."""
-    listed = git(root, "ls-tree", "-r", "--name-only", head).splitlines()
+def authority_files(root: Path, base: str) -> list[str]:
+    """Repository-relative authority docs as the BASE branch has them, root first.
+
+    Never the reviewed head. These files are handed to the implementation lens as what
+    the project claims about itself, and a pull request that adds or rewrites one is
+    presenting its own material as ground truth - the same rule that keeps the
+    validation command off the pull request tree. The pull request's edits to them
+    arrive where every other edit does: in the diff, as hunks to audit.
+    """
+    listed = git(root, "ls-tree", "-r", "--name-only", base).splitlines()
     matched = [path for path in listed if AUTHORITY_NAMES.match(Path(path).name)]
     matched.sort(key=lambda path: (len(Path(path).parts), path))
     return matched[:AUTHORITY_CAP]
@@ -296,7 +312,7 @@ def prepare(
         "test_files": diffindex.test_paths(reviewable),
         "gate": provenance,
         "gate_edited": gate_edited(root, provenance, head),
-        "authority_files": authority_files(root, head),
+        "authority_files": authority_files(root, base),
         "author_family": author_family(pr),
         "rules": rules or rule_set(pr.get("repo") or remote_slug(root)),
         "fast_path": lines < FAST_PATH_LINES,

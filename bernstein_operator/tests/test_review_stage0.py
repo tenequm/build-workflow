@@ -333,7 +333,7 @@ class TestAuthorityFiles:
     implementation lens can be told to read each one whole - the measured recall
     lever from the ground-truth replays."""
 
-    def test_authority_docs_at_the_head_are_discovered_root_first(self, repo):
+    def test_authority_docs_are_discovered_root_first(self, repo):
         root = repo["root"]
         git(root, "switch", "-q", "feat/x")
         (root / "GOVERNANCE.md").write_text("# governance\n")
@@ -394,6 +394,65 @@ class TestAuthorityFiles:
             "docs/contribution-guidelines.md",
             "docs/retention-policy.md",
         ]
+
+    def test_infrastructure_manifests_are_not_authority_documents(self, repo):
+        """The same words name configuration: a NetworkPolicy is a thing to check, not
+        a document that governs, and under the root-first cap it would displace one."""
+        root = repo["root"]
+        git(root, "switch", "-q", "feat/x")
+        (root / "k8s").mkdir()
+        for name in ("network-policy.yaml", "iam-policy.yml", "retry-policy.toml"):
+            (root / "k8s" / name).write_text("kind: x\n")
+        (root / "policy.py").write_text("x = 1\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "chore: manifests")
+        head = git(root, "rev-parse", "HEAD")
+        git(root, "switch", "-q", "main")
+        assert checkout.authority_files(root, head) == []
+
+    def test_the_new_stems_match_in_both_numbers(self, repo):
+        root = repo["root"]
+        git(root, "switch", "-q", "feat/x")
+        (root / "docs").mkdir()
+        for name in ("policies.md", "policy.md", "coding-standard.rst", "guidelines.txt"):
+            (root / "docs" / name).write_text("# doc\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "docs: both numbers")
+        head = git(root, "rev-parse", "HEAD")
+        git(root, "switch", "-q", "main")
+        assert checkout.authority_files(root, head) == [
+            "docs/coding-standard.rst",
+            "docs/guidelines.txt",
+            "docs/policies.md",
+            "docs/policy.md",
+        ]
+
+    def test_the_pull_request_never_supplies_its_own_authority_documents(self, repo, tmp_path):
+        """An authority file is handed to the lens as what the project claims about
+        itself. A pull request that adds or rewrites one would be supplying its own
+        ground truth, so discovery reads the base branch and the head's edits arrive
+        where every other edit does - in the diff."""
+        root = repo["root"]
+        git(root, "switch", "-q", "main")
+        (root / "GOVERNANCE.md").write_text("Two approvals are required.\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "docs: governance")
+        git(root, "switch", "-q", "-c", "feat/authority")
+        (root / "GOVERNANCE.md").write_text("One approval is required.\n")
+        (root / "POLICY.md").write_text("Anything goes.\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "docs: relax")
+        head = git(root, "rev-parse", "HEAD")
+        git(root, "switch", "-q", "main")
+        side = checkout.prepare(
+            tmp_path / "review",
+            pr=descriptor(repo, headRefOid=head, headRefName="feat/authority"),
+            repo_path=root,
+        )
+        assert side["authority_files"] == ["GOVERNANCE.md"], "POLICY.md exists only on the head"
+        base_copy = Path(side["base_tree"]) / "GOVERNANCE.md"
+        assert base_copy.read_text() == "Two approvals are required.\n"
+        assert (Path(side["tree"]) / "GOVERNANCE.md").read_text() == "One approval is required.\n"
 
     def test_the_list_is_capped(self, repo):
         root = repo["root"]
