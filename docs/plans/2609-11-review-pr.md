@@ -384,55 +384,86 @@ and what it costs, is in
   finding outside a hunk, one on a file absent from the diff and one on a
   deleted file, and requires the script to catch all three before a payload
   is assembled.
-- **Ground-truth replay against PR #5737 (item 1): RUN 2026-09-11, and it
-  fails its own bar.** Replayed against commit `2512a7e3ea67`, the tree the
-  hand review's second round actually saw - reviewing today's head would score
-  a tree whose 14 findings were already applied. Result: 4 recovered exactly,
-  1 partially, 9 missed, 3 found that the human did not raise. Against the bar
-  above (`recover the correctness findings and the applied design findings`):
-  **0 of 3 correctness, 1 of 7 design**. Precision held - 7 of 8 pre-merge
-  findings were CONFIRMED by an executed rubric or a cross-family verifier -
-  but recall did not. Every miss has one shape, and the analysis is in
-  [its own finding](../knowledge/findings/review-lenses-miss-claim-vs-implementation.md):
-  the four lenses are polish's code-review lenses, and the missed findings all
-  check a claim the diff adds against an implementation the diff does not
-  touch. Closing it needs a fifth lens, not a better model.
+- **Ground-truth replay against PR #5737 (item 1): RUN 2026-09-11, twice.**
+  Replayed against commit `2512a7e3ea67`, the tree the hand review's second
+  round actually saw - reviewing today's head would score a tree whose 14
+  findings were already applied.
+
+  The first run, with the four polish lenses, recovered 3 of 14 and missed every
+  finding whose shape was "this prose asserts something the implementation does
+  not do". That failure was the useful result: it named a structural gap, not a
+  model problem, and the fix was a fifth lens
+  ([the finding](../knowledge/findings/review-lenses-miss-claim-vs-implementation.md)).
+
+  The second run added that lens and raised every ceiling so no session was
+  budget-bound:
+
+  | | four lenses | five lenses |
+  |---|---|---|
+  | recovered of the 14 | 3 | 5 |
+  | of the 7 tagged Design | 1 | 3 |
+  | pre-merge findings | 8 | 15 |
+  | correctness findings | 4 | 7 |
+  | verifier sessions | 2 | 7 |
+
+  The bar - recover the correctness findings and the applied design findings -
+  is met for neither category in full: 0 of the 3 the reviewer tagged
+  Correctness, 3 of 7 Design. The remaining misses cluster on one further gap,
+  and the plan for it is in the finding above: they each need a single authority
+  file read end to end rather than grepped.
 - **A real weekly batch (item 3): still not run.** `review-pr batch --label
   needs-committer-review` is the entry point and records wall time and charged
   spend per pull request into `batch.json`. The replay gives the per-pull-request
-  shape it would multiply: 11 sessions, 169s of wall time once stage 2 was warm,
-  and roughly $15 of measured provider cost at the shipped budgets - which is
-  above the plan's "predictable cost" target and is the number to attack first.
+  shape it would multiply: 18 sessions and about 12 minutes of wall time for a
+  7-file, 176-line pull request. The dollar figure needs care: of the $15.33 the bound counted, $10.00 was
+  a full reservation charged against five sessions that reported no cost at all
+  (codex on `auth_mode = chatgpt`, and the Antigravity lane - both
+  subscription-backed), and the $5.33 that was reported came from the Claude
+  bridge, which computes a list-price estimate from token counts regardless of
+  the account behind it. On the operator's Max subscription none of it is a
+  charge; it measures quota. The real per-pull-request cost on per-token auth
+  would have to be measured on per-token auth.
 
-### What the paid replay cost, and what it bought
+### What the paid replay found
 
-About $29 of provider spend across two attempts. It found four defects that no
-recorded-agent test could have found, all fixed in this change:
+Every family ran on a subscription (Claude Max, codex `auth_mode = chatgpt`, the
+Antigravity OAuth lane), so the runs consumed quota and wall time rather than
+API charges; the dollar figures below are usage meters, not invoices.
 
-1. **Every stage-2 session wrote its report where nothing collects it.** The brief
-   named an absolute path to the shared reviewed tree; each session is validated
-   against its own worktree. All seven sessions obeyed the brief, exited 0, and
-   produced nothing - and the report-witness law caught it exactly as designed,
-   retried once, and recorded an honest failure. The fixture had masked it because
-   the recording agent writes relative to its working directory and never read the
-   instruction. Briefs now resolve every write target against the working directory,
-   and `briefs.guard` refuses any brief that names the shared tree.
-2. **One invented tag parked a run with seven good sessions behind it.** A model
-   tagged a finding `docs-drift`. Tags are decorative; only four of them decide
-   anything. Unknown tags are now dropped and kept as `dropped_tags`, while every
-   field that decides something stays strict.
-3. **A claim that could not be executed was reported as the author over-claiming.**
-   The body listed the tests it had run, the extractor turned that into `pytest ...`,
-   and the sandbox has no `pytest` - exit 127 became "the body's own evidence does
-   not reproduce". A check that cannot run refutes nothing; such claims are now
-   counted as `unchecked` and raise no finding. This is the same control the
-   tests-fail-on-base rule already gained from the first real run.
-4. **Claude-family sessions were invisible to pond.** Codex and agy write their own
-   rollouts and were captured; the Claude bridge sets `persistSession: False`, which
-   is right for a blind judge and wrong for a review whose transcript is the
-   provenance a posted finding points at. It is now a flag, off by default, and the
-   review template turns it on - verified end to end: the session file lands keyed by
-   its ACP session id and pond ingests it as `claude-code`.
+Six defects that no recorded-agent test could have found, all fixed:
+
+1. **Every stage-2 session wrote its report where nothing collects it.** The
+   brief named an absolute path to the shared reviewed tree; each session is
+   validated against its own worktree. All seven obeyed the brief, exited 0 and
+   produced nothing - and the report-witness law caught it, retried once and
+   recorded an honest failure, which is exactly what it is for. The fixture had
+   masked it: the recording agent writes relative to its working directory and
+   never reads that instruction. Briefs now resolve every write target against
+   the working directory, and `briefs.guard` refuses any brief naming the
+   shared tree.
+2. **One invented tag parked a run** with seven good sessions behind it. Tags
+   are decorative and only four decide anything, so unknown ones are dropped
+   and kept as `dropped_tags`.
+3. **A malformed replacement rubric from a verifier parked another.** The
+   verdict and the reason decide; a sharper rubric is an optimisation, so a bad
+   one is dropped and recorded.
+4. **A claim that could not be executed was reported as the author
+   over-claiming** - the body listed the tests it ran, the extractor made that
+   `pytest ...`, and the sandbox has no `pytest`. Exit 127 now counts as
+   `unchecked` and raises no finding.
+5. **Claude-family sessions were invisible to pond.** Codex and agy write their
+   own rollouts; the Claude bridge sets `persistSession: False`, right for a
+   blind judge and wrong for a review whose transcript is a finding's
+   provenance. Now a flag, off by default, turned on by the review template.
+6. **Thirteen of fifteen findings were confirmed with no verifier at all**, on
+   rubrics that execute against the code while the claim they contradict is a
+   statement in a document. A claim spanning two artifacts now always gets a
+   blinded cross-family reader; past the session cap it settles at PLAUSIBLE
+   rather than CONFIRMED.
+
+Numbers two and three are the same lesson twice, and it is now a rule: be strict
+on a field that decides something, tolerant on one that only describes, and
+never let the second void a report the first would have accepted.
 
 ### Environment
 

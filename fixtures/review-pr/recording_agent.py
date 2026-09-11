@@ -38,6 +38,7 @@ DEFAULT_MODELS = (
     "gpt-5.6-sol",
     "gpt-5.6-terra",
     "gemini-3.7-flash-medium",
+    "gemini-3.8-flash-high",
     "claude-opus-5",
     "claude-sonnet-5",
     "claude-haiku-4-5-20251001",

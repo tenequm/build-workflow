@@ -187,7 +187,13 @@ def run(
     started = time.monotonic()
     run_id = run_id or f"{sidecar['repo'].replace('/', '-')}-{sidecar['number']}-{int(time.time())}"
     bounds = plan["bounds"]
+    # reserved: what the spend bound counts, charging a full reservation for any agent
+    # that reports nothing. reported: what an adapter actually said. They are different
+    # questions, and only the second is ever close to money - and even then only on
+    # per-token auth, since a subscription-backed CLI reports a list-price estimate.
     charged = [0.0]
+    reported = [0.0]
+    metered = [0]
 
     def default_launch(tasks: list[Task]) -> dict[str, dict[str, Any]]:
         receipts = run_batch(
@@ -199,6 +205,8 @@ def run(
             wall_cap=float(bounds["max_wall_s"]),
         )
         charged[0] += sum(receipt["charged_usd"] for receipt in receipts.values())
+        reported[0] += sum(r["cost_usd"] or 0.0 for r in receipts.values() if r["metered"])
+        metered[0] += sum(1 for r in receipts.values() if r["metered"])
         return receipts
 
     launcher: Launcher = launch or default_launch
@@ -261,14 +269,20 @@ def run(
         "missing_reports": missing,
         "suggestions": proofs,
         "tier": tier,
-        "charged_usd": round(charged[0], 4),
+        "reserved_usd": round(charged[0], 4),
+        "reported_usd": round(reported[0], 4),
+        "metered_sessions": metered[0],
     }
     body = review_body(
         workspace, sidecar, plan, ledger, verified["findings"], evidence, launcher, paths
     )
     evidence["wall_s"] = round(time.monotonic() - started, 1)
-    evidence["charged_usd"] = round(charged[0], 4)
-    evidence["sessions"] = len(tasks) + verified["sessions"]
+    evidence["reserved_usd"] = round(charged[0], 4)
+    evidence["reported_usd"] = round(reported[0], 4)
+    evidence["metered_sessions"] = metered[0]
+    # Every receipt on disk, retries included: a retry really was another session, and
+    # a count derived from the task list silently omits the ones added after it.
+    evidence["sessions"] = len(list((ledger.directory / "sessions").glob("*/receipt.json")))
     summary = synthesize.synthesize(
         workspace, sidecar, verified["findings"], body=body, evidence=evidence, proofs=proofs
     )

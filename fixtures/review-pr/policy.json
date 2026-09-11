@@ -1,32 +1,66 @@
 {
   "cost_usd": 0.05,
-  "models": ["gpt-5.6-sol", "gpt-5.6-terra", "gemini-3.7-flash-medium",
-             "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
+  "models": [
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gemini-3.7-flash-medium",
+    "gemini-3.8-flash-high",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-haiku-4-5-20251001"
+  ],
   "findings": {
     "cleanliness-gemini": [
       {
-        "file": "shopkit/catalog.py", "line": 24, "category": "cleanliness",
+        "file": "shopkit/catalog.py",
+        "line": 24,
+        "category": "cleanliness",
         "claim": "A debug print was left in catalog_listing.",
         "evidence": "shopkit/catalog.py:24: print(\"debug: building listing for\", len(names), \"names\")",
-        "rubric": {"kind": "grep", "pattern": "print\\(\"debug:", "path": "shopkit/catalog.py", "expect": "nonempty"}
+        "rubric": {
+          "kind": "grep",
+          "pattern": "print\\(\"debug:",
+          "path": "shopkit/catalog.py",
+          "expect": "nonempty"
+        }
       },
       {
-        "file": "shopkit/catalog.py", "line": 15, "category": "cleanliness",
+        "file": "shopkit/catalog.py",
+        "line": 15,
+        "category": "cleanliness",
         "claim": "The comment restates the code underneath it.",
         "evidence": "shopkit/catalog.py:15: # Build the slug - lowercase the name and hyphenate it.",
-        "rubric": {"kind": "grep", "pattern": "# Build the slug", "path": "shopkit/catalog.py", "expect": "nonempty"}
+        "rubric": {
+          "kind": "grep",
+          "pattern": "# Build the slug",
+          "path": "shopkit/catalog.py",
+          "expect": "nonempty"
+        }
       }
     ],
     "design-codex": [
       {
-        "file": "shopkit/catalog.py", "line": 16, "start_line": 14, "category": "design",
+        "file": "shopkit/catalog.py",
+        "line": 16,
+        "start_line": 14,
+        "category": "design",
         "claim": "_slug re-implements shopkit.text.slugify, which this module already imports.",
         "evidence": "shopkit/catalog.py:14-16 against shopkit/text.py:11-15; CLAUDE.md says slug handling belongs in shopkit/text.py",
-        "rubric": {"kind": "command", "run": "python3 -c \"from shopkit.catalog import _slug; from shopkit.text import slugify; import sys; sys.exit(0 if _slug('Hello, World!') == slugify('Hello, World!') else 1)\"", "expect": "exit_zero"},
-        "suggestion": {"start_line": 14, "line": 16, "replacement": "def _slug(value: str) -> str:\n    return slugify(value)"}
+        "rubric": {
+          "kind": "command",
+          "run": "python3 -c \"from shopkit.catalog import _slug; from shopkit.text import slugify; import sys; sys.exit(0 if _slug('Hello, World!') == slugify('Hello, World!') else 1)\"",
+          "expect": "exit_zero"
+        },
+        "suggestion": {
+          "start_line": 14,
+          "line": 16,
+          "replacement": "def _slug(value: str) -> str:\n    return slugify(value)"
+        }
       },
       {
-        "file": "shopkit/catalog.py", "line": 34, "category": "design",
+        "file": "shopkit/catalog.py",
+        "line": 34,
+        "category": "design",
         "claim": "catalog_slugs duplicates what a list comprehension over catalog_entry already gives.",
         "evidence": "shopkit/catalog.py:34-35 beside catalog_entry at :19",
         "rubric": null
@@ -34,13 +68,22 @@
     ],
     "design-claude": [
       {
-        "file": "shopkit/catalog.py", "line": 16, "start_line": 14, "category": "design",
+        "file": "shopkit/catalog.py",
+        "line": 16,
+        "start_line": 14,
+        "category": "design",
         "claim": "_slug duplicates the slugify helper this module imports and never uses.",
         "evidence": "shopkit/catalog.py:14-16; shopkit/text.py:11 exports slugify",
-        "rubric": {"kind": "command", "run": "python3 -c \"from shopkit.catalog import _slug; from shopkit.text import slugify; import sys; sys.exit(0 if _slug('Hello, World!') == slugify('Hello, World!') else 1)\"", "expect": "exit_zero"}
+        "rubric": {
+          "kind": "command",
+          "run": "python3 -c \"from shopkit.catalog import _slug; from shopkit.text import slugify; import sys; sys.exit(0 if _slug('Hello, World!') == slugify('Hello, World!') else 1)\"",
+          "expect": "exit_zero"
+        }
       },
       {
-        "file": "shopkit/catalog.py", "line": 23, "category": "design",
+        "file": "shopkit/catalog.py",
+        "line": 23,
+        "category": "design",
         "claim": "catalog_listing takes an index path parameter no caller supplies.",
         "evidence": "shopkit/catalog.py:23 index_path default; no call site passes it",
         "rubric": null
@@ -48,32 +91,99 @@
     ],
     "efficiency-claude": [
       {
-        "file": "shopkit/catalog.py", "line": 27, "start_line": 25, "category": "efficiency",
+        "file": "shopkit/catalog.py",
+        "line": 27,
+        "start_line": 25,
+        "category": "efficiency",
         "claim": "The stock index is re-read and re-parsed once per name instead of once per call.",
         "evidence": "shopkit/catalog.py:26-28: the json.loads and read_text sit inside the for loop",
-        "rubric": {"kind": "grep", "pattern": "for name in names", "path": "shopkit/catalog.py", "expect": "nonempty"},
-        "suggestion": {"start_line": 25, "line": 28, "replacement": "    entries = []\n    for name in names:\n        entries.append({\"name\": name, \"slug\": _slug(name), \"stock\": index.get(name, 0)})"}
+        "rubric": {
+          "kind": "grep",
+          "pattern": "for name in names",
+          "path": "shopkit/catalog.py",
+          "expect": "nonempty"
+        },
+        "suggestion": {
+          "start_line": 25,
+          "line": 28,
+          "replacement": "    entries = []\n    for name in names:\n        entries.append({\"name\": name, \"slug\": _slug(name), \"stock\": index.get(name, 0)})"
+        }
       }
     ],
     "gating-claude": [
       {
-        "file": "shopkit/billing.py", "line": 23, "category": "correctness", "impact": "irreversible",
+        "file": "shopkit/billing.py",
+        "line": 23,
+        "category": "correctness",
+        "impact": "irreversible",
         "claim": "charge_card runs before validate_order, so an invalid order is charged and then rejected.",
         "evidence": "shopkit/billing.py:23 charge_card(order); shopkit/billing.py:24 validate_order(order) - the gate runs after the irreversible call",
-        "rubric": {"kind": "revert_test", "hunk": "shopkit/billing.py:22-25", "test": "python3 -m unittest discover -s tests -t .", "expect": "exit_nonzero"}
+        "rubric": {
+          "kind": "revert_test",
+          "hunk": "shopkit/billing.py:22-25",
+          "test": "python3 -m unittest discover -s tests -t .",
+          "expect": "exit_nonzero"
+        }
       }
     ],
     "gating-gemini": [
       {
-        "file": "shopkit/billing.py", "line": 23, "category": "correctness", "impact": "irreversible",
+        "file": "shopkit/billing.py",
+        "line": 23,
+        "category": "correctness",
+        "impact": "irreversible",
         "claim": "The irreversible charge is not gated by validation on this path.",
         "evidence": "shopkit/billing.py:23-24",
+        "rubric": null
+      }
+    ],
+    "implementation-claude": [
+      {
+        "file": "docs/catalog.md",
+        "line": 3,
+        "start_line": 3,
+        "category": "correctness",
+        "claim": "docs/catalog.md states that catalog_listing slugs through shopkit.text.slugify, but catalog_listing calls the hand-rolled _slug, so a listing entry and catalog_entry can disagree on a slug.",
+        "evidence": "docs/catalog.md:3-4 claims slugify; shopkit/catalog.py:28 calls _slug(name) while shopkit/catalog.py:20 (catalog_entry) calls slugify(name)",
+        "rubric": {
+          "kind": "grep",
+          "pattern": "_slug\\(name\\)",
+          "path": "shopkit/catalog.py",
+          "expect": "nonempty"
+        }
+      },
+      {
+        "file": "docs/catalog.md",
+        "line": 4,
+        "category": "correctness",
+        "claim": "docs/catalog.md states the stock index is read once per call, but the read sits inside the per-name loop.",
+        "evidence": "docs/catalog.md:3 claims once per call; shopkit/catalog.py:27 reads and parses it inside `for name in names`",
+        "rubric": {
+          "kind": "grep",
+          "pattern": "for name in names",
+          "path": "shopkit/catalog.py",
+          "expect": "nonempty"
+        }
+      }
+    ],
+    "implementation-codex": [
+      {
+        "file": "docs/catalog.md",
+        "line": 3,
+        "category": "correctness",
+        "claim": "The new doc claims listing slugs come from shopkit.text.slugify, which the implementation contradicts.",
+        "evidence": "docs/catalog.md:3 against shopkit/catalog.py:28",
         "rubric": null
       }
     ]
   },
   "verify": {
-    "default": {"verdict": "PLAUSIBLE", "reason": "It holds on a re-read of the cited lines, with no mechanical proof available.", "repro": null, "rubric": null},
+    "default": {
+      "verdict": "PLAUSIBLE",
+      "reason": "It holds on a re-read of the cited lines, with no mechanical proof available.",
+      "repro": null,
+      "rubric": null
+    },
     "rules": [
       {
         "match": "charge_card runs before validate_order",
@@ -112,5 +222,7 @@
       }
     ]
   },
-  "body": {"body": "Adds a catalog listing and slug helpers. The charge path in billing.py now runs the card call before validation, which is the one thing worth settling before this merges."}
+  "body": {
+    "body": "Adds a catalog listing and slug helpers. The charge path in billing.py now runs the card call before validation, which is the one thing worth settling before this merges."
+  }
 }

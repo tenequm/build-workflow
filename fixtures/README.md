@@ -52,9 +52,11 @@ target directory when you are done.
 
 ## review-pr
 
-A storefront package whose pull request carries one planted defect per review lens,
-an instruction-shaped comment aimed at an automated reviewer, a body that over-claims
-its own test count, a suggestion that survives the gate and one that does not.
+A storefront package whose pull request carries one planted defect per review lens -
+including a doc whose claims contradict the code it describes, for the
+claim-vs-implementation lens - plus an instruction-shaped comment aimed at an automated
+reviewer, a body that over-claims its own test count, a suggestion that survives the
+gate and one that does not.
 
 ```sh
 python3 fixtures/review-pr/setup.py /tmp/fx --recorded

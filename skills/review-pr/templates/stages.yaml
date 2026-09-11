@@ -28,45 +28,71 @@ families:
     # your own wrapper; `review-pr ready` refuses an unresolvable adapter.
     adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']
 
-# Stage 2. Four lenses, no more: both Anthropic's guidance and this project's
-# capability-floor arc say discipline beats fan-out.
+# Stage 2. Five lenses. Four are polish's, aimed at a code diff; the fifth is this
+# workflow's own and is the only one allowed to leave the diff.
+#
+# The bounds here are ceilings, not targets. They exist so a runaway session ends, not
+# to economise: the gating lens previously reported 93% of a $2.50 budget, which means
+# the ceiling was shaping the review. Raise one before trimming it.
 lenses:
   cleanliness:
     family: gemini
     model: gemini-3.7-flash-medium
-    budget_usd: 1.0
-    max_turns: 24
-    timeout_s: 900
+    budget_usd: 10.0
+    max_turns: 60
+    timeout_s: 1800
   efficiency:
     family: claude
     model: claude-sonnet-5
-    budget_usd: 1.5
-    max_turns: 30
-    timeout_s: 1200
+    budget_usd: 10.0
+    max_turns: 60
+    timeout_s: 1800
   design:
     family: codex
     model: gpt-5.6-sol
     effort: high
-    budget_usd: 2.0
-    max_turns: 40
-    timeout_s: 1800
+    budget_usd: 15.0
+    max_turns: 120
+    timeout_s: 3600
+    models:
+      codex: gpt-5.6-sol
+      claude: claude-opus-5
+      gemini: gemini-3.8-flash-high
   gating:
     family: claude
     model: claude-opus-5
-    budget_usd: 2.5
-    max_turns: 40
-    timeout_s: 1800
+    budget_usd: 15.0
+    max_turns: 120
+    timeout_s: 3600
+    models:
+      claude: claude-opus-5
+      gemini: gemini-3.8-flash-high
     # A correctness rule, not a preference: OpenAI's content filter silently truncates
     # turns on exactly this brief's vocabulary (race, exploit, attack, sweep) and the
     # truncated turn presents as a clean completion.
     forbid_families: [codex]
+  # The lens the first ground-truth replay proved missing. Every finding that replay
+  # lost had one shape - a claim the diff adds, checked against an implementation the
+  # diff does not touch - and no polish lens looks there, because polish reviews code
+  # diffs and says so: "the diff is the hunting scope". This one inverts that, so it
+  # gets the largest turn budget of any lens: it is doing repository archaeology.
+  implementation:
+    family: claude
+    model: claude-opus-5
+    budget_usd: 25.0
+    max_turns: 200
+    timeout_s: 5400
+    models:
+      claude: claude-opus-5
+      codex: gpt-5.6-sol
+      gemini: gemini-3.8-flash-high
 
 # Stage 3 and stage 4.
 roles:
   verifier:
-    budget_usd: 1.5
-    max_turns: 30
-    timeout_s: 1200
+    budget_usd: 10.0
+    max_turns: 60
+    timeout_s: 1800
     models:
       claude: claude-sonnet-5
       codex: gpt-5.6-terra
@@ -74,15 +100,15 @@ roles:
   claims:
     family: claude
     model: claude-sonnet-5
-    budget_usd: 1.0
-    max_turns: 24
-    timeout_s: 900
+    budget_usd: 5.0
+    max_turns: 40
+    timeout_s: 1200
   body:
     family: claude
     model: claude-haiku-4-5-20251001
-    budget_usd: 0.25
-    max_turns: 6
-    timeout_s: 300
+    budget_usd: 2.0
+    max_turns: 10
+    timeout_s: 600
 
 # Review direction is asymmetric: Claude reviewing Codex 71.6 -> 89.7, Codex reviewing
 # Claude 91.4 -> 82.8. When setup detects the author's family, the two lenses that
@@ -92,14 +118,14 @@ routing:
     claude: codex
     codex: claude
     gemini: claude
-  reroute_lenses: [design, gating]
+  reroute_lenses: [design, gating, implementation]
 
 # Cross-family ensembles realise 43-44% of the theoretical independence gain (same-model
 # under 30%), and disagreement alone detects about two thirds of incorrect programs at
 # zero false positives. Agreements auto-confirm cheaply; disagreements are where the
 # stage-3 budget goes.
 dual_family:
-  lenses: [design, gating]
+  lenses: [design, gating, implementation]
   enabled: true
 
 bounds:
@@ -107,12 +133,12 @@ bounds:
   # findings take the budget first; past the cap a finding settles on its
   # driver-executed rubric alone. Findings are never batched into one session: a
   # shared verifier would see every other claim and the blinding is the point.
-  max_verifier_sessions: 12
+  max_verifier_sessions: 40
   # A suggestion is only attached once it has been applied and gated for real, and
   # each proof is a full run of the pinned command, so the count is bounded.
-  max_proven_suggestions: 6
-  max_spend_usd: 24.0
-  max_wall_s: 3600
+  max_proven_suggestions: 20
+  max_spend_usd: 400.0
+  max_wall_s: 10800
   # A task whose report is missing or unwitnessed is retried once, then parks.
   attempts_per_task: 2
 

@@ -37,7 +37,7 @@ def opposite(plan: dict[str, Any], producer: str) -> str:
 
 def priority(finding: dict[str, Any]) -> tuple[int, int, str]:
     """Correctness and gating first; then impact; then a stable order."""
-    poc = 0 if findings_mod.needs_poc(finding) else 1
+    poc = 0 if findings_mod.needs_verifier(finding) else 1
     impact = 0 if finding["impact"] != "none" else 1
     return (poc, impact, finding["id"])
 
@@ -70,10 +70,7 @@ def select(
     settled: list[dict[str, Any]] = []
     for finding in candidates:
         result = observed[finding["id"]]
-        agreed = len(finding.get("agreement", [])) > 1
-        if result["passed"] and not findings_mod.needs_poc(finding):
-            settled.append(finding)
-        elif result["passed"] and agreed and not findings_mod.needs_poc(finding):
+        if result["passed"] and not findings_mod.needs_verifier(finding):
             settled.append(finding)
         else:
             queue.append(finding)
@@ -96,11 +93,21 @@ def _report(path: Path, finding_id: str) -> dict[str, Any]:
     repro = data.get("repro")
     if repro is not None and (not isinstance(repro, str) or not repro.strip()):
         raise Park(f"verification repro must be a shell script or null: {path.name}")
+    # A replacement rubric is an optimisation - a sharper check than the one the claim
+    # arrived with. The verdict and the reason are what decide anything, so a malformed
+    # replacement is dropped and recorded rather than voiding a verification that is
+    # otherwise complete. Measured 2026-09-11: one bad `expect` parked a whole run.
+    replacement, rejected = None, None
+    try:
+        replacement = findings_mod.rubric(data.get("rubric"))
+    except Park as exc:
+        rejected = str(exc)
     return {
         "verdict": data["verdict"],
         "reason": findings_mod.redact(reason.strip()),
         "repro": repro,
-        "rubric": findings_mod.rubric(data.get("rubric")),
+        "rubric": replacement,
+        "rejected_rubric": rejected,
     }
 
 
@@ -128,6 +135,14 @@ def settle(
             # This class confirms on a demonstration, never on a rubric alone.
             verdict = "PLAUSIBLE"
             reason = "the rubric passed but no proof of concept was produced"
+        elif findings_mod.needs_verifier(finding) and verdict == "CONFIRMED":
+            # A two-sided claim past the session cap: the rubric checked the
+            # implementation, and nothing read it against the statement it contradicts.
+            verdict = "PLAUSIBLE"
+            reason = (
+                "the rubric checked the implementation side only, and no verifier "
+                "read it against the claim"
+            )
         return {
             **finding,
             "verdict": verdict,

@@ -73,7 +73,14 @@ def rows_for(
             "counts": summary["counts"],
             "evidence": {
                 key: summary["evidence"].get(key)
-                for key in ("wall_s", "charged_usd", "sessions", "tier")
+                for key in (
+                    "wall_s",
+                    "reserved_usd",
+                    "reported_usd",
+                    "metered_sessions",
+                    "sessions",
+                    "tier",
+                )
             },
         }
     ]

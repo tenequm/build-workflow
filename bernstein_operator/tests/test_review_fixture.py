@@ -61,7 +61,7 @@ def found(summary, file, line=None):
 class TestPlantedDefects:
     def test_every_lens_produced_the_defect_planted_for_it(self, reviewed):
         lenses = {f["lens"] for f in reviewed["summary"]["findings"]}
-        assert {"cleanliness", "design", "efficiency", "gating"} <= lenses
+        assert {"cleanliness", "design", "efficiency", "gating", "implementation"} <= lenses
 
     def test_the_ungated_irreversible_charge_is_confirmed_by_a_proof_of_concept(self, reviewed):
         charge = found(reviewed["summary"], "shopkit/billing.py", 23)
@@ -86,6 +86,27 @@ class TestPlantedDefects:
     def test_the_per_item_index_read_is_reported(self, reviewed):
         efficiency = [f for f in reviewed["summary"]["findings"] if f["lens"] == "efficiency"]
         assert efficiency and efficiency[0]["line"] == 27
+
+    def test_the_doc_that_contradicts_the_code_is_caught_by_its_own_lens(self, reviewed):
+        """The lens the first ground-truth replay proved missing: a claim the diff adds,
+        checked against an implementation the diff does not change."""
+        doc = found(reviewed["summary"], "docs/catalog.md")
+        assert doc, "the planted doc-versus-code contradiction must be reported"
+        assert any(f["lens"] == "implementation" for f in doc)
+        confirmed = [f for f in doc if f["verdict"] == "CONFIRMED"]
+        assert confirmed, "its rubric is a grep, so it should settle mechanically"
+        assert any("slugify" in f["claim"] for f in doc)
+
+    def test_a_documentation_mismatch_needs_no_failing_test_to_confirm(self, reviewed):
+        """This class has no repro to write, so PoC-or-demote must not apply to it."""
+        doc = [
+            f
+            for f in found(reviewed["summary"], "docs/catalog.md")
+            if f["lens"] == "implementation" and f["category"] == "correctness"
+        ]
+        assert doc
+        assert any(f["verdict"] == "CONFIRMED" for f in doc)
+        assert all((f.get("verify") or {}).get("gold_gate") is None for f in doc)
 
     def test_the_clean_module_produced_no_findings_at_all(self, reviewed):
         assert found(reviewed["summary"], "shopkit/inventory.py") == []
@@ -267,9 +288,13 @@ class TestLedger:
 
 
 class TestCost:
-    def test_the_run_records_its_own_wall_time_and_charged_spend(self, reviewed):
+    def test_the_run_separates_what_was_reserved_from_what_was_reported(self, reviewed):
+        """A reservation is a ceiling the operator set; a reported number is a usage
+        meter an adapter emitted. Conflating them published a cost that was not one."""
         evidence = reviewed["summary"]["evidence"]
         assert evidence["wall_s"] > 0
-        assert evidence["charged_usd"] > 0
-        assert evidence["sessions"] >= 8
+        assert evidence["reserved_usd"] > 0
+        assert evidence["reported_usd"] >= 0
+        assert evidence["reserved_usd"] >= evidence["reported_usd"]
+        assert evidence["metered_sessions"] <= evidence["sessions"]
         assert evidence["tier"] == sandbox.tier()

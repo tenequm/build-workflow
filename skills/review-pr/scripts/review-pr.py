@@ -298,7 +298,8 @@ def cmd_batch(args: argparse.Namespace) -> int:
                     "number": row["number"],
                     "status": summary["action"],
                     "wall_s": round(time.monotonic() - started, 1),
-                    "charged_usd": summary["evidence"]["charged_usd"],
+                    "reserved_usd": summary["evidence"]["reserved_usd"],
+                    "reported_usd": summary["evidence"]["reported_usd"],
                     "counts": summary["counts"],
                 }
             )
@@ -312,12 +313,14 @@ def cmd_batch(args: argparse.Namespace) -> int:
                 }
             )
     (root / "batch.json").write_text(json.dumps(results, indent=2) + "\n")
-    print(f"\n{'pr':>6} {'status':24} {'wall':>8} {'usd':>7}")
+    # "reported" and not "spent": an unmetered agent reports nothing and is still
+    # charged its whole reservation against the bound.
+    print(f"\n{'pr':>6} {'status':24} {'wall':>8} {'reported':>9}")
     for row in results:
         status = str(row["status"])[:24]
         wall = float(row.get("wall_s") or 0)
-        spend = float(row.get("charged_usd") or 0)
-        print(f"{row['number']:6} {status:24} {wall:8.1f} {spend:7.2f}")
+        spend = float(row.get("reported_usd") or 0)
+        print(f"{row['number']:6} {status:24} {wall:8.1f} {spend:9.2f}")
     print(f"\nbatch summary: {root}/batch.json")
     return 0
 

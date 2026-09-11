@@ -71,6 +71,22 @@ class TestRouting:
         queued, settled = verify.select([claim], {claim["id"]: observed()}, cap=10)
         assert queued == [claim] and settled == []
 
+    def test_a_claim_spanning_two_artifacts_always_gets_a_reader(self):
+        """Its rubric can only execute against the code; the statement it contradicts is
+        the other half, and nothing mechanical reads that."""
+        row = finding(lens="implementation", category="correctness")
+        queued, settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
+        assert queued == [row] and settled == []
+        cheap = finding(lens="implementation", category="design")
+        q2, s2 = verify.select([cheap], {cheap["id"]: observed(passed=True)}, cap=10)
+        assert s2 == [cheap], "a design-category note settles on its rubric as before"
+
+    def test_past_the_cap_a_two_sided_claim_is_plausible_not_confirmed(self):
+        row = finding(lens="implementation", category="correctness")
+        settled = verify.settle(row, observed(passed=True), None, {}, tier="none")
+        assert settled["verdict"] == "PLAUSIBLE"
+        assert "implementation side only" in settled["verify"]["reason"]
+
     def test_the_cap_is_a_ceiling_and_the_overflow_settles_on_its_rubric(self):
         rows = [
             finding(file=f"f{i}.py", category="cleanliness", lens="cleanliness") for i in range(4)
@@ -136,6 +152,32 @@ class TestSettle:
             verify._report(path, "x")
         path.write_text(json.dumps({"verification": "x", "verdict": "CONFIRMED", "reason": " "}))
         with pytest.raises(Park, match="states no reason"):
+            verify._report(path, "x")
+
+    def test_a_malformed_replacement_rubric_is_dropped_not_fatal(self, tmp_path):
+        """The verdict and the reason decide; a sharper rubric is an optimisation.
+        Measured 2026-09-11: one bad `expect` value parked an entire run."""
+        path = tmp_path / "verify-x.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "verification": "x",
+                    "verdict": "CONFIRMED",
+                    "reason": "it holds at a.py:3",
+                    "repro": None,
+                    "rubric": {"kind": "command", "run": "x", "expect": "hoping"},
+                }
+            )
+        )
+        report = verify._report(path, "x")
+        assert report["verdict"] == "CONFIRMED"
+        assert report["rubric"] is None
+        assert "expect must be one of" in report["rejected_rubric"]
+
+    def test_a_verdict_or_reason_that_is_malformed_is_still_fatal(self, tmp_path):
+        path = tmp_path / "verify-x.json"
+        path.write_text(json.dumps({"verification": "x", "verdict": "MAYBE", "reason": "r"}))
+        with pytest.raises(Park, match="verdict must be"):
             verify._report(path, "x")
 
     def test_a_follow_up_is_reported_but_never_verified(self):

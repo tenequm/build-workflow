@@ -17,7 +17,15 @@ from typing import Any
 
 from operator_driver.storage import Park, canonical, digest
 
-LENSES = ("cleanliness", "design", "efficiency", "gating", "house-rules", "claims")
+LENSES = (
+    "cleanliness",
+    "design",
+    "efficiency",
+    "gating",
+    "implementation",
+    "house-rules",
+    "claims",
+)
 CATEGORIES = ("correctness", "convention", "cleanliness", "design", "efficiency")
 IMPACTS = ("none", "security", "data_loss", "irreversible", "deploy")
 VERDICTS = ("CONFIRMED", "PLAUSIBLE", "DROPPED", "UNVERIFIED")
@@ -35,6 +43,8 @@ EXPECTATIONS = ("exit_zero", "exit_nonzero", "empty", "nonempty", "contains")
 # category settles on its rubric alone.
 POC_CATEGORIES = ("correctness",)
 POC_LENSES = ("gating",)
+# Lenses whose findings are settled by an executed rubric rather than a failing repro.
+RUBRIC_PROVES = ("implementation",)
 
 # A suggestion is speculation with rollback, so it stays small enough to stage.
 SUGGESTION_MAX_LINES = 12
@@ -253,7 +263,28 @@ def needs_poc(finding: dict[str, Any]) -> bool:
     """
     if finding.get("producer") == "script":
         return False
+    if finding["lens"] in RUBRIC_PROVES:
+        # A documentation-versus-code mismatch has no failing test to write: its proof
+        # is a grep that comes back empty or a command whose output contradicts the
+        # claim. Demanding a runtime repro here would demote every true finding.
+        return False
     return finding["category"] in POC_CATEGORIES or finding["lens"] in POC_LENSES
+
+
+def needs_verifier(finding: dict[str, Any]) -> bool:
+    """Whether a model has to read this claim, even when its rubric already passed.
+
+    A claim-vs-implementation finding spans two artifacts: the statement and the code
+    that decides it. Its rubric can only execute against the code, so a passing rubric
+    proves one half and says nothing about the other. Measured 2026-09-11: 13 of 15
+    findings confirmed with no verifier session at all, most of them on exactly that
+    one-sided evidence. These queue for a blinded cross-family reader regardless.
+    """
+    if finding.get("producer") == "script":
+        return False
+    if needs_poc(finding):
+        return True
+    return finding["lens"] in RUBRIC_PROVES and finding["category"] == "correctness"
 
 
 def presettle(finding: dict[str, Any], reason: str, verdict: str = "CONFIRMED") -> dict[str, Any]:

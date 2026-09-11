@@ -1,7 +1,7 @@
 ---
 type: Finding
-title: The four polish lenses cannot find a doc that contradicts the code, and that is most of a governance review
-description: Replayed against the 14 findings of a real hand review, /review-pr recovered four and missed every one whose shape was "this prose asserts something the implementation does not do" - including all three the reviewer tagged Correctness - because each needs a file the diff does not touch, and the lens briefs inherited from polish scope the reviewer to the diff on purpose.
+title: A fifth lens was needed to find a doc that contradicts the code, and it recovers about half of what the four polish lenses missed
+description: Replayed against the 14 findings of a real hand review, the four polish lenses recovered 3 and missed every finding whose shape was "this prose asserts something the implementation does not do"; adding a claim-vs-implementation lens that is allowed to leave the diff took it to 5 and roughly doubled the report, and what it still misses clusters on one further gap - the authority file a claim points at is never read end to end.
 tags: [review-pr, lenses, evaluation, acceptance]
 status: stable
 generated: { by: claude-code/opus-5, at: "2026-09-11T08:05:00Z" }
@@ -78,16 +78,54 @@ The evidence that this is structural rather than a model-quality problem:
   dependency the wrong way) is the only one of the seven decidable from two documents
   the diff itself touches.
 
-# What would close it
+# What closed part of it
 
-A fifth lens whose brief is the inverse of the others: take each normative statement the
-diff adds, find the code or the source-of-truth document that decides it, and report a
-mismatch citing `file:line` on both sides. It needs the repo-wide scope the other four
-are denied, and it fits the existing rubric vocabulary without extension - a `grep`
-rubric expecting empty is exactly how "no script applies this label" is proved, and a
-`command` rubric is how a parser's behaviour is demonstrated.
+A fifth lens, `implementation`, whose brief is the inverse of the others: take each
+normative statement the diff adds, find the code or the source-of-truth document that
+decides it, and report a mismatch citing `file:line` on both sides. It is the only lens
+allowed to leave the diff. It fits the existing rubric vocabulary without extension - a
+`grep` expecting empty is how "no script applies this label" is proved, a `command` is
+how a parser's behaviour is shown - and it is exempt from PoC-or-demote, because a
+documentation-versus-code mismatch has no failing test to write.
 
-Until that exists, this workflow's recall on a governance or documentation pull request
-should be assumed low, and its output read as a precise supplement to a human review
-rather than a substitute for one. On a code diff the four lenses are aimed at their own
-target and this finding says nothing about that case.
+Re-measured on the same 14 findings at the same commit, with the lens added and every
+ceiling raised so no session was budget-bound:
+
+| | four lenses | five lenses |
+|---|---|---|
+| recovered of the 14 | 3 | 5 |
+| of the 7 the reviewer tagged Design | 1 | 3 |
+| pre-merge findings reported | 8 | 15 |
+| correctness findings reported | 4 | 7 |
+
+The two it gained are exactly the shape it was built for: "this restates a rule nothing
+implements - `needs-maintainer` appears once in the repository and no script applies
+it", which the new lens reproduced almost verbatim, including the contrast with the
+labels `queue_hygiene.py` really does apply; and the automation carve-out the page
+dropped, which it found from the other side by reading the quorum gate.
+
+# What it still misses, and why
+
+Three clusters, sharing a cause distinct from the first one:
+
+- **Which file defines a role** (3 findings). The claim names CODEOWNERS; the
+  enforcement reads `.github/quorum-roster.toml`. The lens cited `quorum_check.py`
+  repeatedly and never opened the roster.
+- **A checker's parser internals** (2 findings). `DocRow.source_paths` keeps a token
+  only if it ends `.py`, ends `.toml`, or contains `/`, so `SECURITY.md` is silently
+  dropped from the row built around it.
+- **A number that is not in the charter** (2 findings). "About 40 lines", "at least one
+  line-level comment", "the floor for each" - each an absence proof against one specific
+  document, read clause by clause.
+
+Every one needs a single authority file read end to end rather than grepped. The lens
+finds what a search surfaces and misses what only a full read of the deciding document
+would. `GOVERNANCE.md` is the clearest evidence: in scope for all five lenses in both
+runs, zero findings, while two of the 14 live there.
+
+The next lever is therefore not a sixth lens but an input - enumerate the authority
+files the diff's claims point at (the charter, the roster, the checker) and require the
+implementation lens to read each one whole before reporting.
+
+On a code diff the four polish lenses are aimed at their own target, and none of this
+says anything about that case.

@@ -93,13 +93,19 @@ substantiated zero is assembled from these records.
 The pinned command, once, on a cold linter cache, inside the sandbox. Failures are
 findings. Review mode does not edit the tree.
 
-## Stage 2: four lenses
+## Stage 2: five lenses
 
-Four parallel one-shot ACP sessions, one per lens - cleanliness, design, efficiency,
-side-effect gating - each with the review rules, the injection fence, its lens brief,
-the findings contract, and one allowlisted output file. Four, not more: discipline
-beats fan-out. A fifth session extracts the body's claims, which is production work,
-not verification.
+Parallel one-shot ACP sessions, one per lens, each with the review rules, the injection
+fence, its lens brief, the findings contract, and one allowlisted output file. Another
+session extracts the body's claims, which is production work, not verification.
+
+Four lenses come from polish and are scoped to the diff: cleanliness, design and reuse,
+efficiency, side-effect gating. The fifth is this workflow's own and is the only one
+allowed to leave it - **claim vs implementation** takes each rule, name, threshold or
+description of behaviour the diff adds, finds the code or source-of-truth document that
+decides it, and reports a mismatch citing both sides. A ground-truth replay against a
+real hand review is why it exists: every finding that replay missed had exactly that
+shape, and no diff-scoped lens looks there.
 
 Each session gets its own detached worktree, and afterwards that worktree is checked:
 a session that wrote anything but its report parks the stage.
@@ -182,6 +188,22 @@ Everything lands under the workspace:
 - `workflow.jsonl` - the hash-chained journal of every intent and receipt.
 - `sessions/<operation>/` - prompt, archived report, process log, immutable receipt
   with the measured cost and the ACP session id.
+### What the dollar figures are not
+
+A receipt carries three different things and only one of them is ever close to money:
+`cost_usd` is what the adapter reported (null when it reported nothing), `metered` says
+whether it did, and `charged_usd` is what the spend bound counted - a full reservation
+for any agent that reported nothing. The run's evidence surfaces `reported_usd` and
+`reserved_usd` separately for that reason.
+
+Neither is an invoice. The Claude bridge reports a list-price estimate computed from
+token counts whatever the account is, so on a Max or Pro subscription it measures quota,
+not charges. Codex on `auth_mode = chatgpt` and the Antigravity lane report no cost at
+all, which is what "unmetered" means here - they are subscription-backed, so the bound
+charges their whole reservation rather than reading an absent number as zero. Treat
+`reserved_usd` as a ceiling you set, `reported_usd` as a usage meter, and check your
+provider's own billing page if you need the real number.
+
 - `docs/review-ledger/runs.jsonl` in the reviewed repository - one append-only row per
   finding, carrying its lens, producing model, verifier verdict and, once you record
   it, its fate. After roughly twenty pull requests that is measured precision per lens
@@ -219,18 +241,24 @@ downgraded, and runs the whole pipeline with a recording agent instead of a prov
 
 ## What it does not reach
 
-Measured against a real hand review of a governance-docs pull request, this workflow
-recovered 4 of 14 findings and missed every one whose shape was "this prose asserts
-something the implementation does not do" - the kind that needs a file the diff never
-touches. The four lenses come from a code-review skill and are scoped to the diff on
-purpose, so on a documentation or governance change read the output as a precise
-supplement to a human review rather than a substitute for one. The analysis, and what would
-close it, is in [the finding](https://github.com/tenequm/build-workflow/blob/main/docs/knowledge/findings/review-lenses-miss-claim-vs-implementation.md)
+Measured twice against the same 14 findings of a real hand review of a governance-docs
+pull request. The four diff-scoped lenses alone recovered 3. Adding the
+claim-vs-implementation lens took it to 5 and roughly doubled the report (8 pre-merge
+findings to 15, 4 correctness to 7).
+
+What it still misses clusters on one thing: a claim whose authority is a single file
+that has to be read end to end rather than grepped - which roster defines a role, what
+a checker's parser actually keeps, whether a number appears in the charter at all. In
+that run `GOVERNANCE.md` was in scope for every lens and drew no findings while two of
+the 14 lived there. So on a documentation or governance change, read the output as a
+precise supplement to a human review rather than a substitute for one. The analysis,
+and the next lever, are in [the finding](https://github.com/tenequm/build-workflow/blob/main/docs/knowledge/findings/review-lenses-miss-claim-vs-implementation.md)
 (this skill installs standalone, so that is a URL rather than a repository path).
 
-Precision is the half that held: on that run 7 of 8 pre-merge findings were confirmed
-by an executed rubric or a cross-family verifier, and three were real findings the
-human had not raised.
+Precision is the half that holds. Every finding that reaches a verdict has either an
+executed rubric behind it or a blinded cross-family reader, and a claim that spans two
+artifacts - a statement and the code that decides it - always gets the reader, because
+its rubric can only execute against one of the two.
 
 ## Non-goals
 

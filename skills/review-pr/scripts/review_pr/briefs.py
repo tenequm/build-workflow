@@ -21,6 +21,7 @@ LENS_TEMPLATE = {
     "design": "lens-design.md",
     "efficiency": "lens-efficiency.md",
     "gating": "lens-gating.md",
+    "implementation": "lens-implementation.md",
 }
 BRIEF_CAP = 16000
 

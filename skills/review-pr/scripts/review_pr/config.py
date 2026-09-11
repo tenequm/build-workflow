@@ -10,7 +10,8 @@ import yaml
 from operator_driver.storage import Park
 
 TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
-LENS_ORDER = ("cleanliness", "design", "efficiency", "gating")
+# `implementation` is this project's own lens; the other four are vendored from polish.
+LENS_ORDER = ("cleanliness", "design", "efficiency", "gating", "implementation")
 REPORT_CATEGORY_ORDER = ("correctness", "convention", "cleanliness", "design", "efficiency")
 
 
@@ -108,9 +109,16 @@ def lens_spec(plan: dict[str, Any], lens: str, *, family: str | None = None) -> 
     if chosen not in plan["families"]:
         raise Park(f"lens {lens} routed to an undeclared family: {chosen}")
     if chosen != spec["family"]:
-        # A rerouted lens keeps its bounds and takes the family's verifier-grade model.
-        spec["model"] = plan["roles"]["verifier"]["models"].get(chosen) or spec["model"]
+        # A rerouted lens keeps its bounds. It takes the lens's own model for that
+        # family when one is declared, because a lens rerouted onto a verifier-grade
+        # model is a quieter lens, which is the opposite of why it was rerouted.
+        spec["model"] = (
+            (spec.get("models") or {}).get(chosen)
+            or plan["roles"]["verifier"]["models"].get(chosen)
+            or spec["model"]
+        )
     spec["family"] = chosen
+    spec.pop("models", None)
     return {**spec, **plan["families"][chosen]}
 
 
