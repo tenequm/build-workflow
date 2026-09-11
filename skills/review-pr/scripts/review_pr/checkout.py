@@ -157,11 +157,19 @@ def gate_edited(root: Path, provenance: dict[str, Any], head: str) -> bool:
 # missed finding lived in exactly this class of file - in scope for every lens, read
 # end to end by none - so setup names them and the implementation lens is instructed
 # to read each one whole.
+# Rare words match as a word segment (review-charter.md, quorum-roster.toml); ubiquitous
+# ones match only as the whole stem, because "security" names eval scenarios and test
+# fixtures all over a tree. Segments join with - or _ only, so an extension is never
+# swallowed and test_governance.py stays out.
 AUTHORITY_NAMES = re.compile(
-    r"(?i)^(governance|charter|roster|maintainers|codeowners|owners|security|"
-    r"contributing|code_of_conduct)(\.(md|rst|txt|toml|ya?ml))?$"
+    r"(?i)^(?:"
+    r"(?:[a-z0-9_-]+[-_])?"
+    r"(?:governance|charter|roster|maintainers|codeowners|contributing|code_of_conduct)"
+    r"(?:[-_][a-z0-9_-]+)?"
+    r"|owners|security"
+    r")(\.(md|rst|txt|toml|ya?ml))?$"
 )
-AUTHORITY_CAP = 10
+AUTHORITY_CAP = 12
 
 
 def authority_files(root: Path, head: str) -> list[str]:

@@ -350,10 +350,28 @@ class TestAuthorityFiles:
     def test_a_repo_without_authority_docs_yields_an_empty_list(self, repo):
         assert checkout.authority_files(repo["root"], repo["head"]) == []
 
+    def test_rare_words_match_as_a_segment_and_code_files_never_do(self, repo):
+        """review-charter.md was the file PR 5737's misses needed read end to end,
+        and the whole-stem matcher skipped it. Ubiquitous words stay exact-stem:
+        a tree names eval scenarios and tests 'security_*' everywhere."""
+        root = repo["root"]
+        git(root, "switch", "-q", "feat/x")
+        (root / "docs").mkdir()
+        (root / "docs/review-charter.md").write_text("# charter\n")
+        (root / "docs/quorum-roster.toml").write_text("[roster]\n")
+        (root / "docs/test_governance.py").write_text("x = 1\n")
+        (root / "docs/security_pentest_scenario.md").write_text("# scenario\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "docs: charter")
+        head = git(root, "rev-parse", "HEAD")
+        git(root, "switch", "-q", "main")
+        found = checkout.authority_files(root, head)
+        assert found == ["docs/quorum-roster.toml", "docs/review-charter.md"]
+
     def test_the_list_is_capped(self, repo):
         root = repo["root"]
         git(root, "switch", "-q", "feat/x")
-        for index in range(12):
+        for index in range(checkout.AUTHORITY_CAP + 3):
             (root / f"dir{index}").mkdir()
             (root / f"dir{index}/GOVERNANCE.md").write_text("x\n")
         git(root, "add", "-A")
