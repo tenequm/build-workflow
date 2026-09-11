@@ -7,7 +7,7 @@ status: stable
 generated: { by: claude-code/opus-5, at: "2026-09-11T03:40:00Z" }
 sources:
   - id: plan
-    resource: ../../plans/2609-11-review-pr.md
+    resource: ../../plans/2609-11-review-v1.md
     title: /review-pr plan - the phase map that called for one engine run per stage
   - id: boundary
     resource: /decisions/phase-boundary-between-engine-runs.md

@@ -13,7 +13,7 @@ sources:
     resource: https://github.com/sipyourdrink-ltd/bernstein/pull/5737
     title: The hand review - 14 top-level comments at 2512a7e3ea67, each with the author's applied-or-declined reply
   - id: plan
-    resource: ../../plans/2609-11-review-pr.md
+    resource: ../../plans/2609-11-review-v1.md
     title: The /review-pr plan, whose acceptance bar was to recover the correctness findings and the applied design findings
   - id: lenses
     resource: ../../../skills/review-pr/templates/

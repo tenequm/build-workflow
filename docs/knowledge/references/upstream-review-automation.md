@@ -83,7 +83,7 @@ this round, in e4b88a001").[^pr5737] External reviewers batch similarly
 
 # Why this matters to this repo
 
-The `/review-pr` plan (docs/plans/2609-11-review-pr.md) targets exactly
+The `/review-pr` plan (docs/plans/2609-11-review-v1.md) targets exactly
 the gap this stack leaves: nothing in it verifies what an executor
 actually did - the quorum script checks who approved, the deep review is
 advisory prose, and PR-body claims become permanent history unexecuted

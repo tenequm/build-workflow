@@ -7,7 +7,7 @@ status: stable
 generated: { by: claude-code/opus-5, at: "2026-09-11T03:40:00Z" }
 sources:
   - id: plan
-    resource: ../../plans/2609-11-review-pr.md
+    resource: ../../plans/2609-11-review-v1.md
     title: /review-pr plan - "cap N verifier tasks and batch small findings per task?" was left open for sign-off
   - id: research
     resource: /references/research-corpus-2609-02.md

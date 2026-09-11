@@ -59,7 +59,7 @@ merge contract applies to it; what a recording agent cannot reach is whether a r
 model writes a rubric worth executing, which is what the precision ledger measures
 over real pull requests. The two acceptance items that need paid runs - the #5737
 ground-truth replay and a real weekly batch - are recorded as not yet run in
-[the plan](plans/2609-11-review-pr.md).
+[the plan](plans/2609-11-review-v1.md).
 
 The driver parks uncertain effects; it does not promise automatic recovery from
 every interrupted filesystem write. Tests inject interruption at durable-effect
