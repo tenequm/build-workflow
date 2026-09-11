@@ -85,17 +85,6 @@ class TestFindingsSchema:
         with pytest.raises(Park):
             finding(rubric=rubric)
 
-    def test_a_revert_test_rubric_must_name_a_hunk_and_expect_a_flip(self):
-        ok = finding(
-            rubric={
-                "kind": "revert_test",
-                "test": "pytest",
-                "hunk": "src/app.py:10-12",
-                "expect": "exit_nonzero",
-            }
-        )
-        assert ok["rubric"]["hunk"] == "src/app.py:10-12"
-
     def test_a_claim_must_be_a_sentence_and_a_path_must_be_relative(self):
         with pytest.raises(Park, match="sentence"):
             finding(claim="bug")

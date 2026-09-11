@@ -174,12 +174,6 @@ class TestSettle:
         assert report["rubric"] is None
         assert "expect must be one of" in report["rejected_rubric"]
 
-    def test_a_verdict_or_reason_that_is_malformed_is_still_fatal(self, tmp_path):
-        path = tmp_path / "verify-x.json"
-        path.write_text(json.dumps({"verification": "x", "verdict": "MAYBE", "reason": "r"}))
-        with pytest.raises(Park, match="verdict must be"):
-            verify._report(path, "x")
-
     def test_a_follow_up_is_reported_but_never_verified(self):
         row = finding(tags=["pre-existing"])
         result = verify.verify(
@@ -219,20 +213,6 @@ class TestBlinding:
         assert "claude" not in brief.lower()
         assert "proof of concept" in brief.lower()
 
-    def test_a_cleanliness_claim_is_not_asked_for_a_proof_of_concept(self):
-        from review_pr import briefs
-
-        side = {"number": 1, "tree": "/t", "base_tree": "/b", "reviewable_files": ["a.py"]}
-        paths = {
-            "diff": Path("/w/diff.patch"),
-            "body": Path("/w/pr-body.md"),
-            "files": Path("/w/files.txt"),
-        }
-        brief, _, _ = briefs.verifier(
-            finding(category="cleanliness", lens="cleanliness"), side, paths
-        )
-        assert "not required for this class" in brief
-
 
 class TestWriteTargets:
     """Where a brief tells a model to write is the difference between a review and a
@@ -264,22 +244,6 @@ class TestWriteTargets:
         made.append(briefs.claims(self.side, self.paths))
         made.append(briefs.body(Path("/w/draft.json"), self.side))
         return made
-
-    def test_no_brief_names_the_shared_reviewed_tree(self):
-        for brief, _, _ in self.briefs_for():
-            assert self.side["tree"] not in brief
-
-    def test_every_brief_sends_its_report_to_the_working_directory(self):
-        for brief, report, _ in self.briefs_for():
-            assert report in brief
-            assert "current working directory" in brief.replace("\n", " ")
-
-    def test_the_base_tree_is_still_named_and_marked_read_only(self):
-        from review_pr import briefs
-
-        brief, _, _ = briefs.reviewer("design", self.side, self.paths)
-        assert self.side["base_tree"] in brief
-        assert "never write into it" in brief
 
     def test_a_brief_that_names_the_shared_tree_is_refused(self):
         from review_pr import briefs

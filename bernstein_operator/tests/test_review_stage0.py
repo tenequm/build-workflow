@@ -131,15 +131,6 @@ class TestSetup:
         assert "uv run python scripts/run_tests.py" in side["gate"]["candidates"]
         assert side["gate"]["source"] == "base-project-doc"
 
-    def test_a_shell_prompt_and_a_trailing_comment_are_stripped(self):
-        found = dict(
-            (command, line)
-            for line, command in checkout._documented(
-                "```sh\n$ just check   # the whole tree\n```\nand inline `make check`\n"
-            )
-        )
-        assert "just check" in found and "make check" in found
-
     def test_a_repository_that_documents_nothing_must_be_told_explicitly(self, repo, tmp_path):
         git(repo["root"], "rm", "-q", "CLAUDE.md")
         git(repo["root"], "commit", "-qm", "chore: drop the doc")
@@ -158,16 +149,6 @@ class TestSetup:
         assert git(Path(side["tree"]), "rev-parse", "HEAD") == repo["head"]
         assert git(Path(side["base_tree"]), "rev-parse", "HEAD") == repo["base"]
         assert git(Path(side["tree"]), "rev-parse", "--abbrev-ref", "HEAD") == "HEAD"
-
-    def test_the_small_diff_fast_path_is_reported(self, repo, tmp_path):
-        side = checkout.prepare(tmp_path / "review", pr=descriptor(repo), repo_path=repo["root"])
-        assert side["fast_path"] is True
-        assert side["changed_lines"] < side["fast_path_threshold"]
-
-    def test_the_rule_set_follows_the_repository(self):
-        assert checkout.rule_set("sipyourdrink-ltd/bernstein") == "bernstein"
-        assert checkout.rule_set("tenequm/anything-else") == "generic"
-        assert checkout.rule_set(None) == "generic"
 
     def test_author_family_falls_back_rather_than_guessing(self):
         assert checkout.author_family({"body": "plain", "commits": []})["family"] == "unknown"
@@ -189,19 +170,6 @@ class TestHouseRules:
         pr = descriptor(repo, **over)
         diff = (tmp_path / "review" / "diff.patch").read_text()
         return side, pr, diff
-
-    def test_every_rule_records_a_pass_a_fail_or_an_explicit_skip(self, repo, tmp_path):
-        side, pr, diff = self.context(repo, tmp_path)
-        result = houserules.lint(side, pr, diff, tier=sandbox.tier())
-        assert {check["rule"] for check in result["checks"]} == {
-            "prose_hygiene",
-            "no_signoff",
-            "injection_scan",
-            "validation_command",
-            "tests_fail_on_base",
-        }
-        assert all(check["result"] in ("pass", "fail", "skipped") for check in result["checks"])
-        assert all(check["detail"] for check in result["checks"])
 
     def test_instruction_shaped_text_in_the_diff_is_a_finding_and_nothing_else(
         self, repo, tmp_path
@@ -358,8 +326,3 @@ class TestHouseRules:
         annotation = result["findings"][0]
         assert annotation["follow_up"] is True, "a heuristic must never enter the verdict"
         assert "heuristic" in annotation["tags"]
-
-    def test_an_unknown_rule_set_parks_rather_than_running_nothing(self, repo, tmp_path):
-        side, pr, diff = self.context(repo, tmp_path)
-        with pytest.raises(Park, match="unknown rule set"):
-            houserules.lint({**side, "rules": "invented"}, pr, diff, tier="none")

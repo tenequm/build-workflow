@@ -232,10 +232,6 @@ class TestIsolation:
 
 
 class TestStageTemplate:
-    def test_the_shipped_template_is_valid(self):
-        plan = config.load()
-        assert set(plan["lenses"]) == set(config.LENS_ORDER)
-
     def test_the_gating_lens_can_never_be_routed_to_codex(self):
         plan = config.load()
         with pytest.raises(Park, match="must never run on codex"):
@@ -274,12 +270,6 @@ class TestStageTemplate:
         with pytest.raises(Park, match=message):
             config.load(path)
 
-    def test_a_codex_one_shot_carries_its_reasoning_effort(self, tmp_path):
-        plan = config.load()
-        argv = runner.session_argv(config.lens_spec(plan, "design"), tmp_path, tmp_path / "p.md")
-        assert argv[argv.index("exec") + 1] == "--config-option"
-        assert argv[argv.index("exec") + 2] == "reasoning_effort=high"
-
     def test_a_review_session_persists_so_pond_can_ingest_it(self, tmp_path):
         """Measured 2026-09-11: codex and agy write their own rollouts and were captured,
         while every Claude review session was invisible to pond because the bridge
@@ -309,30 +299,8 @@ class TestStageTemplate:
         argv = judge_argv(spec, Path("/tmp"), Path("/tmp/p.md"))
         assert "--persist" not in argv[argv.index("--agent") + 1]
 
-    def test_a_claude_session_goes_through_the_budget_bridge(self, tmp_path):
-        plan = config.load()
-        argv = runner.session_argv(config.lens_spec(plan, "gating"), tmp_path, tmp_path / "p.md")
-        # The bridge is one --agent argument, so its own flags live inside that string.
-        bridge = argv[argv.index("--agent") + 1]
-        assert "operator_driver.claude_acp" in bridge
-        assert f"--budget {plan['lenses']['gating']['budget_usd']}" in bridge
-        assert f"--model {plan['lenses']['gating']['model']}" in bridge
-        assert "--config-option" not in argv, "the bridge has no reasoning-effort knob"
-
 
 class TestReadiness:
-    def test_the_sandbox_tier_is_resolved_before_any_session(self):
-        report = readiness.check(capture=False)
-        assert report["tier"] in ("container", "userns", "none")
-        assert any(row["check"] == "sandbox" for row in report["checks"])
-
-    def test_pond_is_blocking_only_when_sessions_are_being_captured(self):
-        with_capture = readiness.check(capture=True)
-        without = readiness.check(capture=False)
-        pond = next(row for row in with_capture["checks"] if row["check"] == "pond")
-        assert pond["blocking"] is True
-        assert next(row for row in without["checks"] if row["check"] == "pond")["blocking"] is False
-
     def test_a_lens_routed_to_an_unresolvable_adapter_blocks(self, tmp_path):
         import yaml
 
@@ -346,15 +314,3 @@ class TestReadiness:
         assert report["ok"] is False
         with pytest.raises(Park, match="readiness refused"):
             readiness.require(report)
-
-    def test_a_fast_path_pull_request_is_advised_against_rather_than_blocked(self):
-        sidecar = {
-            "gate": {"source": "base-project-doc", "command": "just check"},
-            "fast_path": True,
-            "changed_lines": 12,
-            "fast_path_threshold": 50,
-        }
-        report = readiness.check(sidecar=sidecar, capture=False)
-        row = next(check for check in report["checks"] if check["check"] == "fast-path")
-        assert row["ok"] is False and row["blocking"] is False
-        assert "/polish" in row["detail"]

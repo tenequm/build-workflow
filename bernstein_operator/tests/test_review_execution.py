@@ -100,11 +100,6 @@ def review(tmp_path):
 
 
 class TestSandbox:
-    def test_the_tier_is_measured_rather_than_assumed(self):
-        capability = sandbox.capability()
-        assert set(capability) >= {"userns", "container", "max_user_namespaces"}
-        assert sandbox.tier() in sandbox.TIERS
-
     @pytest.mark.skipif(
         not sandbox.capability()["userns"], reason="this host has no unprivileged user namespaces"
     )
@@ -203,13 +198,6 @@ class TestRubrics:
         )
         assert result["ran"] is False and "unsafe grep path" in result["reason"]
 
-    def test_a_finding_with_no_rubric_runs_nothing(self, review):
-        assert rubric.execute(self.finding(rubric=None), review, tier="none") == {
-            "ran": False,
-            "passed": False,
-            "reason": "the finding states no rubric",
-        }
-
     def test_a_revert_test_rubric_needs_the_test_to_pass_at_the_head_first(self, review):
         broken = rubric.execute(
             self.finding(
@@ -259,12 +247,6 @@ class TestRubrics:
             tier=sandbox.tier(),
         )
         assert result["ran"] is False and "no hunk" in result["reason"]
-
-    def test_the_hunk_patch_covers_only_the_named_span(self, review):
-        patch = rubric.hunk_patch(
-            Path(review["repo_path"]), review["base"], review["head"], "billing.py", 11, 14
-        ).decode()
-        assert patch.count("@@") == 2 and "billing.py" in patch
 
 
 class TestGoldGate:

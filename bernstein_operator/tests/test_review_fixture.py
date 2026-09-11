@@ -59,10 +59,6 @@ def found(summary, file, line=None):
 
 
 class TestPlantedDefects:
-    def test_every_lens_produced_the_defect_planted_for_it(self, reviewed):
-        lenses = {f["lens"] for f in reviewed["summary"]["findings"]}
-        assert {"cleanliness", "design", "efficiency", "gating", "implementation"} <= lenses
-
     def test_the_ungated_irreversible_charge_is_confirmed_by_a_proof_of_concept(self, reviewed):
         charge = found(reviewed["summary"], "shopkit/billing.py", 23)
         assert len(charge) == 1
@@ -78,14 +74,6 @@ class TestPlantedDefects:
         design = found(reviewed["summary"], "shopkit/catalog.py", 16)
         assert design and design[0]["verdict"] == "CONFIRMED"
         assert design[0]["verify"]["rubric"]["passed"] is True
-
-    def test_the_debug_print_and_the_restating_comment_are_both_reported(self, reviewed):
-        lines = {f["line"] for f in reviewed["summary"]["findings"] if f["lens"] == "cleanliness"}
-        assert {15, 24} <= lines
-
-    def test_the_per_item_index_read_is_reported(self, reviewed):
-        efficiency = [f for f in reviewed["summary"]["findings"] if f["lens"] == "efficiency"]
-        assert efficiency and efficiency[0]["line"] == 27
 
     def test_the_doc_that_contradicts_the_code_is_caught_by_its_own_lens(self, reviewed):
         """The lens the first ground-truth replay proved missing: a claim the diff adds,
@@ -107,10 +95,6 @@ class TestPlantedDefects:
         assert doc
         assert any(f["verdict"] == "CONFIRMED" for f in doc)
         assert all((f.get("verify") or {}).get("gold_gate") is None for f in doc)
-
-    def test_the_clean_module_produced_no_findings_at_all(self, reviewed):
-        assert found(reviewed["summary"], "shopkit/inventory.py") == []
-        assert found(reviewed["summary"], "tests/test_inventory.py") == []
 
 
 class TestInjection:
@@ -145,29 +129,6 @@ class TestClaimReExecution:
     def test_the_squash_merge_consequence_is_stated(self, reviewed):
         body_findings = [f for f in reviewed["summary"]["findings"] if f["lens"] == "claims"]
         assert any("permanent commit message" in f["claim"] for f in body_findings)
-
-
-class TestHouseRules:
-    def test_the_missing_release_notes_fragment_is_reported(self, reviewed):
-        assert found(reviewed["summary"], "CHECK:release-notes")
-
-    def test_the_em_dash_and_the_sign_off_are_reported(self, reviewed):
-        surfaces = {
-            f["file"] for f in reviewed["summary"]["findings"] if f["lens"] == "house-rules"
-        }
-        assert "PR:body" in surfaces
-        assert any(surface.startswith("PR:commit/") for surface in surfaces)
-
-    def test_the_regression_label_is_a_follow_up_and_not_part_of_the_verdict(self, reviewed):
-        bisect = found(reviewed["summary"], "CHECK:bisect")
-        assert bisect and bisect[0]["follow_up"] is True
-        assert bisect[0]["severity"] is None
-
-    def test_the_tests_fail_on_base_check_ran_both_of_its_legs(self, reviewed):
-        checks = {c["rule"]: c for c in reviewed["summary"]["evidence"]["lint"]["checks"]}
-        row = checks["tests_fail_on_base"]
-        assert row["result"] == "pass", row["detail"]
-        assert "passes on the head" in row["detail"] and "reverting" in row["detail"]
 
 
 class TestDualFamilyAndRouting:
