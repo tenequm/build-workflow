@@ -299,6 +299,14 @@ class TestAuthorityBriefs:
         assert "Phase 2 runs anyway" in brief
         assert "###" not in brief.split("### Phase 1")[1].split("### Phase 2")[0]
 
+    def test_the_lens_still_hunts_plain_code_defects(self):
+        """The mandatory two-phase audit crowded correctness out: in the 2026-09-11 eval
+        the lens named an off-by-one in its reasoning and dropped it as out of scope.
+        No other lens a review runs hunts those, so the duty is pinned here."""
+        brief = self.brief("implementation", ["GOVERNANCE.md"])
+        assert "coequal duties" in brief
+        assert "off-by-one" in brief
+
     def test_the_listed_versions_are_declared_to_be_the_base_branch_ones(self):
         """The pull request never supplies its own ground truth, and the brief has to
         say so: the head's copy of an authority file is a hunk, not an authority."""
