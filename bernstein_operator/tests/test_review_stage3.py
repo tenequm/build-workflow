@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from operator_driver.storage import Park
@@ -78,7 +79,7 @@ class TestRouting:
         queued, settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
         assert queued == [row] and settled == []
         cheap = finding(lens="implementation", category="design")
-        q2, s2 = verify.select([cheap], {cheap["id"]: observed(passed=True)}, cap=10)
+        _q2, s2 = verify.select([cheap], {cheap["id"]: observed(passed=True)}, cap=10)
         assert s2 == [cheap], "a design-category note settles on its rubric as before"
 
     def test_past_the_cap_a_two_sided_claim_is_plausible_not_confirmed(self):
@@ -273,14 +274,14 @@ class TestWriteTargets:
     the brief named the shared tree, all seven sessions obeyed it, and every report
     landed where nothing collects it."""
 
-    side = {
+    side: ClassVar[dict] = {
         "number": 1,
         "tree": "/w/tree",
         "base_tree": "/w/base",
         "reviewable_files": ["a.py"],
         "repo": "o/r",
     }
-    paths = {
+    paths: ClassVar[dict] = {
         "diff": Path("/w/inputs/diff.patch"),
         "body": Path("/w/inputs/pr-body.md"),
         "files": Path("/w/inputs/changed-files.txt"),
@@ -310,14 +311,14 @@ class TestAuthorityBriefs:
     it reads a hunk. The flat list it replaced was read as context and skipped, so the
     per-file directives are assembled in code and not left to the brief's prose."""
 
-    side = {
+    side: ClassVar[dict] = {
         "number": 1,
         "tree": "/w/tree",
         "base_tree": "/w/base",
         "reviewable_files": ["a.py"],
         "repo": "o/r",
     }
-    paths = {
+    paths: ClassVar[dict] = {
         "diff": Path("/w/inputs/diff.patch"),
         "body": Path("/w/inputs/pr-body.md"),
         "files": Path("/w/inputs/changed-files.txt"),
@@ -387,8 +388,8 @@ class TestChangedFileSection:
     """What the list of files in scope costs the brief. It is the only section sized by
     the pull request rather than by the repository, and every brief carries it."""
 
-    side = dict(TestAuthorityBriefs.side)
-    paths = dict(TestAuthorityBriefs.paths)
+    side: ClassVar[dict] = dict(TestAuthorityBriefs.side)
+    paths: ClassVar[dict] = dict(TestAuthorityBriefs.paths)
 
     def test_a_pathological_changed_file_list_truncates_instead_of_parking(self):
         """The changed-file list is the only section that scales with the pull request,
@@ -729,7 +730,7 @@ class TestAgreementSettles:
             **finding(lens="gating", category="correctness"),
             "agreement": ["claude", "codex"],
         }
-        queued, settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
+        queued, _settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
         assert queued == [row], "a PoC class always queues: agreement is opinions, not a demo"
 
     def test_a_verifier_that_did_not_confirm_is_never_overridden_by_the_rubric(self):

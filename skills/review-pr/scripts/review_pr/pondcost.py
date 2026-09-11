@@ -161,7 +161,7 @@ def _process_anthropic_session(
         "GROUP BY turn_id"
     )
 
-    code, rows, err = _run_pond_query(sql, store, run)
+    _code, rows, err = _run_pond_query(sql, store, run)
     if err is not None:
         return {
             "session_id": session_id,
@@ -325,7 +325,7 @@ def _process_codex_session(
         "LIMIT 1"
     )
 
-    code, rows, err = _run_pond_query(sql, store, run)
+    _code, rows, err = _run_pond_query(sql, store, run)
     if err is not None:
         return {
             "session_id": session_id,
@@ -444,7 +444,7 @@ def _process_agy_session(
         "AND json_extract(options, '$.agy.usage') IS NOT NULL"
     )
 
-    code, rows, err = _run_pond_query(sql, store, run)
+    _code, rows, err = _run_pond_query(sql, store, run)
     if err is not None:
         return {
             "session_id": session_id,
@@ -563,12 +563,7 @@ def usage(
         agent = str(item.get("source_agent", ""))
         input_model = item.get("model")
 
-        if (
-            agent.startswith("claude-code")
-            or agent.startswith("nanoclaw")
-            or agent == "claude-desktop-app"
-            or agent.startswith("claude-desktop-app")
-        ):
+        if agent.startswith(("claude-code", "nanoclaw", "claude-desktop-app")):
             res = _process_anthropic_session(sid, agent, store, run, providers, registry_note)
         elif agent == "codex-cli" or agent.startswith("codex-cli"):
             res = _process_codex_session(

@@ -13,7 +13,7 @@ from test_scorer_contract import git
 
 @pytest.fixture
 def review(attempt, monkeypatch):
-    root, wt = attempt
+    root, _wt = attempt
     base = git(root, "rev-parse", "refs/build/base/demo")
     git(root, "merge", "--ff-only", "agent/test")
     tip = git(root, "rev-parse", "HEAD")

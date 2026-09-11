@@ -149,10 +149,12 @@ def test_journal_torn_tail_and_tamper_fail_closed(tmp_path):
 
 
 def test_driver_lock_spans_the_ceremony(tmp_path):
-    with driver_lock(tmp_path):
-        with pytest.raises(Park, match="another driver"):
-            with driver_lock(tmp_path):
-                pass
+    with (
+        driver_lock(tmp_path),
+        pytest.raises(Park, match="another driver"),
+        driver_lock(tmp_path),
+    ):
+        pass
 
 
 def test_process_receipt_precedes_exec_and_recovery_does_not_relaunch(tmp_path):

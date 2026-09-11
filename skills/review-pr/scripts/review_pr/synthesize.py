@@ -116,14 +116,20 @@ def correctness_zero(evidence: dict[str, Any]) -> str:
     parts = [
         f"House rules run: {', '.join(ran) or 'none'}.",
         f"Undecided: {'; '.join(skipped)}." if skipped else "No rule went undecided.",
-        f"Pinned validation `{gate.get('command', 'not run')}` exited "
-        f"{gate.get('returncode', 'n/a')} in the {gate.get('tier', 'unsandboxed')} sandbox.",
-        f"The side-effect gating lens returned {evidence.get('gating_findings', 0)} claim(s); "
-        f"{verify.get('sessions', 0)} verifier session(s) ran and "
-        f"{verify.get('settled_by_rubric', 0)} claim(s) settled on an executed rubric.",
-        f"Claims in the body re-executed: {evidence.get('claims_reproduced', 0)} reproduced, "
-        f"{evidence.get('claims_mismatched', 0)} did not, "
-        f"{evidence.get('claims_unchecked', 0)} could not be run here.",
+        (
+            f"Pinned validation `{gate.get('command', 'not run')}` exited "
+            f"{gate.get('returncode', 'n/a')} in the {gate.get('tier', 'unsandboxed')} sandbox."
+        ),
+        (
+            f"The side-effect gating lens returned {evidence.get('gating_findings', 0)} claim(s); "
+            f"{verify.get('sessions', 0)} verifier session(s) ran and "
+            f"{verify.get('settled_by_rubric', 0)} claim(s) settled on an executed rubric."
+        ),
+        (
+            f"Claims in the body re-executed: {evidence.get('claims_reproduced', 0)} reproduced, "
+            f"{evidence.get('claims_mismatched', 0)} did not, "
+            f"{evidence.get('claims_unchecked', 0)} could not be run here."
+        ),
     ]
     return " ".join(parts)
 
@@ -175,8 +181,10 @@ def report(
     lines += [f"**Total: {len(asks)} issues across {categories} categories**", ""]
     if skip_reason:
         lines += [
-            f"**Recommended: skip** - {skip_reason}; every finding above is reported so the "
-            "work is not lost.",
+            (
+                f"**Recommended: skip** - {skip_reason}; every finding above is reported so the "
+                "work is not lost."
+            ),
             "Post it? (y = post as recommended / another action by name / n = don't post)",
         ]
         return "\n".join(lines) + "\n"

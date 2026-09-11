@@ -26,7 +26,7 @@ from pathlib import Path
 ROW = re.compile(
     r"^\|\s*(?P<claim>[^|]+?)\s*\|\s*(?P<path>[^|:]+):(?P<line>\d+)\s*\|\s*(?P<needle>.+?)\s*\|\s*$"
 )
-SURFACE = re.compile(r"```surface\n(.*?)```", re.S)
+SURFACE = re.compile(r"```surface\n(.*?)```", re.DOTALL)
 IGNORED = (".agents/", ".sdd/", "docs/", ".claude/")
 
 
@@ -83,7 +83,7 @@ def check_facts(facts: Path, repo: Path) -> int:
         print(f"NOTE no {facts.name}; facts verifier skipped")
         return 0
     text = facts.read_text()
-    m = re.search(r"^pinned:\s*([0-9a-f]{7,40})", text, re.M)
+    m = re.search(r"^pinned:\s*([0-9a-f]{7,40})", text, re.MULTILINE)
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=False
     ).stdout.strip()
@@ -143,7 +143,7 @@ def check_surface(plan: Path, repo: Path) -> int:
             print(f"FAIL surface {phase}: rg failed: {r.stderr.strip()}")
             fail += 1
             continue
-        hits = [h[2:] if h.startswith("./") else h for h in r.stdout.splitlines()]
+        hits = [h.removeprefix("./") for h in r.stdout.splitlines()]
         hits = [h for h in hits if not h.startswith(IGNORED)]
         # Plain fnmatch, the same rule the merge gate's scorer enforces, so one
         # allowlist string means one thing across the toolchain.

@@ -11,9 +11,9 @@ sys.path.insert(0, str(ROOT / "skills/build-run/scripts"))
 # byte-identical (sync-skill-code --check enforces it), and build-run's is the superset.
 sys.path.append(str(ROOT / "skills/review-pr/scripts"))
 
-from test_delivery import delivered  # noqa: E402, F401 -- register native merge fixture
-from test_plan_compiler import authored  # noqa: E402, F401 -- register complete plan fixture
-from test_scorer_contract import attempt  # noqa: E402, F401 -- register shared real-Git fixture
+from test_delivery import delivered  # noqa: F401 -- register native merge fixture
+from test_plan_compiler import authored  # noqa: F401 -- register complete plan fixture
+from test_scorer_contract import attempt  # noqa: F401 -- register shared real-Git fixture
 
 
 @pytest.fixture(autouse=True)

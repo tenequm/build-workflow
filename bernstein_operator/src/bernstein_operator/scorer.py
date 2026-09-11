@@ -17,10 +17,11 @@ from .shared import ancestor, atomic, canonical, command, digest, dirty_paths, e
 
 TEST = re.compile(r"(^|/)(test[^/]*\.(py|rs)|tests?/)|_test\.go$|\.(test|spec)\.[cm]?[jt]sx?$")
 REFUSAL = re.compile(
-    r"^[\s>*#`-]*(scope_exceeded|underspecified|blocked_on_dependency|awaiting_operator)\b", re.M
+    r"^[\s>*#`-]*(scope_exceeded|underspecified|blocked_on_dependency|awaiting_operator)\b",
+    re.MULTILINE,
 )
 SUPPRESSION = re.compile(
-    r"^\+(?!\+\+).*?(nolint|noqa|type:\s*ignore|eslint-disable|allow\(clippy)", re.M
+    r"^\+(?!\+\+).*?(nolint|noqa|type:\s*ignore|eslint-disable|allow\(clippy)", re.MULTILINE
 )
 
 
@@ -129,9 +130,9 @@ def _score(worktree: Path, selected: dict) -> dict:
         claims
         and (
             (worktree / "go.mod").exists()
-            or re.search(r"golangci|\bruff\b|eslint|clippy|\blint", output, re.I)
+            or re.search(r"golangci|\bruff\b|eslint|clippy|\blint", output, re.IGNORECASE)
         )
-        and not re.search(r"golangci|\bruff\b|eslint|clippy|\blint", claims, re.I)
+        and not re.search(r"golangci|\bruff\b|eslint|clippy|\blint", claims, re.IGNORECASE)
     ):
         mismatch.append("report omits the lint result")
     dirty_after = [p for p in dirty_paths(worktree) if p != report and not runtime(p)]

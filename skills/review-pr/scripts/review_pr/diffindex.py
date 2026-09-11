@@ -85,7 +85,7 @@ def parse(diff: str) -> dict[str, FileDiff]:
             current.new_file = True
         elif raw.startswith("deleted file mode"):
             current.deleted = True
-        elif raw.startswith("Binary files ") or raw.startswith("GIT binary patch"):
+        elif raw.startswith(("Binary files ", "GIT binary patch")):
             current.binary = True
         elif raw.startswith("rename from "):
             current.old_path = raw[len("rename from ") :].strip()

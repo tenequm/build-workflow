@@ -14,43 +14,55 @@ PATCHES = (
     (
         "src/bernstein/core/git/git_basic.py",
         '    # Guardrail: never push to "master" - auto-correct to "main".',
-        "    # Operator phase builds end local: do not fetch, rebase or push.\n"
-        "    import os\n"
-        '    if os.environ.get("BERNSTEIN_OPERATOR_LOCAL_ONLY") == "1":\n'
-        '        return GitResult(returncode=0, stdout="", stderr="operator local-only: push skipped")\n\n'
-        '    # Guardrail: never push to "master" - auto-correct to "main".',
+        (
+            "    # Operator phase builds end local: do not fetch, rebase or push.\n"
+            "    import os\n"
+            '    if os.environ.get("BERNSTEIN_OPERATOR_LOCAL_ONLY") == "1":\n'
+            '        return GitResult(returncode=0, stdout="", stderr="operator local-only: push skipped")\n\n'
+            '    # Guardrail: never push to "master" - auto-correct to "main".'
+        ),
     ),
     (
         "src/bernstein/core/orchestration/orchestrator.py",
         "        self._response_cache = ResponseCacheManager(workdir)",
-        "        self._response_cache = (\n"
-        '            None if os.environ.get("BERNSTEIN_RESPONSE_CACHE", "1") == "0"\n'
-        "            else ResponseCacheManager(workdir)\n"
-        "        )",
+        (
+            "        self._response_cache = (\n"
+            '            None if os.environ.get("BERNSTEIN_RESPONSE_CACHE", "1") == "0"\n'
+            "            else ResponseCacheManager(workdir)\n"
+            "        )"
+        ),
     ),
     (
         "src/bernstein/core/orchestration/orchestrator.py",
-        '            _had_any_terminal_task = bool(refreshed_tasks_by_status["done"] '
-        'or refreshed_tasks_by_status["failed"])',
-        "            # Operator: a merged task is soft-archived to CLOSED, a status the\n"
-        "            # default fetch omits, so a fully merged run never self-stops and\n"
-        "            # never journals the run_quiescence its phase boundary requires.\n"
-        "            _had_any_terminal_task = bool(\n"
-        '                refreshed_tasks_by_status["done"]\n'
-        '                or refreshed_tasks_by_status["failed"]\n'
-        '                or fetch_all_tasks(self._client, base, ["closed"])["closed"]\n'
-        "            )",
+        (
+            '            _had_any_terminal_task = bool(refreshed_tasks_by_status["done"] '
+            'or refreshed_tasks_by_status["failed"])'
+        ),
+        (
+            "            # Operator: a merged task is soft-archived to CLOSED, a status the\n"
+            "            # default fetch omits, so a fully merged run never self-stops and\n"
+            "            # never journals the run_quiescence its phase boundary requires.\n"
+            "            _had_any_terminal_task = bool(\n"
+            '                refreshed_tasks_by_status["done"]\n'
+            '                or refreshed_tasks_by_status["failed"]\n'
+            '                or fetch_all_tasks(self._client, base, ["closed"])["closed"]\n'
+            "            )"
+        ),
     ),
     (
         "src/bernstein/core/config/seed_parser.py",
-        "    if name not in VALID_GATE_NAMES:\n"
-        '        raise SeedError(f"quality_gates.pipeline[{index}].name is unsupported: {name!r}")',
-        "    if name not in VALID_GATE_NAMES:\n"
-        "        from pathlib import Path\n"
-        "        from bernstein.core.quality.gate_plugins import GatePluginRegistry\n"
-        "\n"
-        "        if GatePluginRegistry(Path.cwd(), built_in_names=VALID_GATE_NAMES).get(name) is None:\n"
-        '            raise SeedError(f"quality_gates.pipeline[{index}].name is unsupported: {name!r}")',
+        (
+            "    if name not in VALID_GATE_NAMES:\n"
+            '        raise SeedError(f"quality_gates.pipeline[{index}].name is unsupported: {name!r}")'
+        ),
+        (
+            "    if name not in VALID_GATE_NAMES:\n"
+            "        from pathlib import Path\n"
+            "        from bernstein.core.quality.gate_plugins import GatePluginRegistry\n"
+            "\n"
+            "        if GatePluginRegistry(Path.cwd(), built_in_names=VALID_GATE_NAMES).get(name) is None:\n"
+            '            raise SeedError(f"quality_gates.pipeline[{index}].name is unsupported: {name!r}")'
+        ),
     ),
 )
 
