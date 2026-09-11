@@ -383,6 +383,18 @@ class TestProviderFailure:
         )
         assert runner.provider_failure(log) is not None
 
+    def test_a_quota_exhaustion_notice_as_the_whole_reply_is_a_failure(self):
+        """Measured 2026-09-11: an exhausted Antigravity window answers every prompt with
+        this single message and a normal end_turn, which scored as a clean 0-finding
+        approve until the signature was added."""
+        log = self.log(
+            self.message(
+                "Usage Limit Reached\n\nYou have reached your current quota for this "
+                "period. Your limit will reset in 3 hours, 31 minutes."
+            )
+        )
+        assert runner.provider_failure(log) is not None
+
     def test_a_provider_error_the_turn_recovered_from_is_not_a_failure(self):
         """Measured: sessions hit a 429, retried inside the same turn and still wrote a
         full report. Failing those would throw away real review work."""

@@ -38,6 +38,7 @@ PROVIDER_ERROR = re.compile(
     r"model unreachable"
     r"|RESOURCE_EXHAUSTED"
     r"|RATE_LIMIT_EXCEEDED"
+    r"|Usage Limit Reached"
     r"|Agent execution terminated due to error"
     r"|request failed \(code [45]\d\d\)",
     re.IGNORECASE,
