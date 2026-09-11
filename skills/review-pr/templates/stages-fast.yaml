@@ -10,9 +10,23 @@
 # It is not a substitute for a milestone run. A number produced here is comparable
 # only with other numbers produced here; the /polish-parity claim comes from
 # stages.yaml against a real pull request.
+#
+# One exception to "one family": the verifier. A judge passes its own family's output
+# more than half the time, so verify.opposite() refuses to verify a gemini finding with
+# gemini and parks the run - which is what a one-family fast loop measured, on 11 of 14
+# cases. The claude family is declared for the verifier role only, so the fast loop pays
+# a small real-money verifier cost per surviving finding. That cost is the price of a
+# score at all; same-family verification is forbidden by measurement, not by taste.
 version: 1
 
 families:
+  # Verifier only - no lens is routed here. See the note above.
+  claude:
+    transport: claude
+    adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
+    # Without this the Claude harness saves nothing, so pond has nothing to ingest and
+    # a finding verified on this family cannot point at the transcript behind it.
+    persist_session: true
   gemini:
     transport: acp
     # A wrapper, not the .par: on Linux the ACP server needs --uid=. Point this at
@@ -64,6 +78,7 @@ roles:
     max_turns: 40
     timeout_s: 900
     models:
+      claude: claude-sonnet-5
       gemini: gemini-3.7-flash-medium
   claims:
     family: gemini
@@ -72,9 +87,11 @@ roles:
     max_turns: 30
     timeout_s: 900
 
-# One family is declared, so there is nothing to route opposite and nothing to disagree
-# with. Both are stated rather than omitted: a fast-loop score that silently gained a
-# second opinion would not be comparable with the run before it.
+# Every lens runs on gemini, so there is nothing to reroute and nothing to disagree
+# with: the verifier's claude entry is the opposite family verify.opposite() picks, and
+# it produces no second reading of its own. Both are stated rather than omitted: a
+# fast-loop score that silently gained a second opinion would not be comparable with the
+# run before it.
 routing:
   opposite: {}
   reroute_lenses: []

@@ -241,6 +241,17 @@ class TestStageTemplate:
         with pytest.raises(Park, match="must never run on codex"):
             config.lens_spec(plan, "gating", family="codex")
 
+    def test_the_fast_loop_can_verify_its_own_findings(self):
+        """A one-family template parks every finding it produces: a judge passes its
+        own family's output over half the time, so verify.opposite() refuses. Measured
+        on the first corpus run, where it cost 11 of 14 cases."""
+        from review_pr import verify
+
+        plan = config.load(config.TEMPLATES / "stages-fast.yaml")
+        assert {spec["family"] for spec in plan["lenses"].values()} == {"gemini"}
+        assert plan["dual_family"]["enabled"] is False
+        assert verify.opposite(plan, "gemini") == "claude"
+
     def test_a_template_that_pins_a_forbidden_family_is_refused(self, tmp_path):
         import yaml
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the eval corpus through the real /review-pr pipeline and score it deterministically.
 
-    harness.py [CASE ...] [--jobs 4] [--stages <template>]
+    harness.py [CASE ...] [--jobs 2] [--stages <template>]
 
 A case name is `floor/case-01`, a bare `case-01`, or a tier (`floor`, `bar`); with no
 argument every floor and bar case runs. Each case is materialised into the inputs the
@@ -20,6 +20,11 @@ Cases are independent: each owns its repository, its review workspace, its sessi
 worktrees and its per-run pond store, so `--jobs` runs them concurrently and N separate
 invocations are equally safe. The only shared file is the evals ledger, appended once per
 invocation as a single O_APPEND line.
+
+The concurrency default is a provider limit, not a machine limit: the gemini
+subscription smooths burst demand across a five-hour window, and 4 cases x 4 sessions in
+flight drew 429s on 36 of 67 sessions in the first corpus run. Two cases at a time is
+what that window absorbs.
 """
 
 from __future__ import annotations
@@ -313,7 +318,7 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("cases", nargs="*", help="case names, tier names, or nothing for all")
-    parser.add_argument("--jobs", type=int, default=4, help="cases reviewed concurrently")
+    parser.add_argument("--jobs", type=int, default=2, help="cases reviewed concurrently")
     parser.add_argument("--stages", default=str(FAST_STAGES), help="the stage template to run")
     parser.add_argument("--work", help="where workspaces are built (default: a fresh temp dir)")
     parser.add_argument("--gate-cmd", default=GATE_CMD)
