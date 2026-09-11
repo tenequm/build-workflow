@@ -26,7 +26,7 @@ from operator_driver.acp import claude_bridge, judge_argv, transcript
 from operator_driver.processes import alive, cancel_acp, launch_once, owned_processes, terminate
 from operator_driver.storage import Ledger, Park, atomic, canonical, digest, immutable
 
-from .proc import git, removals
+from .proc import env_overlay, git, removals
 
 POLL_S = 0.25
 # The measured 429 is a burst limiter on a subscription window, not a hard quota, so a
@@ -75,12 +75,16 @@ def session_argv(spec: dict[str, Any], worktree: Path, prompt: Path) -> list[str
     argv = judge_argv(spec, worktree, prompt)
     effort = spec.get("effort")
     if effort and not claude_bridge(spec):
-        # The Claude bridge has no effort knob; a Codex one-shot takes it on `exec`.
+        # The Claude bridge has no effort knob; another agent takes it on `exec`, under
+        # its own option id. Codex calls it reasoning_effort and opencode calls it
+        # effort, and opencode answers an unknown id with -32602 and then runs the lens
+        # at its default, which is `minimal`. A silent quality floor is worse than a
+        # loud refusal, so the id is the family's to declare.
         index = argv.index("exec")
         argv = [
             *argv[: index + 1],
             "--config-option",
-            f"reasoning_effort={effort}",
+            f"{spec.get('effort_option') or 'reasoning_effort'}={effort}",
             *argv[index + 1 :],
         ]
     return argv
@@ -184,12 +188,15 @@ def _attempt(
             reserved_usd=task.spec["budget_usd"],
         )
     argv = session_argv(task.spec, worktree, prompt)
+    overlay = env_overlay(task.spec.get("env") or [], directory)
+    for value in overlay.values():
+        Path(value).mkdir(parents=True, exist_ok=True)
     process = launch_once(
         ledger,
         operation,
         argv,
         worktree,
-        {**removals(), "ACPX_CLAUDE_INCLUDE_USER_SETTINGS": "0"},
+        {**removals(), "ACPX_CLAUDE_INCLUDE_USER_SETTINGS": "0", **overlay},
     )
     return {
         "pending": True,

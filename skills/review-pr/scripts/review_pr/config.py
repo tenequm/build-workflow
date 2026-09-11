@@ -9,6 +9,8 @@ from typing import Any
 import yaml
 from operator_driver.storage import Park
 
+from .proc import ENV_ALLOWLIST
+
 TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
 # `implementation` is this project's own lens; the other four are vendored from polish.
 LENS_ORDER = ("cleanliness", "design", "efficiency", "gating", "implementation")
@@ -42,6 +44,13 @@ def load(path: Path | None = None) -> dict[str, Any]:
         family["adapter_argv"] = [
             value.replace("{{HOME}}", os.path.expanduser("~")) for value in argv
         ]
+        # A family may ask for environment names to be redirected per session (see
+        # proc.env_overlay). Only allowlisted names qualify: the allowlist is the
+        # credential fence, and a template that could name anything could name a
+        # provider key back into a reviewer's environment.
+        redirect = family.get("env") or []
+        if not isinstance(redirect, list) or set(redirect) - set(ENV_ALLOWLIST):
+            raise Park(f"family {name} env must name only allowlisted variables")
     lenses = data.get("lenses")
     if not isinstance(lenses, dict) or set(lenses) != set(LENS_ORDER):
         raise Park(f"stage template must declare exactly the lenses {LENS_ORDER}")

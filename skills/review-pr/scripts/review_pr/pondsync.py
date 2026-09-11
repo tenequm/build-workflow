@@ -1,7 +1,7 @@
 """Executor sessions land in pond, so a review's provenance survives the workspace.
 
-Every session this workflow spawns is a claude, codex or agy CLI session - the formats
-pond ingests losslessly. Capture is a verified stage against a fresh per-run store, not
+Every session this workflow spawns is a claude, codex, agy or opencode CLI session - the
+formats pond ingests losslessly. Capture is a verified stage against a fresh per-run store, not
 a best-effort sync into whatever the host has: the run provisions its own store inside
 the workspace, ingests only its own session sources, requires every session receipt to
 resolve to a stored transcript, and then folds the store into the operator's corpus
@@ -25,11 +25,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .proc import command
+from .proc import command, env_overlay
 
 PINNED = (0, 17, 2)
 # family (stages.yaml) -> the pond adapter that ingests that harness's sessions.
-ADAPTERS = {"claude": "claude-code", "codex": "codex-cli", "gemini": "agy"}
+ADAPTERS = {
+    "claude": "claude-code",
+    "codex": "codex-cli",
+    "gemini": "agy",
+    "opencode": "opencode",
+}
 
 
 def binary() -> str:
@@ -142,15 +147,27 @@ def _sources(receipts: dict[str, dict[str, Any]], ledger_dir: Path) -> dict[str,
                     sources.setdefault(adapter, set()).add(
                         Path.home() / ".codex" / "sessions" / day.strftime("%Y/%m/%d")
                     )
-        else:
+        elif adapter == "opencode":
+            # opencode writes every session it has ever run into one store, so the
+            # narrow source is manufactured rather than found: the family redirects
+            # XDG_DATA_HOME per session (proc.env_overlay), which leaves a store holding
+            # that session and nothing else. Naming it here is what keeps the operator's
+            # whole opencode history out of a store that is meant to hold one run.
+            root = Path(env_overlay(["XDG_DATA_HOME"], directory)["XDG_DATA_HOME"])
+            sources.setdefault(adapter, set()).add(root / "opencode")
+        elif adapter == "agy":
             agy_worktrees.add(worktree)
     if agy_worktrees:
         staged = stage_agy_root(agy_worktrees, ledger_dir / "agy-root")
         if staged:
             sources.setdefault("agy", set()).add(staged)
-    return {
+    found = {
         adapter: {path for path in paths if path.is_dir()} for adapter, paths in sources.items()
     }
+    # An adapter whose every candidate is absent is dropped rather than carried as an
+    # empty set: "this run produced no source for that family" is the thing capture
+    # needs to be able to say.
+    return {adapter: paths for adapter, paths in found.items() if paths}
 
 
 def sync_run_store(

@@ -252,6 +252,55 @@ class TestStageTemplate:
         assert plan["dual_family"]["enabled"] is False
         assert verify.opposite(plan, "gemini") == "claude"
 
+    def test_the_opencode_trial_template_routes_and_fences_itself(self):
+        """A trial lane on OpenCode Zen's free tier. The models there train on prompts,
+        so the fence is in the file itself, and the lane is worth nothing if the lens
+        silently runs at opencode's default effort of `minimal`."""
+        from review_pr import verify
+
+        path = config.TEMPLATES / "stages-opencode.yaml"
+        assert "ONLY for open-source repositories" in path.read_text()
+        plan = config.load(path)
+        assert {spec["family"] for spec in plan["lenses"].values()} == {"opencode"}
+        assert all(spec.get("effort") == "high" for spec in plan["lenses"].values())
+        assert verify.opposite(plan, "opencode") == "gemini"
+        assert plan["dual_family"]["enabled"] is False
+
+    def test_the_effort_option_id_is_the_family_s_to_name(self, tmp_path):
+        """opencode answers Codex's `reasoning_effort` with -32602 and then runs the
+        session at `minimal`. A wrong id is a silent quality floor, not an error."""
+        plan = config.load(config.TEMPLATES / "stages-opencode.yaml")
+        spec = config.lens_spec(plan, "implementation")
+        argv = runner.session_argv(spec, tmp_path / "tree", tmp_path / "prompt.md")
+        after = argv[argv.index("exec") :]
+        assert after[1:3] == ["--config-option", "effort=high"]
+        codex = {**config.lens_spec(config.load(), "design", family="codex"), "effort": "high"}
+        other = runner.session_argv(codex, tmp_path / "tree2", tmp_path / "prompt.md")
+        assert other[other.index("exec") + 2] == "reasoning_effort=high"
+
+    def test_a_family_may_only_redirect_allowlisted_environment_names(self, tmp_path):
+        """The allowlist is the credential fence; a template that could name anything
+        could name a provider key back into a reviewer's environment."""
+        import yaml
+
+        data = config.load(config.TEMPLATES / "stages-opencode.yaml")
+        assert data["families"]["opencode"]["env"] == ["XDG_DATA_HOME", "XDG_CONFIG_HOME"]
+        data["families"]["opencode"]["env"] = ["OPENROUTER_API_KEY"]
+        path = tmp_path / "stages.yaml"
+        path.write_text(yaml.safe_dump(data))
+        with pytest.raises(Park, match="only allowlisted variables"):
+            config.load(path)
+
+    def test_a_redirected_family_gets_its_own_store_per_session(self, workspace, tmp_path):
+        """One store shared across sessions is one session reading another's transcript,
+        and it is the whole operator history when capture comes looking."""
+        redirected = task(agent(tmp_path), spec={"env": ["XDG_DATA_HOME"]})
+        runner.run_batch(
+            [redirected], workspace["sidecar"], workspace["ledger"], attempts=1, wall_cap=300
+        )
+        overlay = workspace["dir"] / "sessions/review-cleanliness-gemini/env/xdg_data_home"
+        assert overlay.is_dir(), "the session's redirected store must exist where capture looks"
+
     def test_a_template_that_pins_a_forbidden_family_is_refused(self, tmp_path):
         import yaml
 

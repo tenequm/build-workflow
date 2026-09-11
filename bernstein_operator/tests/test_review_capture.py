@@ -92,3 +92,41 @@ class TestAgyStagedRoot:
             ledger_dir,
         )
         assert sources == {"claude-code": {claude_dir}, "codex-cli": {codex_dir}}
+
+
+class TestOpencodeSource:
+    """opencode keeps one global SQLite store for every session it has ever run, so
+    the narrow source is manufactured, not found: the family redirects XDG_DATA_HOME
+    per session and capture reads the store that leaves behind."""
+
+    def test_the_opencode_source_is_the_session_s_own_redirected_store(self, tmp_path):
+        ledger_dir = tmp_path / "workspace"
+        operation = "review-implementation-opencode"
+        store = ledger_dir / "sessions" / operation / "env" / "xdg_data_home" / "opencode"
+        store.mkdir(parents=True)
+        (store / "opencode.db").write_bytes(b"SQLite format 3\x00")
+        sources = pondsync._sources(receipts(ledger_dir, (operation, "opencode")), ledger_dir)
+        assert sources == {"opencode": {store}}
+
+    def test_the_operator_s_own_opencode_history_is_never_a_source(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        globaldb = tmp_path / "home" / ".local/share/opencode"
+        globaldb.mkdir(parents=True)
+        (globaldb / "opencode.db").write_bytes(b"SQLite format 3\x00")
+        ledger_dir = tmp_path / "workspace"
+        sources = pondsync._sources(
+            receipts(ledger_dir, ("review-design-opencode", "opencode")), ledger_dir
+        )
+        assert sources == {}, "a session that wrote no store of its own contributes none"
+
+    def test_an_unknown_family_is_not_swallowed_by_the_agy_branch(self, tmp_path, monkeypatch):
+        """The branch used to be an `else`, so any family added without touching this
+        file was staged as agy - which meant captured as nothing, silently."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        ledger_dir = tmp_path / "workspace"
+        worktree = str(ledger_dir / "sessions" / "review-design-mystery" / "worktree")
+        conversation(tmp_path / "home", "dddddddd-4444-4444-4444-444444444444", worktree)
+        sources = pondsync._sources(
+            receipts(ledger_dir, ("review-design-mystery", "mystery")), ledger_dir
+        )
+        assert sources == {}
