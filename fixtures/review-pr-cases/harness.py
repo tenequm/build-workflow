@@ -172,7 +172,16 @@ def accepted_categories(expected: dict[str, Any]) -> tuple[str, ...]:
 
 
 def mentions(finding: dict[str, Any], keywords: list[str]) -> bool:
-    text = WHITESPACE.sub(" ", f"{finding.get('claim', '')} {finding.get('evidence', '')}").lower()
+    # The suggestion's replacement text is scanned too: it is part of what the reviewer
+    # asserts (and the pipeline proves it against the validation command), so a keyword
+    # carried only there is still in front of the PR author.
+    suggestion = finding.get("suggestion") or {}
+    parts = (
+        finding.get("claim", ""),
+        finding.get("evidence", ""),
+        suggestion.get("replacement", ""),
+    )
+    text = WHITESPACE.sub(" ", " ".join(str(p) for p in parts)).lower()
     return all(WHITESPACE.sub(" ", word).lower() in text for word in keywords)
 
 
