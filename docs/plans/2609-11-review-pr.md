@@ -225,6 +225,31 @@ That userns sysctl is the exact 2026-09-10 two-hour symptom
 (vendor sandbox refusing everything reads as a model that had nothing to
 do); readiness checks it before any run.
 
+## Executor sessions land in pond (in scope)
+
+Every executor this workflow spawns - reviewers, verifiers, mini-runs -
+is a codex or claude CLI session, the two formats pond already ingests
+losslessly. The driver's stage teardown syncs them (`pond sync`, or the
+machine-level ingest where it runs), and the run ledger records each
+task's session id keyed to the finding ids it produced. What this buys:
+
+- **Forensics without spelunking.** A failed or suspicious review stage
+  is a `pond_get_session` / `pond_sql` query, not a crawl through
+  `.sdd/runtime` logs - the 2026-09-10 lesson, applied.
+- **Findings with provenance.** Every posted finding links to the
+  transcript that produced and the one that verified it; a disputed
+  review thread can be answered with evidence.
+- **The eval corpus for free.** The precision ledger's (lens, model)
+  rows point at real transcripts, which is exactly the substrate the
+  future claim-vs-tool-call verifier and the routing brain need.
+
+Boundaries: transcripts are stored and queried, never fed back into
+briefs (they are a prompt-injection surface and the corpus provably
+carries credentials - evidence, not instructions). Known gap: agy/Gemini
+sessions are not pond-indexed today; a lens routed to that family
+reviews fine but leaves no transcript, so lenses whose findings need
+provenance stay on codex/claude families until that gap closes.
+
 ## The precision ledger (the level-above loop)
 
 Append-only, `runs.jsonl` pattern: per finding - lens, producer model,
@@ -270,8 +295,10 @@ collected as a side effect, spent later.
 6. The fixture, seeded (its plants must now also cover a dual-family
    disagreement case and a provable suggestion).
 7. Batch driver + precision ledger.
-8. Future, not in this scope: a pond claim-vs-tool-call verifier over
-   the reviewers' own transcripts.
+8. Pond session capture wires in with the batch driver (7): teardown
+   sync + session ids in the ledger. Future, not in this scope: the
+   claim-vs-tool-call verifier over those stored transcripts - but its
+   substrate is being collected from the first run.
 
 ## Open questions for sign-off
 
