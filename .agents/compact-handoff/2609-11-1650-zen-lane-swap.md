@@ -113,3 +113,104 @@ Lanes reference: docs/knowledge/references/review-model-lanes-2609-11.md
 ("Where the lanes stand after 2026-09-11").
 Prior handoff: .agents/compact-handoff/2609-11-1455-review-quality-loop.md.
 Commit: feb4227.
+
+## AMENDED 17:30Z - routing redesign agreed, nothing built yet
+
+The operator rejected the shape shipped in feb4227 and set a new direction. NOTHING
+below is implemented; feb4227 and ad56435 remain the committed state.
+
+### What the operator asked for, in their words
+
+- q1/q2: both keys are in `./.env` now (GEMINI_API_KEY, OPENROUTER_API_KEY). Nothing
+  in the pipeline reads `.env`; `just review` and `just eval` read the Zen key out of
+  `~/.local/share/opencode/auth.json`. An OpenRouter equivalent is NOT wired yet.
+- q3: "lets change codex to must spark too for now pls, can we?" - answered: not as
+  stated, muse-spark verifying muse-spark is same-model self-judging, which is the
+  measured failure that parked 11 of 14 cases.
+- q5: "why? please don't confuse. lets have a clean <provider>/<model_id> convention,
+  where each provider has a list of models available for them, structure that
+  professionally." and "no gemini pls, instead of it can you do deepseek v4.1 flash
+  through openrouter key?"
+- Then: "can we do good with just free options?"
+- Then: consult Fable 5 (NOT 5.1) with the KB and the free-model catalogue.
+
+### The agreed redesign (approved in principle, NOT yet given a build go)
+
+Replace `families:` with `providers:`. A provider owns transport, adapter_argv,
+requires_env, env redirects, strip_paths, effort_option, pond_adapter, and its own
+`models:` map. Every lens and role names `<provider>/<model_id>`. Independence keys on
+the MODEL family declared per model, not on the provider - that is the change that lets
+two models on the same opencode adapter verify each other, and it is why the Zen lane
+had to be misleadingly named `gemini` in feb4227.
+
+Root cause of that naming, for the record: `families:` conflates three things - the
+transport/credential lane, the independence unit, and the key space for author routing
+(`routing.opposite` keys must be declared families, and `checkout.author_family` only
+ever emits claude/codex/gemini).
+
+Interim trick that needs NO refactor: declare two families named for their model
+families (e.g. `muse` and `minimax`) both using the opencode adapter. The current code
+keys independence on family name, so cross-family verification is satisfied today.
+That is how the all-free experiment can run before the refactor.
+
+### Measured model data gathered this window (Artificial Analysis Intelligence Index v4.3)
+
+| model | Index | in/out per 1M | Terminal-Bench v4 | AA-LCR | AA-Omniscience |
+|---|---|---|---|---|---|
+| Muse Spark 1.3 (max) | 48 | 1.25/4.25, free on Zen | 33% | 83% | +25 |
+| GLM-5.3-Flash | 42 | 0.15/0.50 | 33% | 80% | +7 |
+| DeepSeek V4.1 Flash | 40 | 0.30/1.20 (0.15/0.60 on OpenRouter) | 27% | 84% | -5 |
+| DeepSeek V4 Flash 0731 (Zen free) | 35 | free | 12% | 80% | -14 |
+| MiniMax-M3 (Zen free) | 30 | free | 2% | 83% | +1 |
+| MiMo-V2-Pro (Zen free) | 29 est | free | - | 68% | +5 |
+| GLM-5 (Zen free) | 28 est | free | - | 76% | 0 |
+| Qwen3.6 Plus (Zen free) | 27 est | free | - | 78% | +1 |
+| Kimi K2.5 (Zen free) | 23 est | free | - | 78% | -7 |
+
+WARNING: AA publishes Muse Spark 1.3 (max) as 48 on its comparison tables and 62 in its
+launch article. Those do not reconcile. Every figure above is from the comparison
+tables, one scale, so the ordering holds; never mix them with AA article figures.
+
+`openrouter/deepseek/deepseek-v4.1-flash` was verified addressable from this box
+through opencode with OPENROUTER_API_KEY set.
+
+### The recommendation put to the operator (awaiting their call)
+
+| slot | model | provider | rationale |
+|---|---|---|---|
+| fast-loop lenses + claims | muse-spark-1.3-contributor-free | opencode Zen | best free on TB/LCR/Omniscience; already 13/14 on our corpus |
+| fast-loop verifier | glm-5.3-flash (paid, ~$1-2 per 14-case pass) OR minimax-m3-free (free) | opencode Zen | judging wants anti-hallucination + long context, not Terminal-Bench |
+| production second opinion (replaces gemini) | deepseek/deepseek-v4.1-flash | openrouter | best AA-LCR of the three, AutomationBench 69%, 1M ctx, $0.15/$0.60 |
+
+Hard constraint restated: every `-free` Zen id trains on prompts, so all-free is
+available for the fast loop (synthetic public fixtures) and FORBIDDEN for production,
+which reviews other people's private trees. That fence, not quality, is what stops
+"all free everywhere".
+
+Proposed experiment, not yet run: Pass A (muse lenses + codex verifier, the run in
+flight) against Pass B (muse lenses + minimax-m3-free verifier, fully free). If B holds
+14/14 with comparable extras, codex leaves the fast loop.
+
+### In flight at the time of writing
+
+1. Corpus re-run on the CURRENT committed routing, background id bsw2gjd3e, output
+   `/tmp/claude-10003/.../tasks/bsw2gjd3e.output`, workspaces
+   `/tmp/review-eval-20260911T165025Z/`. At 12 of 14 with zero parks when last checked.
+   This is the number that proves the rubric fix.
+2. Fable 5 consultation, background id ba0u9hyly, acpx session `fable5` at
+   `--model 'claude-fable-5[1m]'`, cwd and bundle at
+   `/tmp/claude-10003/.../scratchpad/fable-consult/`. It was given the whole knowledge
+   bundle, SKILL.md, all three templates, the corpus README, the quality plan, and
+   `free-models.md`. It writes `report.md` in that directory; `run.log` holds the
+   transcript. Asked: best free model per slot with evidence, the cross-family pairing,
+   where free breaks and what shape the damage takes, the smallest set of corpus runs
+   that would settle it, and whether the direction violates anything in the bundle.
+
+### Next steps after compaction
+
+1. Read `/tmp/claude-10003/.../scratchpad/fable-consult/report.md` and relay it
+   AGAINST the recommendation above, flagging disagreement rather than merging voices.
+2. Read the Pass A corpus number from bsw2gjd3e / the evals ledger.
+3. Get the operator's call on the free-verifier experiment and on building the
+   providers refactor. Neither has a build go yet.
+4. `just ship` is still owed for feb4227 and ad56435.
