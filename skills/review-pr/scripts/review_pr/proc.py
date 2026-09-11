@@ -15,6 +15,11 @@ TIMEOUT_CODE = 124
 # environment - provider keys, GitHub tokens, cloud credentials - is dropped, so a
 # prompt-injecting diff has nothing to exfiltrate even if it convinces its reader.
 ENV_ALLOWLIST = (
+    # The two GEMINI names are the metered API-key lane, used when the subscription
+    # window is exhausted. Exposure parity, not an exception: a session that can be
+    # talked into printenv can equally cat the subscription token file under HOME.
+    "GEMINI_API_KEY",
+    "GEMINI_HOME",
     "HOME",
     "LANG",
     "LC_ALL",
