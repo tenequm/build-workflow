@@ -28,17 +28,23 @@ families:
     # it answers an unknown id with -32602. Its levels are off, minimal, low, medium,
     # high and xhigh; pi's own `max` is NOT among them and would be refused.
     effort_option: thought_level
-    # pi keeps providers, auth, skills, extensions and project-trust decisions under
+    # pi keeps providers, auth, settings and project-trust decisions under
     # PI_CODING_AGENT_DIR (default `~/.pi/agent`) and its transcripts under
     # PI_CODING_AGENT_SESSION_DIR (default `<config>/sessions`). Redirected per session,
-    # the reviewer opens with an empty configuration - none of the operator's providers,
-    # skills or saved trust - and capture gets a session root holding this run and
-    # nothing else. Verified 2026-09-11: a fresh config dir listed only pi's built-in
-    # model catalogue, and pond's pi-coding-agent adapter ingests the redirected root
+    # the reviewer opens on none of the operator's providers and no saved trust, and
+    # capture gets a session root holding this run and nothing else. Verified over the
+    # real acpx transport 2026-09-11: a fresh config dir advertised only pi's built-in
+    # catalogue, and pond's pi-coding-agent adapter ingests the redirected session root
     # directly, since that root is the same shape as its configured default.
     #
-    # What the redirects do NOT clean is what hangs off HOME: pi also discovers
-    # `~/.agents/skills/`, exactly as opencode's XDG redirects still leave `~/.claude`.
+    # What the redirects do NOT close is resource discovery rooted at HOME, and pi is
+    # worse here than opencode's leftover `~/.claude`: the same probe showed the session
+    # loading every skill under the operator's `~/.agents/skills/` AND executing the
+    # operator's `~/.pi/agent/extensions/*.ts` - TypeScript, in the reviewer's process,
+    # from a root PI_CODING_AGENT_DIR was pointed away from. pi has `--no-skills` and
+    # `--no-extensions`, but pi-acp spawns a fixed `pi --mode rpc --no-themes` and
+    # forwards neither, so nothing in this template can switch them off. Read this
+    # lane's findings knowing the operator's own extensions ran beside them.
     env: [PI_CODING_AGENT_DIR, PI_CODING_AGENT_SESSION_DIR]
     # The reviewed tree must never choose what runs. Once a project is trusted pi loads
     # `.pi/settings.json`, `.pi/{extensions,skills,prompts,themes}`, `.pi/SYSTEM.md`,
