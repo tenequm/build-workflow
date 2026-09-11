@@ -62,6 +62,18 @@ ready, report verified numbers + one-command `just review <github-pr-url>`).
    so only a per-session HOME or different adapter closes it. Documented in the
    template + lanes reference. Lane must not run real PRs until HOME isolation.
 
+## AMENDED 15:10Z - merges DONE
+
+All three branches are MERGED into feat/review-pr (4b8d88a family-swap, 91a7b84
+pi-family, 3811fd5 conformance). Conflicts resolved: template tests repinned to
+the new opposite() tuple API and claude/codex routing; both capture-test additions
+kept; claims.py took HEAD then `just fix` reapplied the mechanical rules. Bar
+after final merge: just check ALL PASSED, suite 359 passed / 11 failed (the known
+engine-patch parks, same set) / 1 skipped. Worktree slots not yet returned
+(treehouse return, 3 slots under ~/pj/worktrees/.treehouse/build-workflow-4d7558/).
+Steps 1-2 below are done; remaining work = steps 3-5 (final report, just ship,
+key reminder + open questions).
+
 ## Next steps
 
 1. When the conformance agent notifies: read report, rule on it.
