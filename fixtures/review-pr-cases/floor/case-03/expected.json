@@ -1,0 +1,10 @@
+{
+  "category": "correctness",
+  "file": "src/pagination.py",
+  "line_low": 16,
+  "line_high": 22,
+  "must_mention": [
+    "calculate_total_pages",
+    "per_page"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "category": "dropped_carveout",
+  "file": "POLICY.md",
+  "line_low": 14,
+  "line_high": 16,
+  "must_mention": [
+    "config/eviction.yaml",
+    "system-manifest",
+    "pinned_namespaces",
+    "LRU"
+  ]
+}

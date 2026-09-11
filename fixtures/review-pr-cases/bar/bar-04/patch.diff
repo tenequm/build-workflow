@@ -1,0 +1,46 @@
+diff --git a/POLICY.md b/POLICY.md
+--- a/POLICY.md
++++ b/POLICY.md
+@@ -7,14 +7,15 @@ retention lifetimes for the cache-layer service.
+ ## 2. Memory Tiering
+ Cache nodes allocate up to configured physical RAM limits. When node
+ utilization reaches high watermark thresholds, automated eviction
+-subsystems engage to prevent out-of-memory terminations.
++subsystems engage to prevent out-of-memory terminations and protect node stability.
++Administrators should size memory according to peak throughput estimates.
+ 
+ ## 3. Eviction Strategy
+-All cache partitions are subject to LRU eviction under memory pressure,
+-with the sole exception of the `system-manifest` namespace, which is
+-pinned and exempt from eviction.
++All cache partitions across the entire cluster are subject to LRU eviction
++when host memory utilization exceeds target operational thresholds without
++exemption.
+ 
+-Partitions marked for standard eviction discard the least recently
++Partitions marked for eviction discard the least recently
+ accessed keys until memory pressure subsides below 75 percent capacity.
+ 
+ ## 4. Monitoring
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -6,6 +6,10 @@ High-performance distributed caching proxy for backend microservices.
+ ## Getting Started
+ 
+ ```bash
++# Install dependencies
++pip install -r requirements.txt
++
++# Start the cache daemon
+ python -m src.cache_manager --config config/eviction.yaml
+ ```
+ 
+@@ -14,6 +21,7 @@ python -m src.cache_manager --config config/eviction.yaml
+ - In-memory key-value storage with configurable eviction.
+ - Partition-level namespace isolation.
+ - Automatic watermark tracking and metric exports.
++- Zero-copy buffer transfers on supported Linux kernels.
+ 
+ ## Operations
+ Review POLICY.md for retention guarantees and memory thresholds.

@@ -1,0 +1,10 @@
+{
+  "category": "authority-file contradiction",
+  "file": "setup.cfg",
+  "line_low": 5,
+  "line_high": 7,
+  "must_mention": [
+    "max-line-length",
+    "88"
+  ]
+}

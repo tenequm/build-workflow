@@ -1,0 +1,13 @@
+{
+  "category": "live_config_mismatch",
+  "file": "docs/configuration.md",
+  "line_low": 15,
+  "line_high": 18,
+  "must_mention": [
+    "config/gateway.conf",
+    "STANDARDS.md",
+    "idle_timeout_seconds",
+    "60",
+    "120"
+  ]
+}

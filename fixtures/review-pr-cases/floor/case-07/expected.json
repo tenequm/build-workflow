@@ -1,0 +1,10 @@
+{
+  "category": "claim-vs-implementation",
+  "file": "README.md",
+  "line_low": 8,
+  "line_high": 8,
+  "must_mention": [
+    "mode",
+    "round_price"
+  ]
+}

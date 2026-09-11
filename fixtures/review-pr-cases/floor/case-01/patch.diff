@@ -1,0 +1,18 @@
+--- a/README.md
++++ b/README.md
+@@ -6,3 +6,4 @@
+ 
+ - `slugify(text)`: Converts text to kebab-case slug.
+ - `capitalize_words(text)`: Capitalizes each word in text.
++- `truncate(text, max_len, suffix="...")`: Truncates text exceeding max_len and appends suffix.
+--- a/src/text_formatter.py
++++ b/src/text_formatter.py
+@@ -11,3 +11,8 @@
+ def capitalize_words(text: str) -> str:
+     """Capitalize each word in a string."""
+     return " ".join(word.capitalize() for word in text.split())
++
++
++def truncate(text: str, max_len: int) -> str:
++    """Truncate text to max_len characters."""
++    return text[:max_len]

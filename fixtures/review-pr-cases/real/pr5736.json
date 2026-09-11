@@ -1,0 +1,41 @@
+{
+  "repo": "sipyourdrink-ltd/bernstein",
+  "pr": 5736,
+  "reviewed_head": "c116abf5b2eb21a471a4cb1db4af1f7b0a05aca7",
+  "review_date": "2026-09-09",
+  "findings": [
+    {
+      "file": ".github/workflows/runner-canary.yml",
+      "line": 41,
+      "summary": "'Reach the API' step cannot fail because default shell lacks pipefail and curl lacks -f.",
+      "fate": "applied",
+      "fate_evidence": "Commit 22cea33d added set -o pipefail and curl -fsSI to fail on non-2xx HTTP responses or broken pipes.",
+      "fate_verified": true
+    },
+    {
+      "file": ".github/workflows/runner-canary.yml",
+      "line": 33,
+      "summary": "Socket check tests only /var/run/docker.sock, missing Podman, containerd, and rootless sockets.",
+      "fate": "applied",
+      "fate_evidence": "Commit 22cea33d updated step to loop over 6 container socket paths including podman, containerd, and XDG_RUNTIME_DIR sockets.",
+      "fate_verified": true
+    },
+    {
+      "file": ".github/workflows/runner-canary.yml",
+      "line": 26,
+      "summary": "Host-facts step prints uname -a, id, and workdir to world-readable public CI logs daily.",
+      "fate": "applied",
+      "fate_evidence": "Commit 22cea33d deleted the Report host facts step entirely.",
+      "fate_verified": true
+    },
+    {
+      "file": "docs/operations/ci-topology.md",
+      "line": 72,
+      "summary": "CI topology documentation lacks explicit runner-group invariant (no pull_request triggers, no untrusted checkouts).",
+      "fate": "unknown",
+      "fate_evidence": "Commit 22cea33d documented the security invariant in runner-canary.yml header rather than in docs/operations/ci-topology.md.",
+      "fate_verified": false
+    }
+  ],
+  "notes": "Reviewed interactively; approved after verification; merged in 22cea33d."
+}

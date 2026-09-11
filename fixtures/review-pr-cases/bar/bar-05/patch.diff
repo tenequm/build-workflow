@@ -1,0 +1,48 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -6,12 +6,20 @@ Modular multi-stage build orchestration tool.
+ ## Installation
+ 
+ ```bash
++# Build and install binary from source
+ cargo install --path .
+ ```
+ 
++### Development Build
++```bash
++cargo build --release --locked
++```
++
+ ## Running Checks
++Ensure test dependencies are installed before running verification:
+ 
+ ```bash
+ ./scripts/run_checks.sh
++./scripts/run_checks.sh --coverage
+ ```
+ 
+diff --git a/docs/audit-coverage.md b/docs/audit-coverage.md
+--- a/docs/audit-coverage.md
++++ b/docs/audit-coverage.md
+@@ -5,7 +5,20 @@ This document tracks validation suites that satisfy compliance criteria.
+ ## Overview
+ Compliance audits are executed prior to every minor and major release.
+ 
++## Covered Engine Modules
++As mandated by GOVERNANCE.md for complete audit scope, the test suite tracks all designated core engines:
++- `parser`: Syntax parsing and AST generation.
++- `compiler`: IR transformation and code emission.
++- `bundler`: Asset packaging and module linking.
++
++Each listed component must achieve 100 percent branch coverage during
++audit execution.
++
+ ## Verification Procedures
+ 1. Run `./scripts/run_checks.sh` in the repository root.
+ 2. Verify all test reports are archived in `build/reports/`.
+ 3. Submit verification artifacts to the release maintainer.
++
++## Reporting Schedule
++Audit logs are retained in `build/reports/audit.json` for 90 days following
++a tagged release.

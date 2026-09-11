@@ -1,0 +1,46 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -6,6 +6,13 @@ High-throughput reverse proxy and HTTP gateway router.
+ ## Getting Started
+ 
+ ```bash
++# Launch gateway with specified configuration
++gateway-router --config config/gateway.conf
++```
++
++### Configuration Verification
++To validate configuration syntax before startup:
++```bash
+ gateway-router --config config/gateway.conf
+ ```
+ 
+@@ -14,6 +21,7 @@ gateway-router --config config/gateway.conf
+ - Low-latency request routing.
+ - Configurable upstream timeouts and connection pooling.
+ - Health checking and circuit breaker support.
++- Dynamic configuration reloading on SIGHUP signal.
+ 
+ ## Standards and Configuration
+ Refer to STANDARDS.md for networking policies and docs/configuration.md
+diff --git a/docs/configuration.md b/docs/configuration.md
+--- a/docs/configuration.md
++++ b/docs/configuration.md
+@@ -9,10 +9,16 @@ This guide details all parameters supported by `config/gateway.conf`.
+ ### `max_connections`
+ Maximum number of simultaneous client connections per process (default: 1000).
+ 
++Tuning guidance: Set to 2x expected concurrent active client connections.
++
+ ### `idle_timeout_seconds`
+-The upstream connection idle timeout in seconds (default: 60).
++The upstream connection idle timeout in seconds (default: 120 per STANDARDS.md).
++
++Connections exceeding this idle duration are closed to free socket handles.
+ 
+ ### `keepalive_interval`
+ Interval in seconds between TCP keepalive probes (default: 15).
+ 
++Keepalive probes detect dead remote peers before connection timeouts fire.
++
+ ### `buffer_size_kb`

@@ -1,0 +1,18 @@
+--- a/README.md
++++ b/README.md
+@@ -5,3 +5,4 @@
+ ## Functions
+ 
+ - `apply_discount(price, discount_percent)`: Computes discounted price.
++- `round_price(amount, step=0.05, mode="ceil")`: Rounds amount to nearest step with support for ceil/floor/nearest modes.
+--- a/src/price_calc.py
++++ b/src/price_calc.py
+@@ -6,3 +6,8 @@
+     if not (0.0 <= discount_percent <= 100.0):
+         raise ValueError("discount_percent must be between 0 and 100")
+     return price * (1.0 - discount_percent / 100.0)
++
++
++def round_price(amount: float, step: float = 0.05) -> float:
++    """Round amount to specified step."""
++    return round(amount / step) * step

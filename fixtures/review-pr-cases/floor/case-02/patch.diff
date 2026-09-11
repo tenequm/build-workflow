@@ -1,0 +1,26 @@
+--- a/src/metric_tracker.py
++++ b/src/metric_tracker.py
+@@ -18,3 +18,10 @@
+     if len(sorted_vals) % 2 == 1:
+         return float(sorted_vals[mid])
+     return (sorted_vals[mid - 1] + sorted_vals[mid]) / 2.0
++
++
++def calculate_range(values: Sequence[float]) -> float:
++    """Compute difference between maximum and minimum values."""
++    if not values:
++        raise ValueError("values cannot be empty")
++    return max(values) - min(values)
+--- a/tests/test_metrics.py
++++ b/tests/test_metrics.py
+@@ -6,6 +6,10 @@
+ def test_calculate_mean():
+     assert calculate_mean([1.0, 2.0, 3.0]) == 2.0
+     assert calculate_mean([4.0]) == 4.0
++
++
++def test_calculate_mean_negative():
++    assert calculate_mean([-2.0, 2.0]) == 0.0
+ 
+ 
+ def test_calculate_mean_empty():

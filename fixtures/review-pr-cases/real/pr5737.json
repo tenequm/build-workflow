@@ -1,0 +1,121 @@
+{
+  "repo": "sipyourdrink-ltd/bernstein",
+  "pr": 5737,
+  "reviewed_head": "2512a7e3ea67285da6e7d1301472791c415eebcc",
+  "review_date": "2026-09-09",
+  "findings": [
+    {
+      "file": "docs/CODE_REVIEW.md",
+      "line": 15,
+      "summary": "[Correctness] This sentence collapses two requirements the gate applies separately, and names the file that governs neither half of the one it describes.",
+      "fate": "applied",
+      "fate_evidence": "Commit 371b9bf37 separated core-reviewer and code-owner approval requirements and named .github/quorum-roster.toml.",
+      "fate_verified": true
+    },
+    {
+      "file": "CONTRIBUTING.md",
+      "line": 120,
+      "summary": "[Correctness] Same wording as `docs/CODE_REVIEW.md:15`, so the same correction applies: the charter's word is \"core reviewer\" (`review-charter.md:24`), resolved from `.github/quorum-roster.toml`, and the code-owner requirement is a separate per-path one in `quorum_check.py:421-434`.",
+      "fate": "applied",
+      "fate_evidence": "Commit 371b9bf37 updated CONTRIBUTING.md to specify core reviewer approval from quorum-roster.toml and separate code owner requirements.",
+      "fate_verified": true
+    },
+    {
+      "file": ".github/CODEOWNERS",
+      "line": 30,
+      "summary": "[Correctness] Reserving the generated mirrors routes a class of unrelated pull requests to you.",
+      "fate": "applied",
+      "fate_evidence": "Commit 9123aa3b4 documented why generated mirror files acquire CODEOWNERS requirements.",
+      "fate_verified": true
+    },
+    {
+      "file": ".github/CODEOWNERS",
+      "line": 31,
+      "summary": "[Cleanliness] `CONVENTIONS.md` is the pair of this file and is not covered.",
+      "fate": "applied",
+      "fate_evidence": "Commit 931c1a123 added /CONVENTIONS.md and /mcp.json to CODEOWNERS.",
+      "fate_verified": true
+    },
+    {
+      "file": ".github/CODEOWNERS",
+      "line": 24,
+      "summary": "[Cleanliness] A manifest filed under a lockfile caption, in the same hunk that fixes a misleading caption. `/sdk/python/pyproject.toml` is right to be here under charter s4 (\"`pyproject.toml` and lockfiles\"), but the comment above it says \"Lockfiles outside the root\".",
+      "fate": "applied",
+      "fate_evidence": "Commit c3d99a5af rearranged entries in CODEOWNERS under accurate explanatory comments.",
+      "fate_verified": true
+    },
+    {
+      "file": ".github/CODEOWNERS",
+      "line": 37,
+      "summary": "[Cleanliness] The rationale is broader than the entries. `SECURITY.md:76` puts two images in scope, `bernstein:latest` **and `bernstein:sandbox`**, and it is the sandbox that `SECURITY.md:115-131` promises researchers is egress-blocked and ephemeral.",
+      "fate": "applied",
+      "fate_evidence": "Commit 151419c05 reserved /docker/sandbox/ and /scripts/researcher_sandbox.sh in CODEOWNERS and clarified image scope.",
+      "fate_verified": true
+    },
+    {
+      "file": "docs/CODE_REVIEW.md",
+      "line": 24,
+      "summary": "[Design] \"dependency bots merge under their own policy\" drops the only prose statement of a carve-out that is still enforced.",
+      "fate": "applied",
+      "fate_evidence": "Commit 15fdcbd78 restored the automation carve-out for security-sensitive paths in docs/CODE_REVIEW.md.",
+      "fate_verified": true
+    },
+    {
+      "file": "docs/CODE_REVIEW.md",
+      "line": 43,
+      "summary": "[Design] This restates a rule nothing implements, which is the same class of claim you removed from checklist item 4 four lines above.",
+      "fate": "applied",
+      "fate_evidence": "Commit 0d2ac88b5 clarified in docs/CODE_REVIEW.md that needs-maintainer is applied manually rather than by automation.",
+      "fate_verified": true
+    },
+    {
+      "file": "docs/playbooks/docs-drift.md",
+      "line": 55,
+      "summary": "[Design] These rows cannot do what the PR comment says they do, for two independent reasons.",
+      "fate": "applied",
+      "fate_evidence": "Commits db70fbae2, 4cdb74671, and 7655015f2 updated the parser, workflow triggers, and documented drift detection limits.",
+      "fate_verified": true
+    },
+    {
+      "file": "docs/playbooks/docs-drift.md",
+      "line": 56,
+      "summary": "[Design] This row points the dependency the wrong way, and leaves the same doc with two contradictory rows.",
+      "fate": "applied",
+      "fate_evidence": "Commit 2752d979e updated drift rows to point docs/CODE_REVIEW.md at the review charter.",
+      "fate_verified": true
+    },
+    {
+      "file": "docs/playbooks/docs-drift.md",
+      "line": 57,
+      "summary": "[Design] `SECURITY.md` is dropped by the parser, on the row whose drift signal is built around it.",
+      "fate": "applied",
+      "fate_evidence": "Commit db70fbae2 updated parser to support root-level sources like ./SECURITY.md, and commit 7655015f2 clarified drift behavior.",
+      "fate_verified": true
+    },
+    {
+      "file": "GOVERNANCE.md",
+      "line": 24,
+      "summary": "[Design] \"the floor for each\" overstates section 7. `review-charter.md:68` gives an objective floor for **committer** only (10 merged PRs, 4 weeks, 5 reviews, no revert, a 90-day account with 2FA). Core reviewer at `:70` has no floor at all: \"a sustained record of reviews that found real problems, confirmed by the maintainer.\"",
+      "fate": "applied",
+      "fate_evidence": "Commit 83136049f clarified in GOVERNANCE.md that the objective floor applies only to committers.",
+      "fate_verified": true
+    },
+    {
+      "file": "GOVERNANCE.md",
+      "line": 31,
+      "summary": "[Design] This makes CODEOWNERS the normative definition of core reviewer, but the file the enforcement reads is `.github/quorum-roster.toml` (`quorum_check.py:75,133-141`), and none of the three pages this PR touches ever names it.",
+      "fate": "applied",
+      "fate_evidence": "Commit 7e50692ca named .github/quorum-roster.toml in GOVERNANCE.md as the roster evaluated by merge gates.",
+      "fate_verified": true
+    },
+    {
+      "file": "docs/CODE_REVIEW.md",
+      "line": 37,
+      "summary": "[Cleanliness] A numeric rule on the page that opens by saying the rules live elsewhere. Neither \"at least one line-level comment\" nor \"about 40 lines\" appears in the charter; the nearest thing is section 8, which makes \"share of approvals without any comment\" a metric reviewed monthly rather than a per-PR obligation.",
+      "fate": "applied",
+      "fate_evidence": "Commits f3cc66542 and d1b209bab clarified comment requirements and noted dependency on charter PR #5746.",
+      "fate_verified": true
+    }
+  ],
+  "notes": "Converted from top-level hand review comments against original head 2512a7e3e."
+}

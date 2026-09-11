@@ -1,0 +1,13 @@
+{
+  "category": "omitted_mandatory_item",
+  "file": "docs/audit-coverage.md",
+  "line_low": 9,
+  "line_high": 12,
+  "must_mention": [
+    "GOVERNANCE.md",
+    "optimizer",
+    "parser",
+    "compiler",
+    "bundler"
+  ]
+}

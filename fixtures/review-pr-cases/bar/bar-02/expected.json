@@ -1,0 +1,12 @@
+{
+  "category": "normative_artifact_mismatch",
+  "file": "docs/roles.md",
+  "line_low": 15,
+  "line_high": 18,
+  "must_mention": [
+    "CHARTER.md",
+    "ops/access-list.json",
+    "teams.yaml",
+    "deploy.toml"
+  ]
+}

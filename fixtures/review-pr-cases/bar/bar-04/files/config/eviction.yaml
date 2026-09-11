@@ -1,0 +1,13 @@
+# Cache Layer Eviction Configuration
+
+eviction_policy: "lru"
+target_memory_mb: 4096
+high_watermark_ratio: 0.85
+low_watermark_ratio: 0.75
+
+pinned_namespaces:
+  - "system-manifest"
+
+telemetry:
+  metrics_port: 9102
+  export_interval_sec: 10

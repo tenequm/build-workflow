@@ -1,0 +1,13 @@
+{
+  "collector": {
+    "buffer_size": 8192,
+    "flush_interval_ms": 500,
+    "max_batch_size": 256
+  },
+  "pipelines": [
+    {
+      "name": "system_metrics",
+      "enabled": true
+    }
+  ]
+}

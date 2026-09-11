@@ -1,0 +1,10 @@
+{
+  "category": "false gating claim",
+  "file": "pr.md",
+  "line_low": 5,
+  "line_high": 5,
+  "must_mention": [
+    "calculate_range",
+    "test"
+  ]
+}

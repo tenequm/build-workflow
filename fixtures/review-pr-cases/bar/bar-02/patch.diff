@@ -1,0 +1,53 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -6,6 +6,13 @@ Distributed task dispatcher and async execution engine.
+ ## Getting Started
+ 
+ ```bash
++# Start dispatcher with default production configuration
++queue-dispatcher --config config/deploy.toml --workers 16
++```
++
++### Dry-Run Mode
++To validate configuration without launching worker pools:
++```bash
+ queue-dispatcher --config config/deploy.toml
+ ```
+ 
+@@ -14,6 +21,7 @@ queue-dispatcher --config config/deploy.toml
+ - Dynamic worker pool scaling.
+ - Configurable retry backoff strategies.
+ - Structured telemetry logging.
++- Graceful shutdown on SIGTERM signals.
+ 
+ ## Governance and Roles
+ Refer to CHARTER.md for governance structure and docs/roles.md for
+diff --git a/docs/roles.md b/docs/roles.md
+--- a/docs/roles.md
++++ b/docs/roles.md
+@@ -5,12 +5,24 @@ This document outlines team roles within the queue-dispatcher project.
+ 
+ ## Project Roles
+ 
++### Contributor
++Contributors submit pull requests, documentation updates, and bug fixes.
++
+ ### Steering Member
+ Steering members guide project direction and review architectural changes.
++Members participate in bi-weekly governance meetings.
+ 
+ ### Release Operator
+ Release operators manage deployment pipelines and production rollouts.
++The release operator role is normatively defined in teams.yaml, which deployment automation validates before promoting builds.
++Operators must coordinate major version cuts across `#queue-releases`.
+ 
+ ### Triage Contributor
+ Triage contributors organize issues, reproduce bugs, and manage labels.
++New contributors are encouraged to start with triage tasks.
++
++## Role Onboarding
++1. Request membership through an issue template.
++2. Complete security review and two-factor authentication setup.
++3. Receive approval from at least one steering member.
+ 

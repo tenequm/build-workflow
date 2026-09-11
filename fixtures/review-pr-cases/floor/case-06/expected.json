@@ -1,0 +1,10 @@
+{
+  "category": "silent behavior change",
+  "file": "src/item_cache.py",
+  "line_low": 14,
+  "line_high": 16,
+  "must_mention": [
+    "get_item",
+    "KeyError"
+  ]
+}

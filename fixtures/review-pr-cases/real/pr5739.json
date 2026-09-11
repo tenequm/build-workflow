@@ -1,0 +1,65 @@
+{
+  "repo": "sipyourdrink-ltd/bernstein",
+  "pr": 5739,
+  "reviewed_head": "cebf06bb48c8dc91ab383189545426b5a59ce146",
+  "review_date": "2026-09-09",
+  "findings": [
+    {
+      "file": "scripts/queue_hygiene.py",
+      "line": 269,
+      "summary": "First arming dismisses 38 standing approvals against 2 people; missing submitted_at cutoff, once-only guard, and EXEMPT_LABELS check.",
+      "fate": "applied",
+      "fate_evidence": "Commit 2e374f4ce added submitted_at cutoff and EXEMPT_LABELS check; commits d3e998fea and 19028737b added once-only guard via review_dismissed timeline event.",
+      "fate_verified": true
+    },
+    {
+      "file": "scripts/queue_hygiene.py",
+      "line": 270,
+      "summary": "Double fetch of /pulls/{n}/reviews in rule_approval_shape and last_changes_requested_without_push.",
+      "fate": "applied",
+      "fate_evidence": "Commit a7a9f21da shared single reviews fetch across both rules using a memo keyed on PR number.",
+      "fate_verified": true
+    },
+    {
+      "file": "scripts/queue_hygiene.py",
+      "line": 281,
+      "summary": "/pulls/{n}/comments reads line comments only; substantive review body is dismissed as bare.",
+      "fate": "applied",
+      "fate_evidence": "Commit 7d18f5ad3 accepted non-blank review[\"body\"] as evidence of engagement.",
+      "fate_verified": true
+    },
+    {
+      "file": "scripts/queue_hygiene.py",
+      "line": 236,
+      "summary": "mergeable != \"CONFLICTING\" admits UNKNOWN, flapping needs-committer-review label on busy base branch.",
+      "fate": "applied",
+      "fate_evidence": "Commit e72e871c8 required confirmed pr.mergeable == \"MERGEABLE\" state.",
+      "fate_verified": true
+    },
+    {
+      "file": "scripts/queue_hygiene.py",
+      "line": 418,
+      "summary": "gh() with check=True in apply_intents has no try/except; one failing dismissal wedges all subsequent PR intents in sweep.",
+      "fate": "applied",
+      "fate_evidence": "Commit a99ba1519 added per-item try/except around review dismissal calls in apply_intents.",
+      "fate_verified": true
+    },
+    {
+      "file": "scripts/queue_hygiene.py",
+      "line": 84,
+      "summary": "Dismissal message cites charter section 3 which does not define 40-line rule or automated dismissal.",
+      "fate": "unknown",
+      "fate_evidence": "Author split the governance rule amendment into charter PR #5746, but scripts/queue_hygiene.py was not updated and PR #5746 is unmerged.",
+      "fate_verified": false
+    },
+    {
+      "file": "scripts/queue_hygiene.py",
+      "line": 247,
+      "summary": "_is_bot checks login suffix/prefix instead of user.type == 'Bot'; startswith('app/') is dead GraphQL syntax in REST payload.",
+      "fate": "applied",
+      "fate_evidence": "Commit e75cf0a5e checked user.get(\"type\") == \"Bot\" first and dropped dead app/ prefix check.",
+      "fate_verified": true
+    }
+  ],
+  "notes": "Reviewed interactively with 4 subagents; approved after verified fixes."
+}

@@ -1,0 +1,12 @@
+--- a/src/item_cache.py
++++ b/src/item_cache.py
+@@ -10,5 +10,7 @@
+         self._entries[key] = value
+ 
+     def get_item(self, key: str) -> Optional[Any]:
+-        """Retrieve cached item, returning None if key is absent."""
+-        return self._entries.get(key, None)
++        """Retrieve cached item."""
++        if key not in self._entries:
++            raise KeyError(key)
++        return self._entries[key]

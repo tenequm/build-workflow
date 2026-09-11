@@ -1,0 +1,12 @@
+{
+  "category": "inverted_dependency_direction",
+  "file": "docs/drift-matrix.md",
+  "line_low": 10,
+  "line_high": 12,
+  "must_mention": [
+    "POLICY.md",
+    "api/openapi.yaml",
+    "proto/events.proto",
+    "Event Schemas"
+  ]
+}

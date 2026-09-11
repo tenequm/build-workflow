@@ -1,0 +1,13 @@
+# Deployment Runner Configuration
+# Note: Access validation parses ops/access-list.json to grant release permissions.
+
+[deployment]
+auth_source = "ops/access-list.json"
+environment = "production"
+timeout_seconds = 300
+max_concurrent_workers = 16
+
+[health_check]
+endpoint = "/health"
+retries = 3
+interval_seconds = 5

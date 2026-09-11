@@ -1,0 +1,12 @@
+{
+  "category": "numeric_floor_generalization",
+  "file": "CONTRIBUTING.md",
+  "line_low": 25,
+  "line_high": 27,
+  "must_mention": [
+    "GOVERNANCE.md",
+    "Core Maintainers",
+    "Plugin Reviewers",
+    "2 approvals"
+  ]
+}

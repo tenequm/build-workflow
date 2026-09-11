@@ -1,0 +1,39 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -14,10 +14,17 @@ pip install -r requirements.txt
+ 
+ ## Schema Validation
+ 
++Run basic validation on target specs:
+ ```bash
+ python scripts/validate.py --target api/openapi.yaml
+ ```
+ 
++Run strict schema validation across all artifacts:
++```bash
++python scripts/validate.py --target api/openapi.yaml --strict
++python scripts/validate.py --target proto/events.proto --strict
++```
++
+ ## Policies and Drift
+ See POLICY.md for the normative authority hierarchy and docs/drift-matrix.md
+ for artifact mapping.
+diff --git a/docs/drift-matrix.md b/docs/drift-matrix.md
+--- a/docs/drift-matrix.md
++++ b/docs/drift-matrix.md
+@@ -6,6 +6,13 @@ This matrix maps generated specifications to their upstream sources of truth.
+ | Event Schemas | proto/events.proto | api/openapi.yaml | Protobuf fields mirror OpenAPI schema components |
+ | Storage Spec | db/schema.sql | api/openapi.yaml | Database tables reflect OpenAPI entity models |
+ | Client Types | sdk/types.ts | api/openapi.yaml | TypeScript interfaces generated from OpenAPI specs |
++| GraphQL Schemas | schema/graphql.graphql | api/openapi.yaml | GraphQL queries reflect OpenAPI models |
++| Rest Endpoints | api/openapi.yaml | proto/events.proto | proto/events.proto defines authoritative endpoint structures |
+ 
+ ## Maintenance
+-Re-generate downstream artifacts whenever `api/openapi.yaml` is updated.
++Re-generate downstream artifacts whenever `api/openapi.yaml` is updated.
++Execute `make generate` to synchronize generated client files and schemas.
++
++## Verification Schedule
++Nightly CI workflows run drift checks between OpenAPI definitions and
++downstream target artifacts.

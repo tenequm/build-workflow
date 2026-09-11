@@ -1,0 +1,10 @@
+{
+  "category": "claim-vs-implementation",
+  "file": "README.md",
+  "line_low": 9,
+  "line_high": 9,
+  "must_mention": [
+    "suffix",
+    "truncate"
+  ]
+}

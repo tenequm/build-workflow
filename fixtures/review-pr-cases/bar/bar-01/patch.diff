@@ -1,0 +1,74 @@
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index 7679a12..9511a37 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -4,20 +4,26 @@ Thank you for contributing to metrics-collector!
+ 
+ ## Development Workflow
+ 1. Fork the repository and create a feature branch.
+-2. Ensure all unit tests pass locally before opening a pull request.
+-3. Keep changes focused on a single topic.
++2. Create a virtual environment: `python -m venv .venv`.
++3. Activate the environment: `source .venv/bin/activate`.
++4. Install development dependencies: `pip install -e .[dev]`.
++5. Ensure all unit tests pass locally before opening a pull request.
++6. Keep changes focused on a single topic.
++
++## Branch Naming
++- Use `feature/` prefixes for new capabilities.
++- Use `fix/` prefixes for bug fixes.
+ 
+ ## Coding Standards
+ - Format all Python code using `black` and `ruff`.
+ - Include docstrings for public classes and functions.
+ - Add unit tests under the `tests/` directory.
++- Maintain at least 80 percent code coverage for new code.
+ 
+ ## Review Process
+-Pull requests are reviewed by designated maintainers based on the
+-affected subsystems.
+-
+-Follow the review quorums specified in GOVERNANCE.md when coordinating
+-reviews with team members.
++Pull requests are reviewed by designated maintainers across all subsystems.
++All PR reviews require a minimum of 2 approvals before merging.
++Follow the reviewer assignment guidelines specified in GOVERNANCE.md.
+ 
+ ## Submitting Changes
+ Push your branch to GitHub and open a pull request against `main`.
+diff --git a/README.md b/README.md
+index 9321f07..2dd2e25 100644
+--- a/README.md
++++ b/README.md
+@@ -5,6 +5,9 @@ A lightweight metrics aggregation daemon for streaming telemetry.
+ ## Installation
+ 
+ ```bash
++python -m venv .venv
++source .venv/bin/activate
++python -m pip install --upgrade pip
+ pip install metrics-collector
+ ```
+ 
+@@ -13,10 +16,20 @@ pip install metrics-collector
+ ```python
+ from metrics_collector import Collector
+ 
+-collector = Collector(port=9090)
++collector = Collector(
++    port=9090,
++    buffer_size=8192,
++    flush_interval_ms=500,
++)
+ collector.start()
+ ```
+ 
++## CLI Usage
++You can also run the collector via the command line:
++```bash
++metrics-collector --config config/pipelines.json --verbose
++```
++
+ ## Architecture
+ The system contains two distinct subsystems:
+ - Core Pipeline: Ingests, batches, and transforms metric events.
