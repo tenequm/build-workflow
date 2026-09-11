@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 DECLARED = {
-    label: re.compile(rf"^\s*{label}\s*[:=]\s*(\d+)\b", re.I | re.M)
+    label: re.compile(rf"^\s*{label}\s*[:=]\s*(\d+)\b", re.IGNORECASE | re.MULTILINE)
     for label in ("certain", "plausible")
 }
 
@@ -28,12 +28,12 @@ def parse_verdict(review: Path) -> dict:
             "reason": "no blind-review.md",
         }
     raw = review.read_text()
-    text = re.sub("```.*?```", "", raw, flags=re.S)
+    text = re.sub("```.*?```", "", raw, flags=re.DOTALL)
     tail_lines = [l.strip() for l in text.splitlines() if l.strip()][-3:]
     legal = re.findall(
         r"^Verdict:\s*(do not merge|merge after listed fixes|merge as-is)\s*$",
         "\n".join(tail_lines),
-        re.I | re.M,
+        re.IGNORECASE | re.MULTILINE,
     )
     verdict = legal[0].lower() if len(legal) == 1 else None
     certain_all = DECLARED["certain"].findall(text)

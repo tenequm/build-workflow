@@ -22,14 +22,14 @@ from . import findings as findings_mod
 
 KINDS = ("command", "number", "injection")
 EXPECTATIONS = ("exit_zero", "exit_nonzero", "empty", "nonempty", "contains")
-FENCE = re.compile(r"```[a-zA-Z0-9_+-]*\n(.*?)```", re.S)
-PROMPT = re.compile(r"^[$%>]\s+(.+)$", re.M)
+FENCE = re.compile(r"```[a-zA-Z0-9_+-]*\n(.*?)```", re.DOTALL)
+PROMPT = re.compile(r"^[$%>]\s+(.+)$", re.MULTILINE)
 # Claims about validation are the ones that mislead hardest, because a reader takes
 # them as the reason no further checking is needed.
 VALIDATION = re.compile(
     r"\b(all tests pass|tests pass|test suite passes|lint is clean|lint passes|no warnings"
     r"|type check(?:s|ing)? pass|green|clean build|builds clean)\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 
@@ -144,7 +144,7 @@ COVERAGE = re.compile(
     r"\b(?:new|added|adds|additional|updated|extended)\b[^.;]{0,60}"
     r"\b(?:tests?|test cases|coverage)\b"
     r"|\b(?:tests?|coverage)\b[^.;]{0,40}\b(?:added|updated|extended)\b",
-    re.I,
+    re.IGNORECASE,
 )
 # What the body names for itself. A claim that names nothing is never accused: the
 # check decides only on a name the diff verifiably lacks.

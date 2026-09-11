@@ -108,7 +108,7 @@ def _container(argv: list[str], cwd: Path, image: str) -> list[str]:
 COULD_NOT_RUN = re.compile(
     r"command not found|No such file or directory|not recognized"
     r"|Network is unreachable|Failed to download|Temporary failure in name resolution",
-    re.I,
+    re.IGNORECASE,
 )
 
 

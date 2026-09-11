@@ -6,7 +6,12 @@ requires-python = ">=3.13"
 dependencies = ["bernstein", "pyyaml", "psutil>=6"]
 
 [dependency-groups]
-dev = ["ruff>=0.15.0", "ty==0.0.79", "pytest>=9.0.0", "pytest-asyncio>=1.3.0", "pre-commit>=4.0.0"]
+dev = [
+    "ruff>=0.16.6",          # 0.16 is the rule set this config is written against
+    "ty==0.0.79",            # beta: pin tight, inference changes between minors
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
 
 [tool.uv.sources]
 bernstein = { git = "https://github.com/sipyourdrink-ltd/bernstein", rev = "0a6bf9f2d69daae4ad468a9ba6a2713f79d67fdf" }
@@ -27,21 +32,32 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = ["--strict-markers", "--strict-config", "-ra"]
+asyncio_default_fixture_loop_scope = "function"
+# pytest 9.0 silently ignored --strict-markers/--strict-config passed via addopts.
+# `strict` is the ini key that works on 9.0 and 9.1 alike, and also covers
+# strict_xfail and strict_parametrization_ids.
+strict = true
+addopts = ["-ra"]
 
 [tool.ruff]
 target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-ignore = ["E501", "E741", "UP007"]
+# No `select`: ruff 0.16 enables 413 rules by default and a select list shrinks that.
+ignore = [
+    "E501",    # line too long - formatter handles it
+    "UP007",   # X | Y unions - Optional[X] is more readable
+    "PLW1510", # subprocess returncodes are read by hand here; raising on them loses the evidence
+    "BLE001",  # observability boundaries catch broadly on purpose: they never raise on a failure
+]
 exclude = [".git", ".venv", "__pycache__", "build", "dist"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+exclude = ["*.md"]  # template Markdown must not have its Python fences reformatted
 
 [tool.ty.environment]
 python-version = "3.13"

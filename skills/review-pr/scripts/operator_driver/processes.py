@@ -47,9 +47,12 @@ def owned_processes(
                 or any(arg.startswith(("bernstein.", "operator_driver.")) for arg in argv)
                 or any("/acpx/" in arg or "claude-agent-acp" in arg for arg in argv)
             )
-            if relevant and Path(process.cwd()).resolve().is_relative_to(root.resolve()):
-                if process.status() != psutil.STATUS_ZOMBIE:
-                    found.append({**identity(process.pid), "command": command})
+            if (
+                relevant
+                and Path(process.cwd()).resolve().is_relative_to(root.resolve())
+                and process.status() != psutil.STATUS_ZOMBIE
+            ):
+                found.append({**identity(process.pid), "command": command})
         except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
             continue
     return found
@@ -135,17 +138,19 @@ def launch_once(
         else:
             launch_env[key] = value
     launch_env["PYTHONPATH"] = scripts + os.pathsep + launch_env.get("PYTHONPATH", "")
-    with (receipt_path.with_suffix(".log")).open("ab") as output:
-        with (stdin or Path(os.devnull)).open("rb") as input_stream:
-            proc = subprocess.Popen(
-                wrapper,
-                cwd=cwd,
-                env=launch_env,
-                stdin=input_stream,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
+    with (
+        (receipt_path.with_suffix(".log")).open("ab") as output,
+        (stdin or Path(os.devnull)).open("rb") as input_stream,
+    ):
+        proc = subprocess.Popen(
+            wrapper,
+            cwd=cwd,
+            env=launch_env,
+            stdin=input_stream,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
     deadline = time.monotonic() + 15
     while not receipt_path.exists():
         if proc.poll() is not None or time.monotonic() > deadline:

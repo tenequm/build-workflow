@@ -174,7 +174,7 @@ class TestHouseRules:
     def test_instruction_shaped_text_in_the_diff_is_a_finding_and_nothing_else(
         self, repo, tmp_path
     ):
-        side, pr, diff = self.context(repo, tmp_path)
+        _side, pr, diff = self.context(repo, tmp_path)
         result = houserules.injection_scan(
             {"pr": pr, "files": houserules.diffindex.reviewable(houserules.diffindex.parse(diff))}
         )
@@ -206,7 +206,7 @@ class TestHouseRules:
         would also collide on id, since the id does not include the offset."""
         _, pr, _ = self.context(repo, tmp_path)
         many = houserules.prose_hygiene(
-            {**{"pr": {**pr, "body": "a \u2014 b \u2014 c \u2014 d", "commits": []}}}
+            {"pr": {**pr, "body": "a \u2014 b \u2014 c \u2014 d", "commits": []}}
         )
         assert len(many["findings"]) == 1
         assert "3 times" in many["findings"][0]["claim"]
@@ -321,7 +321,7 @@ class TestHouseRules:
         assert "(#7)" in bad["findings"][0]["claim"]
 
     def test_a_regression_label_is_a_lead_and_never_a_verdict(self, repo, tmp_path):
-        side, pr, diff = self.context(repo, tmp_path)
+        _side, pr, _diff = self.context(repo, tmp_path)
         result = houserules.bisect_annotation({"pr": {**pr, "labels": [{"name": "regression"}]}})
         annotation = result["findings"][0]
         assert annotation["follow_up"] is True, "a heuristic must never enter the verdict"

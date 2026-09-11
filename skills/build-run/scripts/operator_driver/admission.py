@@ -18,11 +18,10 @@ def no_ingress(root: Path):
         if any(path.is_file() for path in directory.rglob("*")):
             raise Park(f"native task backlog is not empty: {directory}")
     for path in (root / ".sdd/runtime/task-backlog.json", root / ".sdd/task-backlog.json"):
-        if path.is_file():
-            # The driver never consumes backlog. Even a nonempty schema wrapper
-            # requires explicit inspection instead of guessing which items are live.
-            if path.read_text().strip() not in {"", "[]", "{}"}:
-                raise Park(f"backlog is not empty: {path}")
+        # The driver never consumes backlog. Even a nonempty schema wrapper
+        # requires explicit inspection instead of guessing which items are live.
+        if path.is_file() and path.read_text().strip() not in {"", "[]", "{}"}:
+            raise Park(f"backlog is not empty: {path}")
 
 
 def disk_check(root: Path):

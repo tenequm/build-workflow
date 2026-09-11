@@ -145,9 +145,11 @@ def run_build(build: Build, ledger: Ledger, *, execute_run=execute, judge_run=ju
                         "actionable review is outside the pinned fix scope or has no structured evidence"
                     )
                 fix_operation = f"{phase['name']}-fix-{sequence}"
-                if not ledger.last("native_intent", operation=fix_operation):
-                    if git(build.root, "rev-parse", build.branch) != closed["tip"]:
-                        raise Park("integration moved before fix dispatch")
+                if (
+                    not ledger.last("native_intent", operation=fix_operation)
+                    and git(build.root, "rev-parse", build.branch) != closed["tip"]
+                ):
+                    raise Park("integration moved before fix dispatch")
                 closed = execute_run(
                     build,
                     ledger,

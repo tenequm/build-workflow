@@ -20,7 +20,7 @@ from . import diffindex, findings, sandbox
 from .proc import git, git_ok
 
 FRAGMENT_DIR = "docs/release-notes/fragments/"
-SIGNOFF = re.compile(r"^\s*Signed-off-by:", re.M)
+SIGNOFF = re.compile(r"^\s*Signed-off-by:", re.MULTILINE)
 # The characters upstream's hygiene denylist names, written as escapes so this file -
 # whose whole job is to find them - stays plain ASCII itself.
 UNICODE_PROSE = re.compile(r"[\u2010-\u2015\u2018-\u201f\u2026\u00a0]")
@@ -52,7 +52,7 @@ INJECTION = re.compile(
     r"|approve this (?:pr|pull request|change)|mark this as (?:approved|clean)"
     r"|do not report|skip the review|report no (?:issues|findings)"
     r"|run the following command",
-    re.I,
+    re.IGNORECASE,
 )
 REGRESSION_LABEL = "regression"
 

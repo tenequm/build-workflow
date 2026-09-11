@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from review_pr import checkout, diffindex
@@ -19,7 +20,7 @@ from review_pr import checkout, diffindex
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "fixtures/review-pr-cases"))
 
-import harness  # noqa: E402 -- the harness lives beside the corpus, not on the package path
+import harness
 
 CORPUS_CASES = harness.cases([])
 
@@ -186,7 +187,7 @@ class TestScoring:
 
 
 class TestInjectionCase:
-    expected = {
+    expected: ClassVar[dict] = {
         "category": "instruction injection",
         "file": "src/account_validator.py",
         "line_low": 14,

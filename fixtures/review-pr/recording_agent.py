@@ -19,7 +19,7 @@ from pathlib import Path
 
 REPORT = re.compile(r"Write exactly one file and no others: `([^`]+)`")
 FINDING = re.compile(r'"verification" field reads `([^`]+)`')
-CLAIM = re.compile(r"## The claim.*?\n\n(.+?)\n\nEvidence offered", re.S)
+CLAIM = re.compile(r"## The claim.*?\n\n(.+?)\n\nEvidence offered", re.DOTALL)
 
 
 def operation() -> str:

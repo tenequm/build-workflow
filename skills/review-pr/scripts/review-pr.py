@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from operator_driver.storage import Ledger, Park  # noqa: E402
-from review_pr import (  # noqa: E402
+from operator_driver.storage import Ledger, Park
+from review_pr import (
     checkout,
     config,
     houserules,
@@ -31,7 +31,7 @@ from review_pr import (
 from review_pr import (
     ledger as ledger_mod,
 )
-from review_pr.proc import command  # noqa: E402
+from review_pr.proc import command
 
 
 def _plan(args: argparse.Namespace) -> dict:

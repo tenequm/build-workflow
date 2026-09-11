@@ -156,7 +156,9 @@ def check(build: Build, *, replay: bool = True) -> dict:
         rel = defaults.get(key)
         sections[label] = (
             set(
-                re.findall(r"^#+\s*(\d+(?:\.\d+)*)\b", contained(build.root, rel).read_text(), re.M)
+                re.findall(
+                    r"^#+\s*(\d+(?:\.\d+)*)\b", contained(build.root, rel).read_text(), re.MULTILINE
+                )
             )
             if rel
             else set()
@@ -165,14 +167,16 @@ def check(build: Build, *, replay: bool = True) -> dict:
     commands = set()
     for title, task in build.tasks.items():
         text = contained(build.root, build.sidecar["steps"][title]["brief"]).read_text()
-        if len(text) > 16000 or not re.search(r"^##\s*Items\b", text, re.M):
+        if len(text) > 16000 or not re.search(r"^##\s*Items\b", text, re.MULTILINE):
             raise Park(f"brief exceeds 16k characters or lacks Items: {title}")
         for label, section in SECTION_CITE.findall(text):
             if section not in sections[label] and section.split(".")[0] not in sections[label]:
                 raise Park(f"unresolvable brief citation: {title}: {label} {section}")
         if FAST_PATH.search(f"{title} {task.description}".lower()):
             raise Park(f"title or description selects an unexecuted native fast path: {title}")
-        validation = re.search(r"^##\s*Validation[^\n]*\n.*?```[^\n]*\n(.*?)```", text, re.M | re.S)
+        validation = re.search(
+            r"^##\s*Validation[^\n]*\n.*?```[^\n]*\n(.*?)```", text, re.MULTILINE | re.DOTALL
+        )
         if not validation:
             raise Park(f"brief has no fenced Validation command: {title}")
         commands.add(validation[1])
