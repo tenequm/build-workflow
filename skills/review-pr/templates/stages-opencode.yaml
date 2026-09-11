@@ -17,12 +17,13 @@ version: 1
 families:
   # Verifier only - no lens routes here. verify.opposite() refuses to verify an
   # opencode finding with opencode, and a template with one family parks every finding
-  # it produces. gemini is the opposite family because it costs no real money.
-  gemini:
-    transport: acp
-    # A wrapper, not the .par: on Linux the ACP server needs --uid=. Point this at
-    # your own wrapper; `review-pr ready` refuses an unresolvable adapter.
-    adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']
+  # it produces. claude is the opposite family: subscription-covered, no metered key.
+  claude:
+    transport: claude
+    adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
+    # Without this the Claude harness saves nothing, so pond has nothing to ingest and
+    # a finding verified on this family cannot point at the transcript behind it.
+    persist_session: true
   opencode:
     transport: acp
     adapter_argv: [npx, --yes, 'opencode-ai@1.18.30', acp, --pure]
@@ -95,7 +96,7 @@ roles:
     max_turns: 40
     timeout_s: 900
     models:
-      gemini: gemini-3.7-flash-medium
+      claude: claude-sonnet-5
       opencode: opencode/muse-spark-1.3-contributor-free
   claims:
     family: opencode
