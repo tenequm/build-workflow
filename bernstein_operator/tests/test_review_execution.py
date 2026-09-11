@@ -160,6 +160,37 @@ class TestRubrics:
         )
         assert failing["passed"] is False
 
+    def test_a_command_rubric_that_runs_a_missing_script_never_passes(self, review):
+        """Measured 2026-09-11 on floor/case-04: a verifier wrote its repro into its own
+        worktree and named it in a rubric. Rubrics run against the shared tree, `sh` on
+        a missing file exits non-zero, and `exit_nonzero` read that as the claim proved.
+        A check that could not run refutes nothing, and it confirms nothing either."""
+        result = rubric.execute(
+            self.finding(
+                rubric={
+                    "kind": "command",
+                    "run": "sh scratch/repro-678dfdbdda79.sh",
+                    "expect": "exit_nonzero",
+                }
+            ),
+            review,
+            tier=sandbox.tier(),
+        )
+        assert result["ran"] is False and result["passed"] is False
+        assert "does not exist in the tree" in result["reason"]
+
+    def test_an_absence_proof_is_still_allowed_to_run(self, review):
+        """`test -f gone.md` expecting non-zero is a legitimate check on a missing file;
+        the guard polices the interpreter's target, not every path in the line."""
+        result = rubric.execute(
+            self.finding(
+                rubric={"kind": "command", "run": "test -f nothing.md", "expect": "exit_nonzero"}
+            ),
+            review,
+            tier=sandbox.tier(),
+        )
+        assert result["ran"] is True and result["passed"] is True
+
     def test_a_grep_rubric_decides_on_presence(self, review):
         present = rubric.execute(
             self.finding(

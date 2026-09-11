@@ -23,6 +23,36 @@ HUNK_HEAD = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 GREP = ("rg", "--no-heading", "--line-number", "--color=never")
 
 
+INTERPRETERS = ("sh", "bash", "zsh", "python", "python3", "node", "ruby", "perl")
+
+
+def unrunnable(run: str, tree: Path) -> str | None:
+    """Why a command rubric could not run at all, or None if it can be tried.
+
+    One shape only, and it is the dangerous one: a rubric that hands an interpreter a
+    script that is not there. The shell answers a missing file with a non-zero exit, and
+    `expect: exit_nonzero` reads that as the check passing - a CONFIRMED verdict from a
+    check that never executed. Measured 2026-09-11: a verifier wrote its repro to its
+    own worktree and then named it in a rubric, and rubrics run against the shared tree.
+
+    This deliberately does not police every path in a command line: `test -f gone.md`
+    with `expect: exit_nonzero` is a legitimate absence proof, and refusing it would
+    cost real findings.
+    """
+    words = run.split()
+    target = None
+    if words and words[0] in INTERPRETERS and len(words) > 1 and not words[1].startswith("-"):
+        target = words[1]
+    elif words and words[0].startswith("./"):
+        target = words[0]
+    if target is None or target.startswith("-"):
+        return None
+    path = Path(target)
+    if path.is_absolute() or ".." in path.parts or (tree / path).exists():
+        return None
+    return f"the rubric runs {target!r}, which does not exist in the tree it executes against"
+
+
 def _evaluate(expect: str, result: dict[str, Any], contains: str | None) -> bool:
     output = (result["stdout"] + result["stderr"]).strip()
     if expect == "exit_zero":
@@ -100,6 +130,9 @@ def execute(
     head = Path(sidecar["tree"])
     legs: list[dict[str, Any]] = []
     if check["kind"] == "command":
+        blocked = unrunnable(check["run"], head)
+        if blocked:
+            return {"ran": False, "passed": False, "reason": blocked}
         result = sandbox.run(check["run"], head, tier_name=tier, image=image, timeout=timeout)
         legs.append({"leg": "head", **result})
         passed = _evaluate(check["expect"], result, check.get("contains"))

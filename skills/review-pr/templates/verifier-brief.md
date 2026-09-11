@@ -44,6 +44,12 @@ Write exactly one file and no others: `{{REPORT_PATH}}`, resolved against your c
 working directory. Do not write it under any absolute path named above - those are
 shared, and a report written into one is a report nobody collects.
 
+One exception, and only one: working files go under `scratch/`. Write and run your
+demonstration there as freely as you like. Everything else in this tree is the code
+under review, and changing any of it ends the run. `scratch/` is thrown away with this
+worktree, so put the demonstration itself in `repro`, which is executed for you against
+both trees.
+
 Its shape:
 
 ```json
@@ -62,7 +68,8 @@ Its shape:
 - `DROPPED` - the claim does not hold. Say what the code actually does.
 
 `rubric` may restate or replace the offered check with one that actually decides the
-question; `null` if none exists. `repro` is a shell script; it is executed on both
+question; `null` if none exists. It runs against the reviewed tree, not this one, so a
+rubric that runs a file you wrote under `scratch/` is dropped unread. `repro` is a shell script; it is executed on both
 trees and is only accepted if it fails on the changed tree and passes on the
 unchanged one.
 

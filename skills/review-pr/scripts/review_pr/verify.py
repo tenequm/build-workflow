@@ -98,7 +98,7 @@ def select(
     return queue[:cap], settled + queue[cap:]
 
 
-def _report(path: Path, finding_id: str) -> dict[str, Any]:
+def _report(path: Path, finding_id: str, tree: str | None = None) -> dict[str, Any]:
     try:
         data = json.loads(path.read_bytes())
     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -122,6 +122,15 @@ def _report(path: Path, finding_id: str) -> dict[str, Any]:
         replacement = findings_mod.rubric(data.get("rubric"))
     except Park as exc:
         rejected = str(exc)
+    # A session may write a demonstration into its own worktree (runner.SCRATCH), and
+    # that worktree is gone by the time any rubric executes - rubrics run against the
+    # shared tree. So a replacement that names a file the session made cannot run, and
+    # a rubric that cannot run must never reach a verdict. Same channel: dropped and
+    # recorded, because the verdict and the reason are what decide anything.
+    if replacement and replacement["kind"] == "command" and tree:
+        blocked = rubric_mod.unrunnable(replacement["run"], Path(tree))
+        if blocked:
+            replacement, rejected = None, blocked
     return {
         "verdict": data["verdict"],
         "reason": findings_mod.redact(reason.strip()),
@@ -322,7 +331,10 @@ def verify(
             report_path = (
                 ledger.directory / "sessions" / receipt["operation"] / Path(task.report).name
             )
-            receipt = {**receipt, "verification": _report(report_path, finding_id)}
+            receipt = {
+                **receipt,
+                "verification": _report(report_path, finding_id, sidecar.get("tree")),
+            }
         sessions[finding_id] = receipt
     resolved = (
         [

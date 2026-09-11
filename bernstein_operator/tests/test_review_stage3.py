@@ -174,6 +174,59 @@ class TestSettle:
         assert report["rubric"] is None
         assert "expect must be one of" in report["rejected_rubric"]
 
+    def test_a_replacement_rubric_naming_a_scratch_file_is_dropped_and_recorded(self, tmp_path):
+        """A session may write its demonstration under scratch/, but that worktree is
+        removed at settle and rubrics execute against the shared tree. So a replacement
+        that runs a scratch file cannot run at all - and a command that cannot run must
+        never reach a verdict. Dropped and recorded, like any other bad replacement."""
+        tree = tmp_path / "tree"
+        (tree / "src").mkdir(parents=True)
+        (tree / "src/app.py").write_text("x = 1\n")
+        path = tmp_path / "verify-x.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "verification": "x",
+                    "verdict": "CONFIRMED",
+                    "reason": "it holds at a.py:3",
+                    "repro": "exit 1",
+                    "rubric": {
+                        "kind": "command",
+                        "run": "sh scratch/repro-678dfdbdda79.sh",
+                        "expect": "exit_nonzero",
+                    },
+                }
+            )
+        )
+        report = verify._report(path, "x", str(tree))
+        assert report["verdict"] == "CONFIRMED", "the verdict and the reason still decide"
+        assert report["rubric"] is None
+        assert "does not exist in the tree" in report["rejected_rubric"]
+
+    def test_a_replacement_rubric_naming_a_real_path_survives(self, tmp_path):
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        (tree / "check.sh").write_text("exit 1\n")
+        path = tmp_path / "verify-x.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "verification": "x",
+                    "verdict": "CONFIRMED",
+                    "reason": "it holds at a.py:3",
+                    "repro": None,
+                    "rubric": {
+                        "kind": "command",
+                        "run": "sh check.sh",
+                        "expect": "exit_nonzero",
+                    },
+                }
+            )
+        )
+        report = verify._report(path, "x", str(tree))
+        assert report["rubric"]["run"] == "sh check.sh"
+        assert report["rejected_rubric"] is None
+
     def test_a_follow_up_is_reported_but_never_verified(self):
         row = finding(tags=["pre-existing"])
         result = verify.verify(
