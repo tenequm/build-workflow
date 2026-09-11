@@ -24,6 +24,12 @@ ENV_ALLOWLIST = (
     "LANG",
     "LC_ALL",
     "LOGNAME",
+    # opencode reads its Zen credential from XDG_DATA_HOME, which every opencode family
+    # redirects per session to scope capture - so this name is the only way a Zen lane
+    # reaches its provider at all. OPENROUTER_API_KEY is the same lane with a paid
+    # multi-provider key instead. Exposure parity, as above.
+    "OPENCODE_API_KEY",
+    "OPENROUTER_API_KEY",
     "PATH",
     # pi keeps providers, auth, skills and project trust under the first and its
     # transcripts under the second. Redirecting both per session is what gives a pi lane

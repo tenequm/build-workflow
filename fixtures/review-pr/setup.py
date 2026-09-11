@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -152,22 +153,14 @@ def main() -> int:
                 str(FIXTURE / "policy.json"),
             ]
         )
-        for family, argv in (
-            (
-                "claude",
-                "  - npx\n    - --yes\n    - '@agentclientprotocol/claude-agent-acp@0.60.0'",
-            ),
-            ("codex", "  - npx\n    - --yes\n    - '@agentclientprotocol/codex-acp@1.1.5'"),
-        ):
-            text = text.replace(
-                f"    adapter_argv: [npx, --yes, '@agentclientprotocol/"
-                f"{'claude-agent' if family == 'claude' else 'codex'}-acp@"
-                f"{'0.60.0' if family == 'claude' else '1.1.5'}']",
-                f"    adapter_argv: {agent}",
-            )
-        text = text.replace(
-            "    adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']", f"    adapter_argv: {agent}"
+        # Every family's adapter, by shape rather than by pinned name: a template that
+        # swaps a lane's provider must not silently leave one family spawning the real
+        # adapter, which is a paid session inside the free fixture.
+        text, swapped = re.subn(
+            r"^ {4}adapter_argv: .*$", f"    adapter_argv: {agent}", text, flags=re.MULTILINE
         )
+        if swapped != len(re.findall(r"^ {4}adapter_argv:", text, flags=re.MULTILINE)):
+            raise SystemExit("stages.yaml has an adapter_argv this fixture cannot redirect")
     template.write_text(text)
 
     python = ROOT / "bernstein_operator/.venv/bin/python"

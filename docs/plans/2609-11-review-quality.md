@@ -29,10 +29,30 @@ parked the run (560e824), and the gate turned an environment refusal
 ("Network is unreachable" building the venv) into a CONFIRMED
 validation-fails finding - the could-not-run detector is now shared between
 gate and claims (c3f6e53). Operator directive (2026-09-11): gemini leaves the
-test lanes - stages-fast runs every lens and claims on claude-sonnet-5 with a
-codex gpt-5.6-sol verifier (213b24f), stages-opencode verifies on sonnet
-(a810de5); production stages.yaml is the only remaining gemini spend, pending
-the free/cheap swap.
+test lanes - stages-fast first went to claude-sonnet-5 with a codex
+gpt-5.6-sol verifier (213b24f) and stages-opencode to a sonnet verifier
+(a810de5). Then the operator revoked the metered GEMINI_API_KEY, ran out of
+Claude Max window, and logged in to opencode Zen, so the second swap landed
+the same day: stages-fast now runs every lens and the claims role on
+opencode/muse-spark-1.3-contributor-free at effort high (free, codex still
+verifies), stages-opencode was folded into it because the two files then
+differed in nothing but their bounds, and production stages.yaml keeps a
+family named gemini but reaches it through opencode Zen
+(opencode/gemini-3.8-flash, opencode/gemini-3.7-flash). No template declares
+the agy transport any more and no lane needs a Google key.
+
+Three things that swap surfaced, all fixed with tests: a malformed lens rubric
+parked a whole corpus case, and now costs that finding its mechanical check
+and nothing else (`rejected_rubric`, the same treatment the verifier's
+replacement rubric already had); the readiness pond-adapter check was
+hardcoded to agy and is now driven by the plan's declared families; and the
+recorded fixture hardcoded both the adapter argv per family and the model list
+it advertises, so any provider swap broke it - both are now derived. Two
+follow-ups are open and recorded in the lanes reference: Zen charges twice
+Google list for Gemini flash ($1.50/$7.50 per M against $0.75/$3.75), which
+makes glm-5.3-flash at $0.15/$0.50 the next thing to measure on the free loop;
+and pondcost has no opencode branch, so a Zen lane's cost figure is null
+rather than a floor.
 
 Driver rule: the driver does as little as possible - it launches lanes (gemini
 acpx, model gemini-3.7-flash-medium) and subagents (opus, NEVER fable), reads

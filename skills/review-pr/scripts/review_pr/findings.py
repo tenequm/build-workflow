@@ -174,7 +174,16 @@ def normalize(entry: object, *, lens: str, producer: str) -> dict[str, Any]:
     claim = redact(_string(entry, "claim"))
     if len(claim.split()) < 3:
         raise Park("a claim must be a sentence, not a label")
-    check = rubric(entry.get("rubric"))
+    # The same rule once more, and the verifier's `rejected_rubric` is the precedent: a
+    # rubric is optional by design, and the demotion two lines below already handles its
+    # absence - no rubric, no verdict above SUGGESTION - so a malformed one costs the
+    # finding its mechanical check and nothing else. Measured 2026-09-11: one invalid
+    # rubric kind from a weaker lens model parked a corpus case whose other findings were
+    # all intact. A rubric that parses is still strict, because stage 3 executes it.
+    try:
+        check, rejected_rubric = rubric(entry.get("rubric")), None
+    except Park as exc:
+        check, rejected_rubric = None, str(exc)
     # The same rule as the tags above, for the same reason: the brief calls `suggestion`
     # optional and every consumer already guards for its absence, so a malformed one is
     # dropped and recorded rather than voiding a report four sessions paid for.
@@ -194,6 +203,7 @@ def normalize(entry: object, *, lens: str, producer: str) -> dict[str, Any]:
         "claim": claim,
         "evidence": redact(_string(entry, "evidence")),
         "rubric": check,
+        "rejected_rubric": rejected_rubric,
         # The plan's demotion rule, applied where the rubric is read rather than
         # trusted to a later stage: no rubric, no verdict above SUGGESTION.
         "unverifiable": check is None,

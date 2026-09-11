@@ -21,6 +21,7 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -93,9 +94,29 @@ def current(pinned: tuple[int, ...] = PINNED) -> dict[str, Any]:
     }
 
 
-def adapters() -> dict[str, Any]:
+def adapters(names: Iterable[str]) -> dict[str, Any]:
+    """Which of `names` pond has enabled.
+
+    The names come from the plan, never from this file: a lane whose adapter is disabled
+    captures nothing, and that is a fact readiness can state before any session is paid
+    for rather than one the report-witness law surfaces at the end of a run.
+    """
     code, text = _pond(["adapters", "list"], timeout=60)
-    return {"ok": code == 0, "agy": "agy" in text, "output": text.strip()[-2000:]}
+    return {
+        "ok": code == 0,
+        "enabled": {name: name in text for name in names},
+        "output": text.strip()[-2000:],
+    }
+
+
+def plan_adapters(plan: dict[str, Any]) -> set[str]:
+    """The pond adapters the families this plan declares write their sessions to."""
+    chosen = set()
+    for name, family in plan["families"].items():
+        adapter = family.get("pond_adapter") or ADAPTERS.get(name)
+        if adapter:
+            chosen.add(str(adapter))
+    return chosen
 
 
 def _claude_project_dir(worktree: str) -> Path:

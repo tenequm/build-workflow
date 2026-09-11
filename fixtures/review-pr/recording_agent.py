@@ -127,6 +127,17 @@ def main() -> None:
                 Path(record).parent.mkdir(parents=True, exist_ok=True)
                 Path(record).write_text(json.dumps(request.get("params", {})))
             models = list(rules.get("models") or DEFAULT_MODELS)
+            # Plus whatever this session asked for: acpx refuses a `--model` the agent
+            # did not advertise, so a hardcoded list makes every provider swap in the
+            # template break the fixture instead of the lane it changed.
+            asked = (
+                ((request.get("params") or {}).get("_meta") or {})
+                .get("claudeCode", {})
+                .get("options", {})
+                .get("model")
+            )
+            if isinstance(asked, str) and asked and asked not in models:
+                models.insert(0, asked)
             result = {
                 "sessionId": session,
                 "models": {

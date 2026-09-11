@@ -124,15 +124,17 @@ def check(
         )
     )
     if capture and pond["ok"]:
-        found = pondsync.adapters()
-        results.append(
-            _check(
-                "pond:agy",
-                found["agy"],
-                "run `pond adapters enable agy` once on a host that synced before 0.17.2",
-                blocking=False,
+        found = pondsync.adapters(pondsync.plan_adapters(plan))
+        for adapter, enabled in sorted(found["enabled"].items()):
+            results.append(
+                _check(
+                    f"pond:{adapter}",
+                    enabled,
+                    f"run `pond adapters enable {adapter}` once on a host that synced "
+                    "before it shipped",
+                    blocking=False,
+                )
             )
-        )
     if sidecar is not None:
         provenance = sidecar["gate"]
         results.append(

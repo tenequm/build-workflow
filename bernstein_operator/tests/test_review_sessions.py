@@ -299,35 +299,27 @@ class TestStageTemplate:
         with pytest.raises(Park, match="must never run on codex"):
             config.lens_spec(plan, "gating", family="codex")
 
-    def test_the_fast_loop_can_verify_its_own_findings(self):
-        """A one-family template parks every finding it produces: a judge passes its
-        own family's output over half the time, so verify.opposite() refuses. Measured
-        on the first corpus run, where it cost 11 of 14 cases."""
+    def test_the_fast_loop_routes_fences_and_can_verify_its_own_findings(self):
+        """The fast loop runs on OpenCode Zen's free tier, where the models train on
+        prompts - so the fence is in the file itself, the lane is worth nothing if a
+        lens silently runs at opencode's default effort of `minimal`, and a one-family
+        template parks every finding it produces, because a judge passes its own
+        family's output over half the time and verify.opposite() refuses. Measured on
+        the first corpus run, where that cost 11 of 14 cases."""
         from review_pr import verify
 
-        plan = config.load(config.TEMPLATES / "stages-fast.yaml")
-        assert {spec["family"] for spec in plan["lenses"].values()} == {"claude"}
-        assert plan["dual_family"]["enabled"] is False
-        assert verify.opposite(plan, "claude")[0] == "codex"
-
-    def test_the_opencode_trial_template_routes_and_fences_itself(self):
-        """A trial lane on OpenCode Zen's free tier. The models there train on prompts,
-        so the fence is in the file itself, and the lane is worth nothing if the lens
-        silently runs at opencode's default effort of `minimal`."""
-        from review_pr import verify
-
-        path = config.TEMPLATES / "stages-opencode.yaml"
+        path = config.TEMPLATES / "stages-fast.yaml"
         assert "ONLY for open-source repositories" in path.read_text()
         plan = config.load(path)
         assert {spec["family"] for spec in plan["lenses"].values()} == {"opencode"}
         assert all(spec.get("effort") == "high" for spec in plan["lenses"].values())
-        assert verify.opposite(plan, "opencode")[0] == "claude"
+        assert verify.opposite(plan, "opencode")[0] == "codex"
         assert plan["dual_family"]["enabled"] is False
 
     def test_the_effort_option_id_is_the_family_s_to_name(self, tmp_path):
         """opencode answers Codex's `reasoning_effort` with -32602 and then runs the
         session at `minimal`. A wrong id is a silent quality floor, not an error."""
-        plan = config.load(config.TEMPLATES / "stages-opencode.yaml")
+        plan = config.load(config.TEMPLATES / "stages-fast.yaml")
         spec = config.lens_spec(plan, "implementation")
         argv = runner.session_argv(spec, tmp_path / "tree", tmp_path / "prompt.md")
         after = argv[argv.index("exec") :]
@@ -382,9 +374,9 @@ class TestStageTemplate:
         could name a provider key back into a reviewer's environment."""
         import yaml
 
-        data = config.load(config.TEMPLATES / "stages-opencode.yaml")
+        data = config.load(config.TEMPLATES / "stages-fast.yaml")
         assert data["families"]["opencode"]["env"] == ["XDG_DATA_HOME", "XDG_CONFIG_HOME"]
-        data["families"]["opencode"]["env"] = ["OPENROUTER_API_KEY"]
+        data["families"]["opencode"]["env"] = ["AWS_SECRET_ACCESS_KEY"]
         path = tmp_path / "stages.yaml"
         path.write_text(yaml.safe_dump(data))
         with pytest.raises(Park, match="only allowlisted variables"):
@@ -485,7 +477,7 @@ class TestReadiness:
         import yaml
 
         data = config.load()
-        data["families"]["gemini"]["adapter_argv"] = ["/nonexistent/agy-acp-server"]
+        data["families"]["gemini"]["adapter_argv"] = ["/nonexistent/acp-server"]
         path = tmp_path / "stages.yaml"
         path.write_text(yaml.safe_dump(data))
         report = readiness.check(config.load(path), capture=False)

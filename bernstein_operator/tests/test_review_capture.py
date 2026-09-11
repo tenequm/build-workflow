@@ -172,6 +172,20 @@ class TestOpencodeSource:
         )
         assert set(sources) == {"agy"}
 
+    def test_readiness_asks_pond_about_the_adapters_this_plan_actually_writes(self):
+        """The check used to name agy whatever the template routed to. A lane whose
+        adapter is disabled captures nothing, and the report-witness law would surface
+        that at the end of a run, after every session had been paid for."""
+        from review_pr import config
+
+        plan = config.load()
+        assert pondsync.plan_adapters(plan) == {"claude-code", "codex-cli", "opencode"}
+        # The production gemini lane is Zen-served, so its sessions are opencode's: the
+        # family name is a model family and the adapter is what the template declares.
+        assert plan["families"]["gemini"]["pond_adapter"] == "opencode"
+        fast = config.load(config.TEMPLATES / "stages-fast.yaml")
+        assert pondsync.plan_adapters(fast) == {"codex-cli", "opencode"}
+
 
 class TestPiSource:
     """pi keeps one sessions root for every project it has ever run in, so the narrow

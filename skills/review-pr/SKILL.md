@@ -17,9 +17,11 @@ finds, and then it proves or drops each of those findings by execution.
 The shape is static - lint, gate, the lens fan-out, verify, synthesise - so there is
 no planning stage. What varies per pull request is routing, and routing lives in
 `templates/stages.yaml`, where swapping a model, or parking and re-admitting a lens,
-is one line. `templates/stages-fast.yaml` is that same plan on one cheap family with no
-second opinion, for measuring a routing or brief change before a milestone run pays for
-it; pass either with `--stages`. To run a template's existing plan on one of the
+is one line. `templates/stages-fast.yaml` is that same plan on OpenCode Zen's free
+catalogue with no second opinion, for measuring a routing or brief change before a
+milestone run pays for it; pass either with `--stages`. The free lane is fenced to
+open-source repositories and the eval corpus, because the models on it train on
+prompts, and its file says so at the top. To run a template's existing plan on one of the
 families it already declares, pass `--family <name>` instead of writing a fourth
 template: every lens and the claims role move to that family, the author-opposite
 reroute and the dual-family second opinion switch off, and verification still goes to a

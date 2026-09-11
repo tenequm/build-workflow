@@ -847,7 +847,7 @@ class TestFamilySwap:
         for lens in config.active_lenses(plan):
             spec = config.lens_spec(plan, lens)
             assert spec["family"] == "gemini"
-            assert spec["model"].startswith("gemini-"), "a swapped lens must not keep the old model"
+            assert "gemini" in spec["model"], "a swapped lens must not keep the old model"
             assert pipeline.lens_families(plan, lens, {"family": "codex"}) == [
                 ("gemini", "the whole-run --family gemini override")
             ]
@@ -897,8 +897,10 @@ class TestFamilySwap:
         """A one-family template declares its verifier on a family no lens names. An
         unresolvable adapter there is otherwise found after every lens has been paid."""
         plan = config.load(config.TEMPLATES / "stages-fast.yaml")
-        assert {plan["lenses"][lens]["family"] for lens in config.active_lenses(plan)} == {"claude"}
-        assert readiness.routed(plan) == {"claude", "codex"}
+        assert {plan["lenses"][lens]["family"] for lens in config.active_lenses(plan)} == {
+            "opencode"
+        }
+        assert readiness.routed(plan) == {"codex", "opencode"}
 
     @pytest.mark.parametrize(
         "mutate,message",

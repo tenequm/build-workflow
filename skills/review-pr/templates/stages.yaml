@@ -25,16 +25,41 @@ families:
     adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
     # Without this the Claude harness saves nothing, so pond has nothing to ingest and
     # a finding produced on this family cannot point at the transcript behind it.
-    # Codex and agy write their own rollouts and need no equivalent.
+    # Codex and opencode keep stores of their own and need no equivalent.
     persist_session: true
   codex:
     transport: acp
     adapter_argv: [npx, --yes, '@agentclientprotocol/codex-acp@1.1.5']
+  # The Gemini lane, reached through opencode Zen rather than Google's own ACP server:
+  # one key serves every provider's catalogue, so changing a lane's provider is this
+  # block plus the model ids below and nothing else. A family names the MODEL family,
+  # never the transport - review independence is about which model judges a finding,
+  # not which harness spawned it.
+  #
+  # Paid ids only here. Zen's `-free` ids train on prompts and are fenced to
+  # open-source repositories (stages-fast.yaml carries that fence); production reviews
+  # other people's private trees.
   gemini:
     transport: acp
-    # A wrapper, not the .par: on Linux the ACP server needs --uid=. Point this at
-    # your own wrapper; `review-pr ready` refuses an unresolvable adapter.
-    adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']
+    adapter_argv: [npx, --yes, 'opencode-ai@1.18.30', acp, --pure]
+    # opencode's ACP config option is `effort`, not Codex's `reasoning_effort`; it
+    # answers the wrong id with -32602 and then runs the lens at its default, `minimal`,
+    # which is why every lens below states its effort explicitly.
+    effort_option: effort
+    # opencode writes every session it has ever run into one SQLite store under
+    # XDG_DATA_HOME, reads its Zen credential from that same root, and --pure still
+    # loads the operator's ~/.claude skills. Redirected per session, the reviewer gets
+    # an empty configuration and capture gets a store holding this run alone - and
+    # OPENCODE_API_KEY (session env allowlist) becomes the only path to the provider.
+    env: [XDG_DATA_HOME, XDG_CONFIG_HOME]
+    # The reviewed tree must never choose what runs: opencode reads a project
+    # `opencode.json` from its cwd - which IS the pull request's worktree - ABOVE the
+    # global configuration, so a pull request could disable every provider or repoint a
+    # provider's baseURL at a host it controls.
+    strip_paths: [opencode.json, opencode.jsonc, .opencode]
+    # This family's name is a model family, not a pond adapter: the sessions it writes
+    # are opencode's.
+    pond_adapter: opencode
 
 # Stage 2. Five lenses declared, three enabled. Four are polish's, aimed at a code
 # diff; the fifth is this workflow's own and is the only one allowed to leave the diff.
@@ -51,7 +76,8 @@ lenses:
   cleanliness:
     enabled: false
     family: gemini
-    model: gemini-3.7-flash-medium
+    model: opencode/gemini-3.7-flash
+    effort: high
     budget_usd: 10.0
     max_turns: 60
     timeout_s: 1800
@@ -59,6 +85,7 @@ lenses:
     enabled: false
     family: claude
     model: claude-sonnet-5
+    effort: high
     budget_usd: 10.0
     max_turns: 60
     timeout_s: 1800
@@ -72,16 +99,17 @@ lenses:
     models:
       codex: gpt-5.6-sol
       claude: claude-opus-5
-      gemini: gemini-3.8-flash-high
+      gemini: opencode/gemini-3.8-flash
   gating:
     family: claude
     model: claude-opus-5
+    effort: high
     budget_usd: 15.0
     max_turns: 120
     timeout_s: 3600
     models:
       claude: claude-opus-5
-      gemini: gemini-3.8-flash-high
+      gemini: opencode/gemini-3.8-flash
     # A correctness rule, not a preference: OpenAI's content filter silently truncates
     # turns on exactly this brief's vocabulary (race, exploit, attack, sweep) and the
     # truncated turn presents as a clean completion.
@@ -94,13 +122,14 @@ lenses:
   implementation:
     family: claude
     model: claude-opus-5
+    effort: high
     budget_usd: 25.0
     max_turns: 200
     timeout_s: 5400
     models:
       claude: claude-opus-5
       codex: gpt-5.6-sol
-      gemini: gemini-3.8-flash-high
+      gemini: opencode/gemini-3.8-flash
 
 # Stage 3 and stage 4.
 roles:
@@ -111,7 +140,7 @@ roles:
     models:
       claude: claude-sonnet-5
       codex: gpt-5.6-terra
-      gemini: gemini-3.7-flash-medium
+      gemini: opencode/gemini-3.7-flash
   claims:
     family: claude
     model: claude-sonnet-5

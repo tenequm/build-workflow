@@ -84,8 +84,13 @@ class TestFindingsSchema:
         ],
     )
     def test_a_rubric_that_cannot_be_executed_is_refused(self, rubric):
+        """The parser stays strict - stage 3 executes what it returns - but a finding
+        carrying one of these loses only its check, never the report around it."""
         with pytest.raises(Park):
-            finding(rubric=rubric)
+            findings.rubric(rubric)
+        degraded = finding(rubric=rubric)
+        assert degraded["rubric"] is None and degraded["unverifiable"] is True
+        assert degraded["rejected_rubric"]
 
     def test_a_claim_must_be_a_sentence_and_a_path_must_be_relative(self):
         with pytest.raises(Park, match="sentence"):
@@ -146,6 +151,18 @@ class TestFindingsSchema:
         dropped = finding(suggestion={"replacement": "x"})
         assert dropped["suggestion"] is None
         assert "line number" in dropped["dropped_suggestion"]
+
+    def test_a_malformed_rubric_costs_the_finding_its_check_not_the_report(self):
+        """Measured 2026-09-11 on the free-lane corpus pass: one lens answered with a
+        rubric kind outside the closed set and parked a case whose other findings were
+        all intact. A rubric is optional by design and its absence already demotes the
+        finding, so the strictness protected nothing a later stage reads."""
+        good = finding(rubric={"kind": "command", "run": "x", "expect": "exit_zero"})
+        assert good["rejected_rubric"] is None and good["unverifiable"] is False
+        dropped = finding(rubric={"kind": "eyeball", "run": "x", "expect": "exit_zero"})
+        assert dropped["rubric"] is None
+        assert "rubric kind must be one of" in dropped["rejected_rubric"]
+        assert dropped["unverifiable"] is True, "no rubric, no verdict above SUGGESTION"
 
     def test_merging_keeps_the_rubric_and_the_strongest_impact(self):
         weak = finding(lens="cleanliness", producer="codex", tags=["pre-existing"])

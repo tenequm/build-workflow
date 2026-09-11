@@ -1,77 +1,109 @@
-# The fast-loop stage template: one family, one lane per lens, cheap models.
+# The fast-loop stage template: one family, one lane per lens, free models.
 #
 # Same pipeline, same stages, same briefs as stages.yaml - the routing is the only
 # difference, and that is the point. The quality loop changes one lever at a time and
 # re-runs the eval corpus; a corpus run on production routing costs hours and real
-# tokens, which is too slow a loop to learn from. This template runs every lens on the
-# claude lane at sonnet (subscription-covered, no metered key), drops the dual-family
-# second opinion, and so measures one lever's effect in minutes.
+# tokens, which is too slow a loop to learn from. This template runs every lens on
+# opencode Zen's free catalogue, drops the dual-family second opinion, and so measures
+# one lever's effect in minutes for no provider spend.
+#
+# POLICY FENCE, operator decision 2026-09-11: free Zen models train on prompts. This
+# template is permitted ONLY for open-source repositories and for the eval corpus,
+# which is publishable by construction (fixtures/review-pr-cases/README.md). /review-pr
+# feeds a model the pull request's diff and the repository around it, so pointing this
+# template at a private or embargoed tree ships someone else's unreleased code into a
+# training corpus. There is no per-request opt-out on the free tier.
 #
 # It is not a substitute for a milestone run. A number produced here is comparable
 # only with other numbers produced here; the /polish-parity claim comes from
-# stages.yaml against a real pull request.
+# stages.yaml against a real pull request. In particular a free model is not the
+# production model, so this loop measures whether a change helps, never how good the
+# review is.
+#
+# PREREQUISITE: export OPENCODE_API_KEY. `opencode auth login` writes the credential
+# under XDG_DATA_HOME, and this family redirects that root per session, so the env name
+# (session env allowlist) is the only path that reaches Zen.
 #
 # One exception to "one family": the verifier. A judge passes its own family's output
-# more than half the time, so verify.opposite() refuses to verify a claude finding with
-# claude and parks the run - which is what a one-family fast loop measured, on 11 of 14
-# cases. The codex family is declared for the verifier role only, so the fast loop pays
-# a small verifier cost per surviving finding. That cost is the price of a score at
-# all; same-family verification is forbidden by measurement, not by taste. Known risk,
-# accepted: OpenAI's content filter can kill turns over injection-shaped vocabulary,
-# and gating findings carry exactly that - a filtered verification parks loudly rather
-# than passing silently, so the score stays honest.
+# more than half the time, so verify.opposite() refuses to verify an opencode finding
+# with opencode and parks the run - which is what a one-family fast loop measured, on
+# 11 of 14 cases. The codex family is declared for the verifier role only, so the fast
+# loop pays a small verifier cost per surviving finding. That cost is the price of a
+# score at all; same-family verification is forbidden by measurement, not by taste.
+# Known risk, accepted: OpenAI's content filter can kill turns over injection-shaped
+# vocabulary, and gating findings carry exactly that - a filtered verification parks
+# loudly rather than passing silently, so the score stays honest.
 version: 1
 
 families:
-  claude:
-    transport: claude
-    adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
-    # Without this the Claude harness saves nothing, so pond has nothing to ingest and
-    # a finding produced on this family cannot point at the transcript behind it.
-    persist_session: true
   # Verifier only - no lens is routed here. See the note above.
   codex:
     transport: acp
     adapter_argv: [npx, --yes, '@agentclientprotocol/codex-acp@1.1.5']
+  opencode:
+    transport: acp
+    adapter_argv: [npx, --yes, 'opencode-ai@1.18.30', acp, --pure]
+    # opencode's ACP config option is `effort`, not Codex's `reasoning_effort`; it
+    # answers the wrong id with -32602 and then runs the lens at its default, `minimal`.
+    effort_option: effort
+    # opencode writes every session it has ever run into one SQLite store under
+    # XDG_DATA_HOME, and --pure still loads the operator's ~/.claude skills. Redirected
+    # per session, both stop being true: the reviewer gets an empty configuration, and
+    # capture gets a store holding this run's session and nothing else.
+    env: [XDG_DATA_HOME, XDG_CONFIG_HOME]
+    # The reviewed tree must never choose what runs. opencode reads a project
+    # `opencode.json` from its cwd - which IS the pull request's worktree - ABOVE the
+    # global configuration, so a pull request can disable every provider or repoint a
+    # provider's baseURL at a host it controls. Verified keylessly 2026-09-11. These are
+    # removed before the session starts, and the receipt records what was removed.
+    strip_paths: [opencode.json, opencode.jsonc, .opencode]
 
 # The same three lenses production enables, so a fast-loop score and a milestone score
 # measure the same review. cleanliness and efficiency stay parked here for the reason
 # they are parked there: against the ground-truth replay they produced nit-tier noise
 # and none of the correctness or design signal.
+#
+# Every lens states `effort: high`, parked ones included: opencode defaults a session to
+# `minimal`, which is the mediocre-but-free failure this loop exists to rule out, and a
+# lens re-admitted later must not inherit that default in silence.
 lenses:
   cleanliness:
     enabled: false
-    family: claude
-    model: claude-sonnet-5
+    family: opencode
+    model: opencode/muse-spark-1.3-contributor-free
+    effort: high
     budget_usd: 5.0
     max_turns: 40
     timeout_s: 900
   efficiency:
     enabled: false
-    family: claude
-    model: claude-sonnet-5
+    family: opencode
+    model: opencode/muse-spark-1.3-contributor-free
+    effort: high
     budget_usd: 5.0
     max_turns: 40
     timeout_s: 900
   design:
-    family: claude
-    model: claude-sonnet-5
+    family: opencode
+    model: opencode/muse-spark-1.3-contributor-free
+    effort: high
     budget_usd: 5.0
     max_turns: 60
     timeout_s: 1800
   gating:
-    family: claude
-    model: claude-sonnet-5
+    family: opencode
+    model: opencode/muse-spark-1.3-contributor-free
+    effort: high
     budget_usd: 5.0
     max_turns: 60
     timeout_s: 1800
     # The OpenAI content filter kills turns over this lens's injection vocabulary, so
     # no swap may route it there.
     forbid_families: [codex]
-
   implementation:
-    family: claude
-    model: claude-sonnet-5
+    family: opencode
+    model: opencode/muse-spark-1.3-contributor-free
+    effort: high
     budget_usd: 8.0
     max_turns: 120
     timeout_s: 2700
@@ -82,22 +114,25 @@ roles:
     max_turns: 40
     timeout_s: 900
     models:
-      claude: claude-sonnet-5
       codex: gpt-5.6-sol
+      opencode: opencode/muse-spark-1.3-contributor-free
   claims:
-    family: claude
-    model: claude-sonnet-5
+    family: opencode
+    model: opencode/muse-spark-1.3-contributor-free
+    effort: high
     budget_usd: 3.0
     max_turns: 30
     timeout_s: 900
 
-# Every lens runs on claude, so there is nothing to reroute and nothing to disagree
-# with: the verifier's codex entry is the opposite family verify.opposite() picks, and
-# it produces no second reading of its own. Both are stated rather than omitted: a
-# fast-loop score that silently gained a second opinion would not be comparable with the
-# run before it.
+# Every lens runs on opencode, so there is nothing to reroute and nothing to disagree
+# with: codex verifies, and it produces no second reading of its own. Both are stated
+# rather than omitted - a fast-loop score that silently gained a second opinion would
+# not be comparable with the run before it - and the opposite is declared rather than
+# left to verify.opposite()'s name-order fallback, so the reason in the receipt names a
+# decision instead of an accident.
 routing:
-  opposite: {}
+  opposite:
+    opencode: codex
   reroute_lenses: []
 
 dual_family:
