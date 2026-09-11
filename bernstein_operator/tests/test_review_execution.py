@@ -312,6 +312,24 @@ class TestGate:
         assert result["findings"][0]["category"] == "correctness"
         assert result["findings"][0]["rubric"]["run"] == "exit 3"
 
+    def test_a_gate_that_could_not_run_refutes_nothing(self, review):
+        """Measured 2026-09-11 on the milestone run: sandboxed `uv run` died on
+        'Network is unreachable' downloading dependencies, and the red exit became a
+        CONFIRMED 'validation fails on head' finding driving the recommendation."""
+        result = gate.run(
+            {
+                **review,
+                "gate": {
+                    "command": "sh -c 'echo Network is unreachable >&2; exit 1'",
+                    "source": "operator",
+                },
+            },
+            tier=sandbox.tier(),
+        )
+        assert result["returncode"] == 1
+        assert result["could_not_run"] is True
+        assert result["findings"] == []
+
 
 class TestProvenSuggestions:
     def finding(self, **over):

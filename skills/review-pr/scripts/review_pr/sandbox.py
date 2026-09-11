@@ -9,6 +9,7 @@ exactly like a model that had nothing to do - the 2026-09-10 two-hour symptom.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -99,6 +100,24 @@ def _container(argv: list[str], cwd: Path, image: str) -> list[str]:
         image,
         *argv,
     ]
+
+
+# A command that never ran refutes nothing. These are the measured shapes of "the
+# environment refused" (2026-09-11: sandboxed `uv run` with blocked egress died
+# downloading dependencies before the check itself started).
+COULD_NOT_RUN = re.compile(
+    r"command not found|No such file or directory|not recognized"
+    r"|Network is unreachable|Failed to download|Temporary failure in name resolution",
+    re.I,
+)
+
+
+def could_not_run(result: dict[str, Any]) -> bool:
+    """Whether the command failed to execute at all, as opposed to running and failing."""
+    if result.get("timed_out"):
+        return True
+    output = result.get("stdout", "") + result.get("stderr", "")
+    return result.get("returncode") == 127 or bool(COULD_NOT_RUN.search(output))
 
 
 def run(

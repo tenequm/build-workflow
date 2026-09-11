@@ -105,16 +105,6 @@ def load(path: Path) -> list[dict[str, Any]]:
         raise Park(f"unreadable claims report {path.name}: {exc}") from exc
 
 
-# The network signatures are measured (2026-09-11, sandboxed `uv run` against a
-# blocked egress): dependency download failures kill the command before the claimed
-# check ever runs, which is environment, not the author disagreeing with reality.
-NOT_EXECUTABLE = re.compile(
-    r"command not found|No such file or directory|not recognized"
-    r"|Network is unreachable|Failed to download|Temporary failure in name resolution",
-    re.I,
-)
-
-
 def _executable(result: dict[str, Any]) -> bool:
     """Whether the command ran at all, as opposed to running and disagreeing.
 
@@ -123,10 +113,7 @@ def _executable(result: dict[str, Any]) -> bool:
     was reported as the author over-claiming. A check that cannot execute has not
     refuted anything, and saying otherwise is the worst thing this workflow can do.
     """
-    if result.get("timed_out"):
-        return False
-    output = result["stdout"] + result["stderr"]
-    return not (result["returncode"] == 127 or NOT_EXECUTABLE.search(output))
+    return not sandbox.could_not_run(result)
 
 
 def _matched(claim: dict[str, Any], result: dict[str, Any]) -> tuple[bool | None, str]:

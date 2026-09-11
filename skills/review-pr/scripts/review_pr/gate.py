@@ -46,7 +46,8 @@ def run(sidecar: dict[str, Any], *, tier: str) -> dict[str, Any]:
         env=cold_env(workspace),
     )
     hits = []
-    if result["returncode"]:
+    refused = bool(result["returncode"]) and sandbox.could_not_run(result)
+    if result["returncode"] and not refused:
         tail = (result["stderr"] or result["stdout"]).strip().splitlines()[-12:]
         hits.append(
             findings.normalize(
@@ -70,6 +71,7 @@ def run(sidecar: dict[str, Any], *, tier: str) -> dict[str, Any]:
             )
         )
     return {
+        "could_not_run": refused,
         "command": sidecar["gate"]["command"],
         "provenance": sidecar["gate"],
         "returncode": result["returncode"],
