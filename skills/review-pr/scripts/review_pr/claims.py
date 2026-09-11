@@ -17,8 +17,8 @@ from typing import Any
 
 from operator_driver.storage import Park
 
+from . import diffindex, sandbox
 from . import findings as findings_mod
-from . import sandbox
 
 KINDS = ("command", "number", "injection")
 EXPECTATIONS = ("exit_zero", "exit_nonzero", "empty", "nonempty", "contains")
@@ -137,15 +137,74 @@ def _matched(claim: dict[str, Any], result: dict[str, Any]) -> tuple[bool | None
     return True, "the claim reproduces"
 
 
+# A body that says tests were added is a claim about the diff itself, and the diff alone
+# settles it: no runtime is involved, so this decides before the sandbox and regardless
+# of what the sandbox could run. Measured 2026-09-11: two corpus bodies claimed coverage
+# their diff never adds, the extractor turned each into `pytest`, the image had no
+# pytest, exit 127 correctly refuted nothing - and so nothing examined the claim at all.
+COVERAGE = re.compile(
+    r"\b(?:new|added|adds|additional|updated|extended)\b[^.;]{0,60}"
+    r"\b(?:tests?|test cases|coverage)\b"
+    r"|\b(?:tests?|coverage)\b[^.;]{0,40}\b(?:added|updated|extended)\b",
+    re.I,
+)
+# What the body names for itself. A claim that names nothing is never accused: the
+# check decides only on a name the diff verifiably lacks.
+NAMED = re.compile(r"`([A-Za-z_][\w./-]{2,79})`")
+
+
+def _test_changes(diff: str) -> tuple[list[str], str] | None:
+    """The test files the diff touches and every line it adds to them, or None.
+
+    None is the control leg: with no diff to read this check has not run, and a check
+    that cannot run refutes nothing.
+    """
+    if not diff.strip():
+        return None
+    files = diffindex.parse(diff)
+    paths = diffindex.test_paths(files)
+    return paths, "\n".join(text for path in paths for _, text in files[path].added)
+
+
+def uncovered(claim: dict[str, Any], changes: tuple[list[str], str] | None) -> str | None:
+    """Why the diff refutes this claim's test coverage, or None.
+
+    Only an absence the diff proves decides: a test file the body names and the diff
+    never touches, no test file at all, or a subject no test line the diff adds
+    mentions. Nothing here reads an execution result.
+    """
+    if changes is None or not COVERAGE.search(claim["quote"]):
+        return None
+    paths, added = changes
+    named = NAMED.findall(claim["quote"])
+    for name in named:
+        if any(mark in name for mark in diffindex.TEST_MARKS) and not any(
+            path == name or path.endswith(f"/{name}") for path in paths
+        ):
+            return f"the diff does not touch {name}"
+    if not paths:
+        return "the diff changes no test file"
+    return next(
+        (
+            f"no test line the diff adds mentions {name}"
+            for name in named
+            if "/" not in name and "." not in name and name not in added
+        ),
+        None,
+    )
+
+
 def check(
     claims: list[dict[str, Any]],
     sidecar: dict[str, Any],
     *,
     tier: str,
+    diff: str = "",
     timeout: float = 900,
 ) -> dict[str, Any]:
     """Run every reproducible claim against the pull request head and diff the results."""
     tree = Path(sidecar["tree"])
+    changes = _test_changes(diff)
     results = []
     hits = []
     for claim in claims:
@@ -176,6 +235,27 @@ def check(
                 }
             )
             continue
+        # Static first, and whatever the sandbox goes on to do: the diff is the only
+        # evidence a coverage claim needs, so an unrunnable test command no longer
+        # leaves the claim examined by nobody.
+        absent = uncovered(claim, changes)
+        if absent:
+            hits.append(
+                findings_mod.normalize(
+                    {
+                        "scope": "meta",
+                        "file": "PR:body",
+                        "line": 1,
+                        "category": "correctness",
+                        "claim": "The body claims test coverage this pull request does not "
+                        f"add: {absent}. A squash merge makes this body the permanent "
+                        "commit message.",
+                        "evidence": f"claimed:\n{claim['quote']}\n\nin the diff: {absent}",
+                    },
+                    lens="claims",
+                    producer="script",
+                )
+            )
         if not claim["run"]:
             reason = "no command reproduces this claim"
             results.append({**claim, "ran": False, "matched": None, "reason": reason})

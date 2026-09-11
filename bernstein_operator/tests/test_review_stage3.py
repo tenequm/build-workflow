@@ -518,6 +518,93 @@ class TestClaims:
         assert result["findings"][0]["tags"] == ["injection"]
 
 
+class TestCoverageClaims:
+    """A body that says tests were added is refuted by the diff, not by a test runner.
+
+    Measured 2026-09-11 on two corpus cases: the extractor turned the sentence into
+    `pytest`, the sandbox had no pytest, exit 127 correctly refuted nothing, and the
+    claim was then examined by nobody. This check reads the diff and decides before
+    the sandbox runs.
+    """
+
+    UNRELATED = (
+        "diff --git a/src/metric_tracker.py b/src/metric_tracker.py\n"
+        "--- a/src/metric_tracker.py\n+++ b/src/metric_tracker.py\n@@ -18,1 +18,3 @@\n"
+        " return x\n+def calculate_range(values):\n+    return max(values) - min(values)\n"
+        "diff --git a/tests/test_metrics.py b/tests/test_metrics.py\n"
+        "--- a/tests/test_metrics.py\n+++ b/tests/test_metrics.py\n@@ -6,1 +6,3 @@\n"
+        " def test_calculate_mean():\n+def test_calculate_mean_negative():\n"
+        "+    assert calculate_mean([-2.0, 2.0]) == 0.0\n"
+    )
+    NO_TESTS = (
+        "diff --git a/src/url_builder.py b/src/url_builder.py\n"
+        "--- a/src/url_builder.py\n+++ b/src/url_builder.py\n@@ -11,1 +11,3 @@\n"
+        " pass\n+def sanitize_path(path):\n+    return path\n"
+    )
+    COVERED = NO_TESTS + (
+        "diff --git a/tests/test_url_builder.py b/tests/test_url_builder.py\n"
+        "--- a/tests/test_url_builder.py\n+++ b/tests/test_url_builder.py\n@@ -4,1 +4,3 @@\n"
+        " import pytest\n+def test_sanitize_path_collapses_slashes():\n"
+        "+    assert sanitize_path('//a//b') == '/a/b'\n"
+    )
+
+    def claim(self, quote, run=None):
+        return {
+            "id": "c1",
+            "quote": quote,
+            "kind": "command" if run else "number",
+            "run": run,
+            "expect": "exit_zero",
+            "contains": None,
+            "claimed_output": None,
+        }
+
+    def run(self, tmp_path, quote, diff, run=None):
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        return claims.check([self.claim(quote, run)], {"tree": str(tree)}, tier="none", diff=diff)
+
+    def test_a_subject_no_added_test_mentions_is_a_finding(self, tmp_path):
+        """The diff does change a test file - just not one that touches the subject."""
+        result = self.run(
+            tmp_path,
+            "Ran pytest suite: 100% passing including new unit tests covering "
+            "`calculate_range` for positive, negative, and empty lists.",
+            self.UNRELATED,
+            run="definitely-not-a-real-command",
+        )
+        assert result["unchecked"] == 1, "the sandbox leg is unchanged and still refutes nothing"
+        assert len(result["findings"]) == 1
+        finding = result["findings"][0]
+        assert finding["category"] == "correctness" and finding["scope"] == "meta"
+        assert "calculate_range" in finding["claim"] + finding["evidence"]
+
+    def test_a_named_test_file_the_diff_never_touches_is_a_finding(self, tmp_path):
+        result = self.run(
+            tmp_path,
+            "All unit tests in `tests/test_url_builder.py` pass, including new coverage "
+            "for `sanitize_path` edge cases.",
+            self.NO_TESTS,
+        )
+        assert len(result["findings"]) == 1
+        assert "tests/test_url_builder.py" in result["findings"][0]["claim"]
+
+    def test_a_claim_the_diff_backs_up_produces_nothing(self, tmp_path):
+        result = self.run(
+            tmp_path,
+            "All unit tests in `tests/test_url_builder.py` pass, including new coverage "
+            "for `sanitize_path` edge cases.",
+            self.COVERED,
+        )
+        assert result["findings"] == []
+
+    def test_with_no_diff_to_read_the_check_accuses_nobody(self, tmp_path):
+        """The control leg: this check has not run, and one that cannot run refutes
+        nothing - an absent diff is not evidence that a test is absent."""
+        result = self.run(tmp_path, "Adds new tests for `sanitize_path`.", "")
+        assert result["findings"] == []
+
+
 class TestAgreementSettles:
     """Cross-family agreement is the second reading of a two-sided claim - the field
     used to be computed, written to the ledger, and read by nothing that decided."""

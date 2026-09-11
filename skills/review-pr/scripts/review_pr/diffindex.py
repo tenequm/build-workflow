@@ -120,7 +120,9 @@ def changed_lines(files: dict[str, FileDiff]) -> int:
     return sum(fd.changed_lines for fd in files.values())
 
 
+TEST_MARKS = ("test_", "_test.", "tests/", "test/", "spec/", ".spec.", ".test.", "Test.java")
+
+
 def test_paths(files: dict[str, FileDiff]) -> list[str]:
     """Paths a project would recognise as tests, for the fail-on-base check."""
-    marks = ("test_", "_test.", "tests/", "test/", "spec/", ".spec.", ".test.", "Test.java")
-    return sorted(path for path in files if any(mark in path for mark in marks))
+    return sorted(path for path in files if any(mark in path for mark in TEST_MARKS))

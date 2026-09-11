@@ -256,7 +256,7 @@ def run(
     claim_results = _product(
         workspace,
         "stage2-claims",
-        lambda: claims_mod.check(extracted, sidecar, tier=tier),
+        lambda: claims_mod.check(extracted, sidecar, tier=tier, diff=diff),
         guard={"tier": tier},
     )
 
