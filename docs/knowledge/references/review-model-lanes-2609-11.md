@@ -73,9 +73,9 @@ leak class.[^survey]
 
 The lane's constraint is per-minute, not per-window: the API tier rejected a
 7-cases-concurrent corpus run outright (429 "exceeded your current quota" on every
-session) yet ran the same corpus cleanly at 3 - with ~120k-token briefs, tokens per
-minute is the binding limit, so concurrency is a dial to ramp, never a place to
-start high.[^survey]
+session) yet recovered a case cleanly run sequentially - with ~120k-token briefs,
+tokens per minute is the binding limit, so concurrency is a dial to ramp, never a
+place to start high.[^survey]
 
 # pi, the fallback - scopable after all
 
