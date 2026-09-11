@@ -4,34 +4,35 @@
 # difference, and that is the point. The quality loop changes one lever at a time and
 # re-runs the eval corpus; a corpus run on production routing costs hours and real
 # tokens, which is too slow a loop to learn from. This template runs every lens on the
-# gemini lane at the medium flash model, drops the dual-family second opinion, and so
-# measures one lever's effect in minutes.
+# claude lane at sonnet (subscription-covered, no metered key), drops the dual-family
+# second opinion, and so measures one lever's effect in minutes.
 #
 # It is not a substitute for a milestone run. A number produced here is comparable
 # only with other numbers produced here; the /polish-parity claim comes from
 # stages.yaml against a real pull request.
 #
 # One exception to "one family": the verifier. A judge passes its own family's output
-# more than half the time, so verify.opposite() refuses to verify a gemini finding with
-# gemini and parks the run - which is what a one-family fast loop measured, on 11 of 14
-# cases. The claude family is declared for the verifier role only, so the fast loop pays
-# a small real-money verifier cost per surviving finding. That cost is the price of a
-# score at all; same-family verification is forbidden by measurement, not by taste.
+# more than half the time, so verify.opposite() refuses to verify a claude finding with
+# claude and parks the run - which is what a one-family fast loop measured, on 11 of 14
+# cases. The codex family is declared for the verifier role only, so the fast loop pays
+# a small verifier cost per surviving finding. That cost is the price of a score at
+# all; same-family verification is forbidden by measurement, not by taste. Known risk,
+# accepted: OpenAI's content filter can kill turns over injection-shaped vocabulary,
+# and gating findings carry exactly that - a filtered verification parks loudly rather
+# than passing silently, so the score stays honest.
 version: 1
 
 families:
-  # Verifier only - no lens is routed here. See the note above.
   claude:
     transport: claude
     adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
     # Without this the Claude harness saves nothing, so pond has nothing to ingest and
-    # a finding verified on this family cannot point at the transcript behind it.
+    # a finding produced on this family cannot point at the transcript behind it.
     persist_session: true
-  gemini:
+  # Verifier only - no lens is routed here. See the note above.
+  codex:
     transport: acp
-    # A wrapper, not the .par: on Linux the ACP server needs --uid=. Point this at
-    # your own wrapper; `review-pr ready` refuses an unresolvable adapter.
-    adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']
+    adapter_argv: [npx, --yes, '@agentclientprotocol/codex-acp@1.1.5']
 
 # The same three lenses production enables, so a fast-loop score and a milestone score
 # measure the same review. cleanliness and efficiency stay parked here for the reason
@@ -40,34 +41,37 @@ families:
 lenses:
   cleanliness:
     enabled: false
-    family: gemini
-    model: gemini-3.7-flash-medium
+    family: claude
+    model: claude-sonnet-5
     budget_usd: 5.0
     max_turns: 40
     timeout_s: 900
   efficiency:
     enabled: false
-    family: gemini
-    model: gemini-3.7-flash-medium
+    family: claude
+    model: claude-sonnet-5
     budget_usd: 5.0
     max_turns: 40
     timeout_s: 900
   design:
-    family: gemini
-    model: gemini-3.7-flash-medium
+    family: claude
+    model: claude-sonnet-5
     budget_usd: 5.0
     max_turns: 60
     timeout_s: 1800
   gating:
-    family: gemini
-    model: gemini-3.7-flash-medium
+    family: claude
+    model: claude-sonnet-5
     budget_usd: 5.0
     max_turns: 60
     timeout_s: 1800
+    # The OpenAI content filter kills turns over this lens's injection vocabulary, so
+    # no swap may route it there.
     forbid_families: [codex]
+
   implementation:
-    family: gemini
-    model: gemini-3.7-flash-medium
+    family: claude
+    model: claude-sonnet-5
     budget_usd: 8.0
     max_turns: 120
     timeout_s: 2700
@@ -79,16 +83,16 @@ roles:
     timeout_s: 900
     models:
       claude: claude-sonnet-5
-      gemini: gemini-3.7-flash-medium
+      codex: gpt-5.6-sol
   claims:
-    family: gemini
-    model: gemini-3.7-flash-medium
+    family: claude
+    model: claude-sonnet-5
     budget_usd: 3.0
     max_turns: 30
     timeout_s: 900
 
-# Every lens runs on gemini, so there is nothing to reroute and nothing to disagree
-# with: the verifier's claude entry is the opposite family verify.opposite() picks, and
+# Every lens runs on claude, so there is nothing to reroute and nothing to disagree
+# with: the verifier's codex entry is the opposite family verify.opposite() picks, and
 # it produces no second reading of its own. Both are stated rather than omitted: a
 # fast-loop score that silently gained a second opinion would not be comparable with the
 # run before it.
