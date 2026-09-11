@@ -52,6 +52,13 @@ def load(path: Path | None = None) -> dict[str, Any]:
         redirect = family.get("env") or []
         if not isinstance(redirect, list) or set(redirect) - set(ENV_ALLOWLIST):
             raise Park(f"family {name} env must name only allowlisted variables")
+        # The credential a lane cannot run without. Readiness reports its absence before
+        # a session is spawned, because a family that redirects the root its harness
+        # keeps credentials under reaches its provider through this name alone, and
+        # discovering that mid-run means the lenses before it were paid for.
+        needed = family.get("requires_env") or []
+        if not isinstance(needed, list) or set(needed) - set(ENV_ALLOWLIST):
+            raise Park(f"family {name} requires_env must name only allowlisted variables")
         # Paths removed from the reviewed worktree before the session reads them. They
         # are worktree-relative by construction: the point is to disarm the pull request
         # tree, never to reach outside it.

@@ -9,6 +9,7 @@ session is launched.
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,16 @@ def adapters(plan: dict[str, Any]) -> list[dict[str, Any]]:
                 blocking=name in reachable,
             )
         )
+        for variable in sorted(family.get("requires_env") or []):
+            results.append(
+                _check(
+                    f"env:{variable}",
+                    bool(os.environ.get(variable)),
+                    f"the {name} lane reaches its provider through {variable} alone; "
+                    "export it before the run",
+                    blocking=name in reachable,
+                )
+            )
     return results
 
 

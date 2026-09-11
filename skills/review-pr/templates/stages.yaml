@@ -15,10 +15,10 @@ version: 1
 # transport and pinned adapter_argv, a model for it under roles.verifier.models, and -
 # only when its name is not already a pond adapter - `pond_adapter:` naming the harness
 # whose sessions it writes (claude-code, codex-cli, agy, opencode). Optional per
-# family: `env:` (allowlisted names redirected per session), `strip_paths:` (the
-# reviewed tree's own agent config, removed before the session reads it),
-# `effort_option:` (the config id that family takes reasoning effort under),
-# `persist_session:`. `review-pr --family <name>` then runs the whole plan on it.
+# family: `env:` (allowlisted names redirected per session), `requires_env:` (the
+# credential readiness refuses the run without), `strip_paths:` (the reviewed tree's
+# own agent config, removed before the session reads it), `effort_option:` (the config
+# id that family takes reasoning effort under), `persist_session:`. `review-pr --family <name>` then runs the whole plan on it.
 families:
   claude:
     transport: claude
@@ -57,6 +57,11 @@ families:
     # global configuration, so a pull request could disable every provider or repoint a
     # provider's baseURL at a host it controls.
     strip_paths: [opencode.json, opencode.jsonc, .opencode]
+    # `opencode auth login` writes the Zen credential under XDG_DATA_HOME, which the
+    # redirect above replaces, so this name is the lane's only path to its provider.
+    # Readiness refuses the run when it is unset rather than discovering it after the
+    # lenses before this one have been paid for.
+    requires_env: [OPENCODE_API_KEY]
     # This family's name is a model family, not a pond adapter: the sessions it writes
     # are opencode's.
     pond_adapter: opencode

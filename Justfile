@@ -39,6 +39,13 @@ review url:
     mkdir -p "$(dirname "$workspace")"
     python="$(pwd)/bernstein_operator/.venv/bin/python"
     cli="$(pwd)/skills/review-pr/scripts/review-pr.py"
+    # The Zen lane reads its credential from XDG_DATA_HOME, which the family redirects
+    # per session, so it reaches the provider through this name alone. Taken straight
+    # from where `opencode auth login` left it and never printed; an exported value wins.
+    auth="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json"
+    if [ -z "${OPENCODE_API_KEY:-}" ] && [ -f "$auth" ]; then
+        export OPENCODE_API_KEY="$(jq -r '.opencode.key // empty' "$auth")"
+    fi
     "$python" "$cli" ready
     code=0
     "$python" "$cli" setup --dest "$workspace" --pr "$number" -R "$slug" --repo-path "$repo" || code=$?
@@ -53,6 +60,12 @@ review url:
 # fast-loop template, four at a time; pass case or tier names and any harness flag
 # (--jobs N, --stages <template>) to narrow or re-route it.
 eval *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    auth="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json"
+    if [ -z "${OPENCODE_API_KEY:-}" ] && [ -f "$auth" ]; then
+        export OPENCODE_API_KEY="$(jq -r '.opencode.key // empty' "$auth")"
+    fi
     python3 fixtures/review-pr-cases/harness.py {{ARGS}}
 
 # Provision the pinned pond into the operator venv (see review_pr/pondsync.py PINNED).

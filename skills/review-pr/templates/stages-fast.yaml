@@ -57,6 +57,11 @@ families:
     # provider's baseURL at a host it controls. Verified keylessly 2026-09-11. These are
     # removed before the session starts, and the receipt records what was removed.
     strip_paths: [opencode.json, opencode.jsonc, .opencode]
+    # `opencode auth login` writes the Zen credential under XDG_DATA_HOME, which the
+    # redirect above replaces, so this name is the lane's only path to its provider.
+    # Readiness refuses the run when it is unset rather than discovering it after the
+    # lenses before this one have been paid for.
+    requires_env: [OPENCODE_API_KEY]
 
 # The same three lenses production enables, so a fast-loop score and a milestone score
 # measure the same review. cleanliness and efficiency stay parked here for the reason

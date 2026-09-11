@@ -58,8 +58,10 @@ The pull request is untrusted input, in all three of its forms.
     <python> <skill>/scripts/review-pr.py run   --dest <workspace>
 
 `ready` resolves the sandbox tier by executing in it, checks every adapter a lens
-routes to, and requires the workflow's own pond at exactly the pinned version when
-sessions are being captured - `just install-pond` provisions it into the operator
+routes to, refuses when a family's declared `requires_env` credential is unset - the
+opencode lanes redirect the root their harness keeps credentials under, so
+`OPENCODE_API_KEY` is the only path they have to a provider - and requires the
+workflow's own pond at exactly the pinned version when sessions are being captured - `just install-pond` provisions it into the operator
 venv, so a drifting host pond never changes what a review does. Resolve a refusal
 before spending anything: a vendor sandbox that refuses every command reads exactly
 like a model that had nothing to do, and that mistake costs hours.

@@ -893,6 +893,20 @@ class TestFamilySwap:
         with pytest.raises(Park, match="not declared by this template"):
             config.override_family(config.load(), "pi")
 
+    def test_a_lane_without_its_credential_is_refused_before_any_spend(self, monkeypatch):
+        """The Zen lanes redirect the root `opencode auth login` writes the credential
+        under, so the environment name is their only path to a provider. Discovering
+        that mid-run means every lens before it was paid for."""
+        plan = config.load()
+        assert plan["families"]["gemini"]["requires_env"] == ["OPENCODE_API_KEY"]
+        monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
+        rows = {row["check"]: row for row in readiness.adapters(plan)}
+        assert rows["env:OPENCODE_API_KEY"]["ok"] is False
+        assert rows["env:OPENCODE_API_KEY"]["blocking"] is True
+        monkeypatch.setenv("OPENCODE_API_KEY", "not-a-real-key")
+        rows = {row["check"]: row for row in readiness.adapters(plan)}
+        assert rows["env:OPENCODE_API_KEY"]["ok"] is True
+
     def test_a_verifier_only_family_still_blocks_readiness(self):
         """A one-family template declares its verifier on a family no lens names. An
         unresolvable adapter there is otherwise found after every lens has been paid."""
