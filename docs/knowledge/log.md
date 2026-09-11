@@ -1,5 +1,9 @@
 # Knowledge Bundle Update Log
 
+## 2026-09-11
+
+* **Capture**: Added [how upstream Bernstein reviews its own pull requests](references/upstream-review-automation.md) - the five-layer CI review stack, the quorum script owning the charter arithmetic since GitHub's required-approvals rule came off on 2026-09-09, the deep-review self-review budget, and the maintainer's agent-burst reply pattern - verified against the live workflows, quorum_check.py, and the PR review API during the /review-pr design session.
+
 ## 2026-09-10
 
 * **Capture**: Added [every step's completion signal names its report](decisions/completion-signals-name-the-report.md) and [an executor model below the brief's complexity fails as a clean exit](findings/executor-model-capability-floor.md), from the two builds carried to build_completed and closed through the real build-close scripts. The brief template now names the literal its own signal checks.

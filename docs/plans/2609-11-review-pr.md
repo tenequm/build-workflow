@@ -1,8 +1,23 @@
 # /review-pr: the polish skill as a Bernstein workflow
 
-Status: DRAFT, awaiting Misha's sign-off. Designed 2026-09-11 from the polish
-skill v3.1.0 (tenequm/skills), the operator at v0.1.21, the knowledge bundle,
-and the 2609-02 research overview. Nothing here is built yet.
+Status: DRAFT, awaiting Misha's sign-off. Designed 2026-09-11 from the
+[polish skill v3.1.0](https://github.com/tenequm/skills/blob/main/skills/polish/SKILL.md),
+the operator at v0.1.21, the knowledge bundle, and the
+[2609-02 research overview](../research/2609-02-research-overview.md)
+(all paper/blog citations below resolve there). Upstream's own review
+machinery, which this tool complements, is documented in
+[the upstream-review-automation reference](../knowledge/references/upstream-review-automation.md).
+Nothing here is built yet.
+
+**For a fresh agent picking this up:** this document is the spec
+substrate - run `/build-plan` with it as intake; the probes resolve
+anything left open here, and sign-off freezes the result. Two hard
+requirements that are easy to miss: (1) the four lens briefs, the polish
+Rules block, and the verdict table must be VENDORED into this repository
+(copied, then owned here) - the runtime never fetches tenequm/skills;
+(2) every acceptance item in this plan is executable without this
+design conversation - if one is not, that is a plan defect to fix, not
+context to go hunting for.
 
 Goal: point a command at one or many Bernstein PRs and get a review at or
 above the level `/polish` produces today - faster per weekly batch, more
@@ -314,3 +329,7 @@ collected as a side effect, spent later.
 - Whether `/review-pr` should also serve non-Bernstein repos day one
   (stage 0 is Bernstein-specific; everything else is generic - proposal:
   stage 0 loads per-repo rule modules, Bernstein first).
+- Author-family detection heuristic: PR-body style markers, disclosure
+  lines, and receipts are candidates, none proven; when detection is
+  ambiguous the router falls back to the default table above rather
+  than guessing.

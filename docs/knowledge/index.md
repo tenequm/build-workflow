@@ -34,6 +34,7 @@ deleted. Written as if this repository is public - because it is.
 
 # References
 
+* [How upstream Bernstein reviews its own pull requests - the maintainer's automation stack](references/upstream-review-automation.md) - upstream review is five CI layers, not a human workflow: a quorum script on the default branch owns the charter arithmetic (GitHub's required-approvals rule is off since 2026-09-09), the deep-review label runs Bernstein on itself with a $3 budget, and the maintainer's own reviewing happens as agent-driven API bursts under his account.
 * [Contributing to upstream Bernstein - what its machinery actually enforces](references/contributing-to-bernstein.md) - squash-merge makes the PR body the permanent commit message, fragments must close with the PR number, new tests must fail on base, prose is scanned by a hygiene denylist, and the bisect bot's regression labels are heuristic.
 
 # History
