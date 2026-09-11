@@ -198,14 +198,15 @@ def _settle(
         "errors": [],
     }
     try:
-        protocol = transcript(log, require_cost=claude_bridge(task.spec))
+        # Cost is observability here, never control flow: the Claude bridge enforces
+        # its own maxBudgetUsd inside the session, and these lanes are
+        # subscription-backed, so a missing or malformed figure records as None.
+        protocol = transcript(log, require_cost=False)
     except Park as exc:
         problems.append(f"ACP evidence: {exc}")
     if protocol["stop_reason"] != "end_turn" or protocol["errors"]:
         problems.append("ACP prompt did not finish successfully")
     cost = protocol["cost_usd"]
-    if cost is not None and cost > task.spec["budget_usd"]:
-        raise Park(f"review session exceeded its reserved spend: {operation}")
     if body:
         immutable(directory / Path(task.report).name, body)
     immutable(directory / "process.log", log)
@@ -219,11 +220,9 @@ def _settle(
         "problems": problems,
         "report": task.report if body else None,
         "report_digest": digest(body) if body else None,
-        # An unmetered transport reports no cost, so the bound charges the full
-        # reservation rather than reading an absent number as zero.
+        # Informative only - an adapter's list-price estimate on a subscription lane.
+        # The real figure comes from pond after the run.
         "cost_usd": cost,
-        "charged_usd": cost if cost is not None else task.spec["budget_usd"],
-        "metered": cost is not None,
         "acp": protocol,
         "reaped": sorted(survivor["command"] for survivor in survivors),
         "returncode": exit_record["returncode"],
@@ -238,7 +237,6 @@ def _settle(
         receipt_hash=digest(canonical(receipt)),
         ok=receipt["ok"],
         cost_usd=cost,
-        charged_usd=receipt["charged_usd"],
         session_id=protocol["session_id"],
     )
     git(Path(sidecar["repo_path"]), "worktree", "remove", "--force", str(worktree))
@@ -251,7 +249,6 @@ def run_batch(
     ledger: Ledger,
     *,
     attempts: int = 2,
-    spend_cap: float,
     wall_cap: float,
 ) -> dict[str, dict[str, Any]]:
     """Run every task concurrently; return one receipt per task, retrying a failed one.
@@ -260,7 +257,6 @@ def run_batch(
     next stage's inputs complete rather than merely available.
     """
     results: dict[str, dict[str, Any]] = {}
-    charged = 0.0
     deadline = time.monotonic() + wall_cap
     for attempt in range(1, attempts + 1):
         outstanding = [task for task in tasks if task.operation not in results]
@@ -287,11 +283,6 @@ def run_batch(
                         remaining.append((task, record))
                         continue
                     receipt = _settle(task, sidecar, ledger, record)
-                    charged += receipt["charged_usd"]
-                    if charged > spend_cap:
-                        raise Park(
-                            f"review stage exceeded its spend bound: {charged:.2f} > {spend_cap:.2f}"
-                        )
                     if receipt["ok"] or attempt == attempts:
                         results[task.operation] = receipt
                 live = remaining

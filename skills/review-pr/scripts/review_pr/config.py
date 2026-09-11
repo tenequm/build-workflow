@@ -47,17 +47,20 @@ def load(path: Path | None = None) -> dict[str, Any]:
         raise Park(f"stage template must declare exactly the lenses {LENS_ORDER}")
     for name, lens in lenses.items():
         _bounds(f"lens {name}", lens)
+        if not isinstance(lens.get("enabled", True), bool):
+            raise Park(f"lens {name} enabled must be a boolean")
         if lens["family"] not in families:
             raise Park(f"lens {name} routes to an undeclared family: {lens['family']}")
         forbidden = lens.get("forbid_families") or []
         if lens["family"] in forbidden:
             raise Park(f"lens {name} is pinned to a family its own brief forbids")
+    if not any(lens.get("enabled", True) for lens in lenses.values()):
+        raise Park("stage template disables every lens; a review needs at least one")
     roles = data.get("roles") or {}
-    for name in ("verifier", "claims", "body"):
+    for name in ("verifier", "claims"):
         if name not in roles:
             raise Park(f"stage template declares no {name} role")
     _bounds("role claims", roles["claims"])
-    _bounds("role body", roles["body"])
     verifier = roles["verifier"]
     for key in ("budget_usd", "max_turns", "timeout_s"):
         if key not in verifier:
@@ -76,11 +79,21 @@ def load(path: Path | None = None) -> dict[str, Any]:
         value = bounds.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise Park(f"bounds.{key} must be a positive integer")
-    for key in ("max_spend_usd", "max_wall_s"):
-        value = bounds.get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-            raise Park(f"bounds.{key} must be a positive number")
+    value = bounds.get("max_wall_s")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise Park("bounds.max_wall_s must be a positive number")
     return data
+
+
+def active_lenses(plan: dict[str, Any]) -> tuple[str, ...]:
+    """The lenses this run actually spawns, in the canonical order.
+
+    A lens is parked with `enabled: false` rather than deleted, so re-admitting one
+    when the precision ledger shows it earns its place is a one-line change.
+    """
+    return tuple(
+        lens for lens in LENS_ORDER if plan["lenses"][lens].get("enabled", True) is not False
+    )
 
 
 def _bounds(label: str, spec: dict[str, Any]) -> None:

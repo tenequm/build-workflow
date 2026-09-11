@@ -326,3 +326,38 @@ class TestHouseRules:
         annotation = result["findings"][0]
         assert annotation["follow_up"] is True, "a heuristic must never enter the verdict"
         assert "heuristic" in annotation["tags"]
+
+
+class TestAuthorityFiles:
+    """Setup names the files that state what the project claims about itself, so the
+    implementation lens can be told to read each one whole - the measured recall
+    lever from the ground-truth replays."""
+
+    def test_authority_docs_at_the_head_are_discovered_root_first(self, repo):
+        root = repo["root"]
+        git(root, "switch", "-q", "feat/x")
+        (root / "GOVERNANCE.md").write_text("# governance\n")
+        (root / "docs").mkdir()
+        (root / "docs/ROSTER.md").write_text("# roster\n")
+        (root / "CODEOWNERS").write_text("* @someone\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "docs: governance")
+        head = git(root, "rev-parse", "HEAD")
+        git(root, "switch", "-q", "main")
+        found = checkout.authority_files(root, head)
+        assert found == ["CODEOWNERS", "GOVERNANCE.md", "docs/ROSTER.md"]
+
+    def test_a_repo_without_authority_docs_yields_an_empty_list(self, repo):
+        assert checkout.authority_files(repo["root"], repo["head"]) == []
+
+    def test_the_list_is_capped(self, repo):
+        root = repo["root"]
+        git(root, "switch", "-q", "feat/x")
+        for index in range(12):
+            (root / f"dir{index}").mkdir()
+            (root / f"dir{index}/GOVERNANCE.md").write_text("x\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "docs: many")
+        head = git(root, "rev-parse", "HEAD")
+        git(root, "switch", "-q", "main")
+        assert len(checkout.authority_files(root, head)) == checkout.AUTHORITY_CAP

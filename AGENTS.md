@@ -47,6 +47,13 @@ Three rules apply to anything added to it, each learned by being burned:
   ([why](docs/knowledge/findings/recorded-agents-hide-brief-defects.md)). Put that class
   of constraint in code that runs before the session.
 
+- Cost figures are observability, never control flow: no new bound may read a dollar
+  amount, and every dollar figure is derived from pond after the run and labeled a
+  floor ([why](docs/knowledge/decisions/cost-is-observability-never-control-flow.md)).
+- Session capture goes through the run's own pond store with the pinned binary; the
+  host corpus is only ever a fold target
+  ([why](docs/knowledge/decisions/per-run-pond-store-for-capture.md)).
+
 A retro item closes only as a check, a template field, or a test - never as
 another skill sentence.
 

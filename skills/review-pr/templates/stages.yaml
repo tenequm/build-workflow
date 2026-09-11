@@ -28,20 +28,27 @@ families:
     # your own wrapper; `review-pr ready` refuses an unresolvable adapter.
     adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']
 
-# Stage 2. Five lenses. Four are polish's, aimed at a code diff; the fifth is this
-# workflow's own and is the only one allowed to leave the diff.
+# Stage 2. Five lenses declared, three enabled. Four are polish's, aimed at a code
+# diff; the fifth is this workflow's own and is the only one allowed to leave the diff.
+#
+# cleanliness and efficiency are parked (`enabled: false`), not deleted: against the
+# ground-truth replay they contributed none of the correctness or design signal and
+# most of the nit-tier comments that dilute a review's credibility. Re-admit one with
+# one line when the precision ledger shows it earns its place.
 #
 # The bounds here are ceilings, not targets. They exist so a runaway session ends, not
 # to economise: the gating lens previously reported 93% of a $2.50 budget, which means
 # the ceiling was shaping the review. Raise one before trimming it.
 lenses:
   cleanliness:
+    enabled: false
     family: gemini
     model: gemini-3.7-flash-medium
     budget_usd: 10.0
     max_turns: 60
     timeout_s: 1800
   efficiency:
+    enabled: false
     family: claude
     model: claude-sonnet-5
     budget_usd: 10.0
@@ -103,12 +110,6 @@ roles:
     budget_usd: 5.0
     max_turns: 40
     timeout_s: 1200
-  body:
-    family: claude
-    model: claude-haiku-4-5-20251001
-    budget_usd: 2.0
-    max_turns: 10
-    timeout_s: 600
 
 # Review direction is asymmetric: Claude reviewing Codex 71.6 -> 89.7, Codex reviewing
 # Claude 91.4 -> 82.8. When setup detects the author's family, the two lenses that
@@ -135,9 +136,13 @@ bounds:
   # shared verifier would see every other claim and the blinding is the point.
   max_verifier_sessions: 40
   # A suggestion is only attached once it has been applied and gated for real, and
-  # each proof is a full run of the pinned command, so the count is bounded.
+  # each proof is a full run of the pinned command, so the count is bounded. Only
+  # correctness suggestions are proven at all - a style suggestion posts as prose.
   max_proven_suggestions: 20
-  max_spend_usd: 400.0
+  # No spend bound: these lanes are subscription-backed and cost figures are
+  # observability (pond-derived, after the run), never control flow. Runaway
+  # protection is per-session - maxBudgetUsd on the Claude bridge, timeout_s and
+  # max_turns everywhere - plus this wall clock.
   max_wall_s: 10800
   # A task whose report is missing or unwitnessed is retried once, then parks.
   attempts_per_task: 2

@@ -275,3 +275,36 @@ class TestVerdictTable:
         asks, follow = verdictcalc.split(rows)
         assert [row["id"] for row in asks] == ["b", "s"]
         assert [row["id"] for row in follow] == ["f"]
+
+
+class TestCommentBody:
+    """The one-click block appears exactly when a proof witnessed the gate passing."""
+
+    def finding(self, **over):
+        return {
+            "id": "s1",
+            "category": "correctness",
+            "claim": "The charge runs before its gate.",
+            "verdict": "CONFIRMED",
+            "verify": {"reason": "a rubric decided it"},
+            "tags": [],
+            "suggestion": {"line": 23, "replacement": "gate(order)\ncharge(order)"},
+            **over,
+        }
+
+    def test_a_proven_suggestion_renders_the_one_click_block(self):
+        from review_pr import synthesize
+
+        body = synthesize.comment_body(
+            self.finding(), {"proven": True, "reason": "the pinned validation command passes"}
+        )
+        assert "```suggestion" in body
+
+    def test_an_unproven_suggestion_renders_as_prose_with_the_reason(self):
+        from review_pr import synthesize
+
+        body = synthesize.comment_body(
+            self.finding(), {"proven": False, "reason": "only correctness suggestions are proven"}
+        )
+        assert "```suggestion" not in body
+        assert "offered as prose" in body and "only correctness suggestions" in body

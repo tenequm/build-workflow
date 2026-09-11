@@ -157,19 +157,18 @@ class TestDualFamilyAndRouting:
 
 
 class TestProvenSuggestions:
-    def test_the_suggestion_that_keeps_the_gate_green_is_posted_as_a_suggestion(self, reviewed):
-        payload = json.loads((reviewed["workspace"] / "pr-review.json").read_text())
-        blocks = [c for c in payload["comments"] if "```suggestion" in c["body"]]
-        assert len(blocks) == 1
-        assert blocks[0]["path"] == "shopkit/catalog.py"
-        assert blocks[0]["start_line"] == 14 and blocks[0]["line"] == 16
-
-    def test_the_suggestion_that_breaks_the_gate_is_offered_as_prose(self, reviewed):
+    def test_a_style_suggestion_is_never_gated_and_posts_as_prose(self, reviewed):
+        """The fixture's two suggestions are design and efficiency class, and neither
+        earns a gate run any more: only a correctness suggestion is proven, so both
+        arrive as prose with the reason attached and no one-click block exists."""
         proofs = reviewed["summary"]["evidence"]["suggestions"]
-        assert any(p["applied"] and not p["proven"] for p in proofs.values())
+        assert proofs, "the planted suggestions must still reach the proof stage"
+        assert all(not p["applied"] for p in proofs.values())
+        assert all("only correctness suggestions" in p["reason"] for p in proofs.values())
         payload = json.loads((reviewed["workspace"] / "pr-review.json").read_text())
+        assert not any("```suggestion" in c["body"] for c in payload["comments"])
         prose = [c for c in payload["comments"] if "offered as prose" in c["body"]]
-        assert len(prose) == 1
+        assert len(prose) >= 1
 
 
 class TestSynthesis:
@@ -249,13 +248,16 @@ class TestLedger:
 
 
 class TestCost:
-    def test_the_run_separates_what_was_reserved_from_what_was_reported(self, reviewed):
-        """A reservation is a ceiling the operator set; a reported number is a usage
-        meter an adapter emitted. Conflating them published a cost that was not one."""
+    def test_no_money_bookkeeping_survives_in_the_evidence(self, reviewed):
+        """Cost is observability, never control flow: the run's evidence carries wall
+        clock, session count and tier, and the only dollar figures anywhere are the
+        pond-derived usage totals under `capture` when capture ran (it does not here).
+        The reservation/metering ledger this replaces published numbers that were not
+        costs, and its spend bound could park a run over money nobody pays."""
         evidence = reviewed["summary"]["evidence"]
         assert evidence["wall_s"] > 0
-        assert evidence["reserved_usd"] > 0
-        assert evidence["reported_usd"] >= 0
-        assert evidence["reserved_usd"] >= evidence["reported_usd"]
-        assert evidence["metered_sessions"] <= evidence["sessions"]
+        assert evidence["sessions"] >= 1
         assert evidence["tier"] == sandbox.tier()
+        for relic in ("reserved_usd", "reported_usd", "metered_sessions", "charged_usd"):
+            assert relic not in evidence
+        assert "capture" not in evidence, "this fixture runs with capture off"

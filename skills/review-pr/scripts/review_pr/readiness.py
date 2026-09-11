@@ -104,8 +104,8 @@ def check(
         _check(
             "pond",
             pond["ok"],
-            f"pond {pond['version'] or 'absent'}; this workflow pins >= {pond['minimum']} because "
-            "agy sessions are only ingested from that release",
+            f"pond {pond['version'] or 'absent'} at {pond['binary']}; pinned exactly "
+            f"{pond['pinned']} like the bernstein dep - `just install-pond` provisions it",
             blocking=capture,
         )
     )

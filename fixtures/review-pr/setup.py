@@ -140,6 +140,9 @@ def main() -> int:
     stages = ROOT / "skills/review-pr/templates/stages.yaml"
     template = target / "stages.yaml"
     text = stages.read_text()
+    # The shipped template parks cleanliness and efficiency; the fixture exists to
+    # exercise machinery, and its planted defects cover every lens, so all five run.
+    text = text.replace("    enabled: false\n", "    enabled: true\n")
     if args.recorded:
         agent = json.dumps(
             [

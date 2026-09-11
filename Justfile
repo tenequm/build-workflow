@@ -14,6 +14,10 @@ check:
     just --justfile bernstein_operator/Justfile check
     echo "check: clean"
 
+# Provision the pinned pond into the operator venv (see review_pr/pondsync.py PINNED).
+install-pond version="0.17.2":
+    sh scripts/install-pond.sh {{version}}
+
 # Bump the patch version in both plugin manifests, commit, and push.
 # Plugin consumers only receive updates when the version changes.
 ship:

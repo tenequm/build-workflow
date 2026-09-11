@@ -152,6 +152,26 @@ def gate_edited(root: Path, provenance: dict[str, Any], head: str) -> bool:
     return digest(git_bytes(root, "show", f"{head}:{path}")) != provenance["blob"]
 
 
+# Files that state what a project claims about itself: who owns what, what governs
+# changes, what the project promises. The ground-truth replays measured that every
+# missed finding lived in exactly this class of file - in scope for every lens, read
+# end to end by none - so setup names them and the implementation lens is instructed
+# to read each one whole.
+AUTHORITY_NAMES = re.compile(
+    r"(?i)^(governance|charter|roster|maintainers|codeowners|owners|security|"
+    r"contributing|code_of_conduct)(\.(md|rst|txt|toml|ya?ml))?$"
+)
+AUTHORITY_CAP = 10
+
+
+def authority_files(root: Path, head: str) -> list[str]:
+    """Repository-relative authority docs present at the reviewed head, root first."""
+    listed = git(root, "ls-tree", "-r", "--name-only", head).splitlines()
+    matched = [path for path in listed if AUTHORITY_NAMES.match(Path(path).name)]
+    matched.sort(key=lambda path: (len(Path(path).parts), path))
+    return matched[:AUTHORITY_CAP]
+
+
 def author_family(pr: dict[str, Any]) -> dict[str, Any]:
     """Route by author family. Ambiguity falls back to the default table, never a guess."""
     author = pr.get("author") or {}
@@ -265,6 +285,7 @@ def prepare(
         "test_files": diffindex.test_paths(reviewable),
         "gate": provenance,
         "gate_edited": gate_edited(root, provenance, head),
+        "authority_files": authority_files(root, head),
         "author_family": author_family(pr),
         "rules": rules or rule_set(pr.get("repo") or remote_slug(root)),
         "fast_path": lines < FAST_PATH_LINES,

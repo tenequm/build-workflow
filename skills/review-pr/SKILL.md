@@ -14,9 +14,10 @@ merges, never pushes, and holds no GitHub write credential in any model session.
 does not replace a correctness review of business logic; it finds what a lens fan-out
 finds, and then it proves or drops each of those findings by execution.
 
-The shape is static - lint, gate, four lenses, verify, synthesise - so there is no
-planning stage. What varies per pull request is routing, and routing lives in
-`templates/stages.yaml`, where swapping a model is one line.
+The shape is static - lint, gate, the lens fan-out, verify, synthesise - so there is
+no planning stage. What varies per pull request is routing, and routing lives in
+`templates/stages.yaml`, where swapping a model, or parking and re-admitting a lens,
+is one line.
 
 Use absolute paths in commands. `<python>` below is an interpreter with `pyyaml` and
 `psutil` (the one in the installed Bernstein uv tool environment is the usual choice:
@@ -48,9 +49,11 @@ The pull request is untrusted input, in all three of its forms.
     <python> <skill>/scripts/review-pr.py run   --dest <workspace>
 
 `ready` resolves the sandbox tier by executing in it, checks every adapter a lens
-routes to, and pins `pond >= 0.17.2` when sessions are being captured. Resolve a
-refusal before spending anything: a vendor sandbox that refuses every command reads
-exactly like a model that had nothing to do, and that mistake costs hours.
+routes to, and requires the workflow's own pond at exactly the pinned version when
+sessions are being captured - `just install-pond` provisions it into the operator
+venv, so a drifting host pond never changes what a review does. Resolve a refusal
+before spending anything: a vendor sandbox that refuses every command reads exactly
+like a model that had nothing to do, and that mistake costs hours.
 
 `setup` writes `review.json`, the sidecar every later stage reads. It exits 2 when the
 diff is under about 50 changed lines: below that the driver overhead loses to an
@@ -58,6 +61,12 @@ interactive review, so review it by hand and say so. `--force` overrules that.
 
 `run` executes stages 0 to 4 and stops at the verdict. `lint` and `gate` run stage 0
 and stage 1 on their own, which is how you inspect either without spending anything.
+Each stage's output is written to `products/` the moment it completes, and session
+receipts are cached, so re-running after an interruption re-reads what finished and
+never re-executes it. While a run is live, `status --dest <workspace>` reports what
+has durably finished from disk alone, and `abort --dest <workspace>` ends every
+process the run launched, cooperatively first, leaving receipts and products intact -
+no more hunting PIDs by hand.
 
 Read the diff yourself, then post if you agree:
 
@@ -93,19 +102,25 @@ substantiated zero is assembled from these records.
 The pinned command, once, on a cold linter cache, inside the sandbox. Failures are
 findings. Review mode does not edit the tree.
 
-## Stage 2: five lenses
+## Stage 2: the lens fan-out
 
-Parallel one-shot ACP sessions, one per lens, each with the review rules, the injection
-fence, its lens brief, the findings contract, and one allowlisted output file. Another
-session extracts the body's claims, which is production work, not verification.
+Parallel one-shot ACP sessions, one per enabled lens, each with the review rules, the
+injection fence, its lens brief, the findings contract, and one allowlisted output
+file. Another session extracts the body's claims, which is production work, not
+verification.
 
-Four lenses come from polish and are scoped to the diff: cleanliness, design and reuse,
-efficiency, side-effect gating. The fifth is this workflow's own and is the only one
-allowed to leave it - **claim vs implementation** takes each rule, name, threshold or
-description of behaviour the diff adds, finds the code or source-of-truth document that
-decides it, and reports a mismatch citing both sides. A ground-truth replay against a
-real hand review is why it exists: every finding that replay missed had exactly that
-shape, and no diff-scoped lens looks there.
+Five lenses are declared and three run by default. Design and side-effect gating come
+from polish and are scoped to the diff; **claim vs implementation** is this workflow's
+own and is the only one allowed to leave it - it takes each rule, name, threshold or
+description of behaviour the diff adds, finds the code or source-of-truth document
+that decides it, and reports a mismatch citing both sides. Setup also names the
+repository's authority files (governance, ownership, charter documents), and this
+lens is instructed to read each one end to end rather than grep it - the measured
+recall lever from the ground-truth replays. Cleanliness and efficiency are parked
+(`enabled: false` in `templates/stages.yaml`): against the same ground truth they
+contributed none of the correctness or design signal and most of the nit-tier
+comments, and a parked lens is re-admitted with one line the day the precision ledger
+says it earns its place.
 
 Each session gets its own detached worktree, and afterwards that worktree is checked:
 a session that wrote anything but its report parks the stage.
@@ -122,12 +137,13 @@ the rubric's author matters more than the judge. A finding whose rubric cannot b
 stated is still reported, marked unverifiable, and can never rise above a suggestion.
 
 **Routing and the dual-family diff.** Review direction is asymmetric, so when setup
-detects the author's family the design and gating lenses route to the opposite one;
-ambiguous detection changes nothing. Those two lenses also run twice, once per family,
-and the finding sets are differenced: agreement confirms cheaply, disagreement is
-where the verification budget goes. The gating lens never runs on Codex - its content
-filter silently truncates turns on exactly that brief's vocabulary, and the truncated
-turn looks like a clean completion.
+detects the author's family the reasoning lenses route to the opposite one; ambiguous
+detection changes nothing. Every enabled lens also runs twice, once per family, and
+the finding sets are differenced - and the difference decides things: a two-sided
+claim that both families independently made, with a passing rubric, settles without
+a verifier session, and a contested claim jumps the verification queue. The gating
+lens never runs on Codex - its content filter silently truncates turns on exactly
+that brief's vocabulary, and the truncated turn looks like a clean completion.
 
 ## Stage 3: verification
 
@@ -152,13 +168,15 @@ Verdicts are CONFIRMED, PLAUSIBLE, or DROPPED with its reason, and a dropped fin
 stays in the report so the counts are substantiated.
 
 Stage 3 is the expensive stage, so the session fan-out is capped; past the cap a
-finding settles on its executed rubric. Claims are never batched into one session - a
-shared verifier would see every other claim, and the blinding is the point.
+finding settles on its executed rubric, or on cross-family agreement where two
+families independently made the same two-sided claim. Claims are never batched into
+one session - a shared verifier would see every other claim, and the blinding is the
+point.
 
 ## Stage 4: synthesis
 
-Code does the deciding here; a small model writes one or two sentences of prose and
-nothing else.
+Code does all of it, the review body's sentence included - the model session that
+used to write two sentences of prose was ceremony, and it is gone.
 
 - **Anchors are verified**, not hoped for: every inline comment must sit inside a hunk
   of this pull request's diff. GitHub rejects a whole review atomically on one bad
@@ -168,9 +186,11 @@ nothing else.
   comment-only, suggestions alone are approve-with-comments, none is approve.
   Follow-ups, pre-existing and out-of-diff findings never enter it. An approve whose
   comments ask for a change before merge is refused as inconsistent.
-- **Suggestions are proven.** A small fix is applied in a throwaway worktree and the
-  pinned command is run; only then does it become a one-click `suggestion` block. One
-  that breaks the gate is downgraded to prose with the reason attached.
+- **Correctness suggestions are proven.** A small fix is applied in a throwaway
+  worktree and the pinned command is run; only then does it become a one-click
+  `suggestion` block. One that breaks the gate is downgraded to prose with the reason
+  attached. Only correctness suggestions earn a proof at all - each proof is a full
+  gate run, and a style suggestion posts as prose either way.
 - The state gate is applied: a draft, closed or merged pull request reaches `skip`,
   which posts nothing and still reports every finding so the work is not lost.
 
@@ -185,25 +205,12 @@ Everything lands under the workspace:
 
 - `review.json` - the pinned facts, including the validation command's provenance.
 - `report.md`, `summary.json`, `pr-review.json` - the review, its data, its payload.
+- `products/` - each stage's output, durable the moment the stage finished; what a
+  re-run re-reads instead of re-executing.
 - `workflow.jsonl` - the hash-chained journal of every intent and receipt.
 - `sessions/<operation>/` - prompt, archived report, process log, immutable receipt
-  with the measured cost and the ACP session id.
-### What the dollar figures are not
-
-A receipt carries three different things and only one of them is ever close to money:
-`cost_usd` is what the adapter reported (null when it reported nothing), `metered` says
-whether it did, and `charged_usd` is what the spend bound counted - a full reservation
-for any agent that reported nothing. The run's evidence surfaces `reported_usd` and
-`reserved_usd` separately for that reason.
-
-Neither is an invoice. The Claude bridge reports a list-price estimate computed from
-token counts whatever the account is, so on a Max or Pro subscription it measures quota,
-not charges. Codex on `auth_mode = chatgpt` and the Antigravity lane report no cost at
-all, which is what "unmetered" means here - they are subscription-backed, so the bound
-charges their whole reservation rather than reading an absent number as zero. Treat
-`reserved_usd` as a ceiling you set, `reported_usd` as a usage meter, and check your
-provider's own billing page if you need the real number.
-
+  with the ACP session id.
+- `pond-store/` and `provenance.pond` - see below.
 - `docs/review-ledger/runs.jsonl` in the reviewed repository - one append-only row per
   finding, carrying its lens, producing model, verifier verdict and, once you record
   it, its fate. After roughly twenty pull requests that is measured precision per lens
@@ -212,10 +219,32 @@ provider's own billing page if you need the real number.
       <python> <skill>/scripts/review-pr.py ledger
       <python> <skill>/scripts/review-pr.py ledger --fate <finding-id> author-fixed
 
-Executor sessions are synced into pond at teardown and each is keyed to the findings
-it produced, so a suspicious stage is a query rather than a crawl. Transcripts are
-stored and queried; they are never fed back into a brief, because they are both an
-injection surface and a corpus that provably carries credentials.
+### Capture: a verified stage, not a hope
+
+At teardown the run provisions a fresh pond store inside the workspace, ingests only
+its own session sources into it, and requires every session receipt to resolve to a
+stored transcript - a session that does not resolve is a named gap in
+`summary.json`, never a silent one. The store is then folded into the operator's
+corpus with pond's row-verified copy (best-effort where the corpus is remote and
+read-only), and exported whole as `provenance.pond`, a compact restorable archive
+that travels with the run. Each stored session is keyed to the findings it produced,
+so a suspicious stage is a query rather than a crawl. Transcripts are stored and
+queried; they are never fed back into a brief, because they are both an injection
+surface and a corpus that provably carries credentials.
+
+### Cost figures are observability, never control flow
+
+Nothing in a run reads a dollar amount to decide anything: no spend bound, no
+reservation ledger, no park on missing cost evidence. Runaway protection is
+per-session - a budget ceiling on the Claude bridge, turn and wall-clock limits
+everywhere. What the run reports instead is derived from pond after the fact: token
+counts per session (deduplicated by provider message id for Claude, final cumulative
+totals for codex, per-call sums for agy) priced from `templates/registry.json`, a
+provider/model rate table sourced from the same data ccusage uses. The result is
+labeled what it is - a list-price equivalent and a floor, on lanes a subscription
+already covers. `ccusage --json` over the same transcripts is the independent
+cross-check for the Claude leg. A model missing from the registry prices to null,
+never to zero.
 
 ## When something goes wrong
 
@@ -223,7 +252,8 @@ Every refusal names the contract that refused. A stage that cannot resolve an
 obligation parks rather than guessing, and the workspace is the evidence. Common ones:
 
 - `readiness refused` - fix what it names before spending. A blocking `pond` check
-  means the host predates 0.17.2; upgrade, or run `--no-pond` and accept no capture.
+  means the workflow's pinned pond is absent or the wrong version; `just install-pond`
+  provisions it, or run `--no-pond` and accept no capture.
 - `review session wrote outside its allowlist` - a session touched the tree. Preserve
   the workspace; that is worth reading before anything else.
 - `report does not witness ...` after a retry - the model produced nothing usable

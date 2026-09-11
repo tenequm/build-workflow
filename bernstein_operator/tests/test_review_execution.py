@@ -284,7 +284,14 @@ class TestGate:
 
 class TestProvenSuggestions:
     def finding(self, **over):
-        return {"id": "s1", "file": "billing.py", "line": 12, "verdict": "CONFIRMED", **over}
+        return {
+            "id": "s1",
+            "file": "billing.py",
+            "line": 12,
+            "verdict": "CONFIRMED",
+            "category": "correctness",
+            **over,
+        }
 
     def test_a_suggestion_that_keeps_the_gate_green_is_proven(self, review):
         proof = suggestions.prove(
@@ -341,3 +348,15 @@ class TestProvenSuggestions:
     def test_a_dropped_finding_is_never_proven(self, review):
         rows = [self.finding(verdict="DROPPED", suggestion={"line": 1, "replacement": "# noop"})]
         assert suggestions.prove_all(rows, review, tier=sandbox.tier(), cap=5) == {}
+
+    def test_a_style_suggestion_is_never_gated_and_says_why(self, review):
+        """The gate is the most expensive thing this workflow runs; a cleanliness
+        suggestion posts as prose either way, so it never earns a full gate run."""
+        rows = [
+            self.finding(
+                id="s9", category="cleanliness", suggestion={"line": 1, "replacement": "# noop"}
+            )
+        ]
+        proofs = suggestions.prove_all(rows, review, tier=sandbox.tier(), cap=5)
+        assert proofs["s9"]["applied"] is False and proofs["s9"]["proven"] is False
+        assert "only correctness suggestions" in proofs["s9"]["reason"]

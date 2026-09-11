@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from operator_driver.storage import Ledger, Park
-from review_pr import config, readiness, runner
+from review_pr import config, pondsync, readiness, runner
 
 pytestmark = pytest.mark.skipif(shutil.which("acpx") is None, reason="acpx executable unavailable")
 
@@ -120,12 +120,11 @@ class TestReportWitnessLaw:
             workspace["sidecar"],
             workspace["ledger"],
             attempts=2,
-            spend_cap=5,
             wall_cap=300,
         )
         receipt = receipts["review-cleanliness-gemini"]
         assert receipt["ok"] is True and receipt["problems"] == []
-        assert receipt["cost_usd"] == 0.01 and receipt["metered"] is True
+        assert receipt["cost_usd"] == 0.01
         assert receipt["signal"] == 'reports/findings-cleanliness.json :: "lens": "cleanliness"'
 
     def test_a_clean_exit_with_no_report_is_a_failed_attempt_and_is_retried(
@@ -138,7 +137,6 @@ class TestReportWitnessLaw:
             workspace["sidecar"],
             workspace["ledger"],
             attempts=2,
-            spend_cap=5,
             wall_cap=300,
         )
         receipt = receipts["review-cleanliness-gemini"]
@@ -157,7 +155,6 @@ class TestReportWitnessLaw:
             workspace["sidecar"],
             workspace["ledger"],
             attempts=1,
-            spend_cap=5,
             wall_cap=300,
         )
         receipt = receipts["review-cleanliness-gemini"]
@@ -174,32 +171,6 @@ class TestIsolation:
                 workspace["sidecar"],
                 workspace["ledger"],
                 attempts=1,
-                spend_cap=5,
-                wall_cap=300,
-            )
-
-    def test_a_session_that_overspends_its_reservation_parks(self, workspace, tmp_path):
-        greedy = agent(tmp_path, cost=9.0)
-        with pytest.raises(Park, match="reserved spend"):
-            runner.run_batch(
-                [task(greedy)],
-                workspace["sidecar"],
-                workspace["ledger"],
-                attempts=1,
-                spend_cap=50,
-                wall_cap=300,
-            )
-
-    def test_the_stage_spend_bound_stops_a_batch(self, workspace, tmp_path):
-        path = agent(tmp_path, cost=0.4)
-        tasks = [task(path, operation=f"review-lens-{index}") for index in range(3)]
-        with pytest.raises(Park, match="spend bound"):
-            runner.run_batch(
-                tasks,
-                workspace["sidecar"],
-                workspace["ledger"],
-                attempts=1,
-                spend_cap=0.5,
                 wall_cap=300,
             )
 
@@ -211,7 +182,6 @@ class TestIsolation:
             workspace["sidecar"],
             workspace["ledger"],
             attempts=1,
-            spend_cap=5,
             wall_cap=300,
         )
         assert not (workspace["dir"] / "sessions/review-cleanliness-gemini/worktree").exists()
@@ -222,7 +192,7 @@ class TestIsolation:
         path = agent(tmp_path)
         tasks = [task(path, operation=f"review-lens-{index}") for index in range(3)]
         receipts = runner.run_batch(
-            tasks, workspace["sidecar"], workspace["ledger"], attempts=1, spend_cap=5, wall_cap=300
+            tasks, workspace["sidecar"], workspace["ledger"], attempts=1, wall_cap=300
         )
         assert all(receipt["ok"] for receipt in receipts.values())
         spans = [(r["started"], r["finished"]) for r in receipts.values()]
@@ -253,7 +223,7 @@ class TestStageTemplate:
             (lambda d: d["lenses"].pop("efficiency"), "exactly the lenses"),
             (lambda d: d["families"].pop("codex"), "undeclared family"),
             (lambda d: d["bounds"].update(max_verifier_sessions=0), "positive integer"),
-            (lambda d: d["bounds"].update(max_spend_usd=0), "positive number"),
+            (lambda d: d["bounds"].update(max_wall_s=0), "positive number"),
             (lambda d: d["roles"].pop("verifier"), "no verifier role"),
             (lambda d: d["lenses"]["design"].pop("model"), "explicit model"),
         ],
@@ -314,3 +284,71 @@ class TestReadiness:
         assert report["ok"] is False
         with pytest.raises(Park, match="readiness refused"):
             readiness.require(report)
+
+
+class TestPondPin:
+    def test_the_pinned_binary_gates_on_exact_version(self, tmp_path, monkeypatch):
+        """Pinned like the bernstein dep: a host pond ahead of the pin is as much
+        drift as one behind it."""
+        fake = tmp_path / "pond"
+        fake.write_text("#!/bin/sh\necho pond 0.16.9\n")
+        fake.chmod(0o755)
+        monkeypatch.setenv("POND_BIN", str(fake))
+        report = pondsync.current()
+        assert report["ok"] is False
+        assert report["version"] == "0.16.9" and report["pinned"] == "0.17.2"
+
+    def test_the_exact_pin_passes(self, tmp_path, monkeypatch):
+        fake = tmp_path / "pond"
+        fake.write_text("#!/bin/sh\necho pond 0.17.2\n")
+        fake.chmod(0o755)
+        monkeypatch.setenv("POND_BIN", str(fake))
+        assert pondsync.current()["ok"] is True
+
+
+class TestCostEvidenceIsInformative:
+    """Cost is observability: malformed or regressing figures never void a review
+    session's transcript. The blind judge keeps the strict contract."""
+
+    def lines(self, *costs):
+        rows = [
+            {
+                "method": "session/update",
+                "params": {
+                    "sessionId": "s1",
+                    "update": {
+                        "sessionUpdate": "usage_update",
+                        "cost": {"currency": "USD", "amount": amount},
+                    },
+                },
+            }
+            for amount in costs
+        ]
+        rows.append({"result": {"stopReason": "end_turn"}})
+        return ("\n".join(json.dumps(row) for row in rows) + "\n").encode()
+
+    def test_a_backwards_cost_is_ignored_without_the_strict_contract(self):
+        from operator_driver.acp import transcript
+
+        evidence = transcript(self.lines(0.5, 0.2), require_cost=False)
+        assert evidence["cost_usd"] == 0.5
+
+    def test_the_strict_contract_still_parks_on_a_backwards_cost(self):
+        from operator_driver.acp import transcript
+
+        with pytest.raises(Park, match="moved backwards"):
+            transcript(self.lines(0.5, 0.2), require_cost=True)
+
+    def test_a_missing_cost_is_none_not_fatal(self):
+        from operator_driver.acp import transcript
+
+        rows = [{"result": {"stopReason": "end_turn"}}]
+        rows.insert(
+            0,
+            {
+                "method": "session/update",
+                "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk"}},
+            },
+        )
+        log = ("\n".join(json.dumps(row) for row in rows) + "\n").encode()
+        assert transcript(log, require_cost=False)["cost_usd"] is None

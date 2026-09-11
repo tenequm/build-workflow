@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Verification fan-out is capped, and findings are never batched into one session
-description: Stage 3 spends its budget by executing rubrics in the driver first and capping the number of verifier sessions rather than packing several claims into one, because a shared verifier would see every other claim and blinding is the mechanism being bought; amended 2026-09-11 so that a claim whose rubric can only reach half of it always gets a session even when that rubric passed.
+description: Stage 3 spends its budget by executing rubrics in the driver first and capping the number of verifier sessions rather than packing several claims into one, because a shared verifier would see every other claim and blinding is the mechanism being bought; amended 2026-09-11 so that a claim whose rubric can only reach half of it always gets a session even when that rubric passed, and again the same day so cross-family agreement counts as the second reading and settles such a claim without a session while contested claims jump the queue.
 tags: [review-pr, verification, cost, evaluation]
 status: stable
 generated: { by: claude-code/opus-5, at: "2026-09-11T03:40:00Z" }
@@ -55,6 +55,19 @@ a sentence is only half-checked by one. Those now always queue, and on the re-ru
 six went to a blinded verifier of the opposite family and all six survived - which is
 the evidence that the findings were real, and that the earlier CONFIRMED verdicts had
 been right by luck rather than by proof.
+
+# Amendment, 2026-09-11 (second): cross-family agreement is a second reading
+
+The dual-family lens diff computed an `agreement` field that the ledger recorded and
+nothing read - two sessions of spend per lens buying a field with no consumer. It now
+decides two things. A two-sided claim that two families independently made, with a
+passing rubric, settles CONFIRMED without a verifier session: the rubric executed the
+implementation half and the second family's independent assertion is the reading of
+the claim half, on the measured basis that disagreement alone detects about two
+thirds of incorrect programs at zero false positives. And a contested claim - one
+family only - outranks an agreed one in the verifier queue. Agreement never
+substitutes for a proof of concept: a PoC-class claim queues regardless, because two
+opinions are not a demonstration.
 
 # Why not batch
 

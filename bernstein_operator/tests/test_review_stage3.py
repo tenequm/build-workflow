@@ -238,11 +238,10 @@ class TestWriteTargets:
 
         made = [
             briefs.reviewer(lens, self.side, self.paths)
-            for lens in ("cleanliness", "design", "efficiency", "gating")
+            for lens in ("cleanliness", "design", "efficiency", "gating", "implementation")
         ]
         made.append(briefs.verifier(finding(), self.side, self.paths))
         made.append(briefs.claims(self.side, self.paths))
-        made.append(briefs.body(Path("/w/draft.json"), self.side))
         return made
 
     def test_a_brief_that_names_the_shared_tree_is_refused(self):
@@ -405,3 +404,77 @@ class TestClaims:
         result = claims.check(rows, {"tree": str(tree)}, tier="none")
         assert not marker.exists(), "an injection claim must never be executed"
         assert result["findings"][0]["tags"] == ["injection"]
+
+
+class TestAgreementSettles:
+    """Cross-family agreement is the second reading of a two-sided claim - the field
+    used to be computed, written to the ledger, and read by nothing that decided."""
+
+    def two_sided(self, **over):
+        row = finding(
+            lens="implementation",
+            category="correctness",
+            rubric={"kind": "grep", "expect": "empty", "pattern": "old_name", "path": "."},
+            **over,
+        )
+        return row
+
+    def test_a_two_family_claim_with_a_passing_rubric_settles_without_a_session(self):
+        row = {**self.two_sided(), "agreement": ["claude", "codex"]}
+        queued, settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
+        assert queued == [] and settled == [row]
+        done = verify.settle(row, observed(passed=True), None, {}, tier="none")
+        assert done["verdict"] == "CONFIRMED"
+        assert "two families" in done["verify"]["reason"]
+
+    def test_a_single_family_claim_still_queues_even_with_a_passing_rubric(self):
+        row = {**self.two_sided(), "agreement": ["claude"]}
+        queued, settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
+        assert queued == [row] and settled == []
+        done = verify.settle(row, observed(passed=True), None, {}, tier="none")
+        assert done["verdict"] == "PLAUSIBLE"
+
+    def test_agreement_never_substitutes_for_a_proof_of_concept(self):
+        row = {
+            **finding(lens="gating", category="correctness"),
+            "agreement": ["claude", "codex"],
+        }
+        queued, settled = verify.select([row], {row["id"]: observed(passed=True)}, cap=10)
+        assert queued == [row], "a PoC class always queues: agreement is opinions, not a demo"
+
+    def test_contested_claims_outrank_agreed_ones_in_the_queue(self):
+        alone = {**self.two_sided(claim="One family made this claim."), "agreement": ["claude"]}
+        both = {
+            **self.two_sided(claim="Two families made this claim."),
+            "agreement": ["claude", "codex"],
+        }
+        assert verify.priority(alone) < verify.priority(both)
+
+
+class TestActiveLenses:
+    def test_the_shipped_template_parks_cleanliness_and_efficiency(self):
+        plan = config.load()
+        active = config.active_lenses(plan)
+        assert active == ("design", "gating", "implementation")
+
+    def test_a_parked_lens_is_reenabled_with_one_line(self):
+        plan = config.load()
+        plan["lenses"]["cleanliness"]["enabled"] = True
+        assert "cleanliness" in config.active_lenses(plan)
+
+
+class TestStageProducts:
+    def test_a_product_computes_once_and_rereads_forever(self, tmp_path):
+        from review_pr import pipeline
+
+        calls = []
+
+        def compute():
+            calls.append(1)
+            return {"result": 42}
+
+        first = pipeline._product(tmp_path, "stage0-lint", compute)
+        second = pipeline._product(tmp_path, "stage0-lint", compute)
+        assert first == second == {"result": 42}
+        assert len(calls) == 1, "a completed stage is re-read, never re-executed"
+        assert (tmp_path / "products" / "stage0-lint.json").is_file()

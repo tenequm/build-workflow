@@ -35,11 +35,25 @@ def opposite(plan: dict[str, Any], producer: str) -> str:
     return other[0]
 
 
-def priority(finding: dict[str, Any]) -> tuple[int, int, str]:
-    """Correctness and gating first; then impact; then a stable order."""
+def second_reading(finding: dict[str, Any]) -> bool:
+    """Whether two families independently made this claim.
+
+    Cross-family agreement is the second reading a two-sided claim needs: the rubric
+    executed the implementation half, and a second family independently asserting the
+    claim half is stronger evidence than one verifier's re-read - disagreement alone
+    detects about two thirds of incorrect programs at zero false positives. Until this
+    was wired in, `agreement` was computed, written to the ledger, and read by
+    nothing that decided anything.
+    """
+    return len(finding.get("agreement") or []) > 1
+
+
+def priority(finding: dict[str, Any]) -> tuple[int, int, int, str]:
+    """Correctness and gating first; then contested claims; then impact."""
     poc = 0 if findings_mod.needs_verifier(finding) else 1
+    contested = 0 if not second_reading(finding) else 1
     impact = 0 if finding["impact"] != "none" else 1
-    return (poc, impact, finding["id"])
+    return (poc, contested, impact, finding["id"])
 
 
 def rubrics(
@@ -63,14 +77,20 @@ def select(
     """Split into findings worth a verifier session and findings their rubric settles.
 
     A claim whose rubric passed and whose class needs no proof of concept is already
-    decided. A claim two families independently made, with a passing rubric, is decided
-    too. Everything else queues, and the queue is cut at the cap.
+    decided. A two-sided claim (needs_verifier) is decided without a session only when
+    a second family independently made it AND its rubric passed - agreement is the
+    second reading. A claim that needs a proof of concept always queues: agreement is
+    two opinions, not a demonstration. Everything else queues, cut at the cap.
     """
     queue: list[dict[str, Any]] = []
     settled: list[dict[str, Any]] = []
     for finding in candidates:
         result = observed[finding["id"]]
-        if result["passed"] and not findings_mod.needs_verifier(finding):
+        decided = result["passed"] and (
+            not findings_mod.needs_verifier(finding)
+            or (not findings_mod.needs_poc(finding) and second_reading(finding))
+        )
+        if decided:
             settled.append(finding)
         else:
             queue.append(finding)
@@ -136,13 +156,16 @@ def settle(
             verdict = "PLAUSIBLE"
             reason = "the rubric passed but no proof of concept was produced"
         elif findings_mod.needs_verifier(finding) and verdict == "CONFIRMED":
-            # A two-sided claim past the session cap: the rubric checked the
-            # implementation, and nothing read it against the statement it contradicts.
-            verdict = "PLAUSIBLE"
-            reason = (
-                "the rubric checked the implementation side only, and no verifier "
-                "read it against the claim"
-            )
+            if second_reading(finding):
+                reason = "the stated rubric passed and two families independently made this claim"
+            else:
+                # A two-sided claim past the session cap, made by one family: the
+                # rubric checked the implementation, and nothing read the claim side.
+                verdict = "PLAUSIBLE"
+                reason = (
+                    "the rubric checked the implementation side only, and no verifier "
+                    "read it against the claim"
+                )
         return {
             **finding,
             "verdict": verdict,

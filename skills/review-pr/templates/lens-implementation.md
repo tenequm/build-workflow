@@ -31,6 +31,19 @@ Anything the diff adds or changes that a reader would act on and could be wrong:
   a loop, and a document that claims to be derived from a source it contradicts is a
   finding on one of the two.
 
+## The authority files: read each end to end
+
+These files state what this project claims about itself, and the misses this lens was
+built to close all lived in one of them. This is the one part of your scope that is not
+optional and not grep-first: open each file below and read it whole, checking every
+checkable statement in it against the repository - especially the statements the diff
+does not touch, because a claim the diff sits next to has already been read by someone.
+
+{{AUTHORITY_FILES}}
+
+A file listed here that the repository no longer honours is a finding even when the
+diff never mentions it, tagged `out-of-diff` if the diff is unrelated to it.
+
 ## How to check one
 
 1. Find what decides it. Grep the whole repository for the name, the threshold, the

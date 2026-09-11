@@ -472,3 +472,39 @@ never let the second void a report the first would have accepted.
 adapter enabled. Folding 0.17.2 into the Home Manager pin is the operator's own
 change; until then the binary in `~/.local/bin` is what satisfies the check, and
 removing it restores 0.17.1 and the refusal.
+
+## Addendum, 2026-09-11 (post-ship refactor): quality over ceremony
+
+A retrospective after the paid runs judged several subsystems against the goal -
+result quality on subscription-backed lanes - and this landed as one refactor:
+
+1. **Money control flow deleted.** No spend bound, no reservation ledger, no parks
+   on cost evidence; per-session budget/turn/timeout ceilings plus the batch wall
+   clock are the runaway protection. Cost is reported after the run from pond,
+   priced by `templates/registry.json` (LiteLLM/ccusage rates), labeled a
+   list-price floor
+   ([decision](../knowledge/decisions/cost-is-observability-never-control-flow.md)).
+2. **Capture is a verified stage on a per-run pond store**, with the pond binary
+   pinned into the operator venv (`just install-pond`) like the bernstein dep;
+   every session must resolve or the summary names the gap; the store folds into
+   the corpus best-effort and exports `provenance.pond`
+   ([decision](../knowledge/decisions/per-run-pond-store-for-capture.md)).
+3. **Dual-family agreement now decides.** A two-sided claim two families made, with
+   a passing rubric, settles without a verifier; contested claims jump the queue;
+   PoC classes still always queue (second amendment in
+   [the verification decision](../knowledge/decisions/verification-is-capped-never-batched.md)).
+4. **Stage products are durable** (`products/*.json`): a re-run re-reads finished
+   stages instead of re-executing them, and `status`/`abort` subcommands replace
+   hand-run PID hunting.
+5. **Lens fan-out tuned for signal**: cleanliness and efficiency parked
+   (`enabled: false`, one line to re-admit), the review-body model session replaced
+   by code, suggestion proofs limited to correctness class, and the implementation
+   lens now receives the repository's authority files with an instruction to read
+   each end to end - the measured recall lever.
+6. **Tests**: 28 mirror-tests deleted, new coverage for every behavior above;
+   `just test` (acceptance harness) 266 passed; `just check` clean.
+
+Acceptance items 1 and 3 are still owed on this new shape: re-run the ground-truth
+replay against PR #5737 (does recall move past 5/14, and does correctness move off
+0/3 with authority files as input), then the real weekly batch against
+`needs-committer-review`.

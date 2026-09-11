@@ -228,6 +228,52 @@ def cmd_post(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_status(args: argparse.Namespace) -> int:
+    """What a run has durably finished, what is live, what failed - from disk alone."""
+    from operator_driver.processes import alive
+
+    dest = Path(args.dest).resolve()
+    products = sorted(path.stem for path in (dest / "products").glob("*.json"))
+    print(f"stage products: {', '.join(products) or 'none yet'}")
+    receipts = sorted((dest / "sessions").glob("*/receipt.json"))
+    ok = sum(1 for path in receipts if json.loads(path.read_text())["ok"])
+    print(f"sessions:       {len(receipts)} settled ({ok} ok, {len(receipts) - ok} failed)")
+    live = []
+    for path in sorted((dest / "processes").glob("*.json")):
+        if path.name.endswith(".exit.json"):
+            continue
+        receipt = json.loads(path.read_text())
+        if not path.with_suffix("").with_suffix(".exit.json").is_file() and alive(receipt):
+            live.append(f"{path.stem} (pid {receipt['pid']})")
+    print(f"live processes: {', '.join(live) or 'none'}")
+    if (dest / "summary.json").is_file():
+        summary = json.loads((dest / "summary.json").read_text())
+        print(f"summary:        action={summary['action']} counts={summary['counts']}")
+    return 0
+
+
+def cmd_abort(args: argparse.Namespace) -> int:
+    """End every process this run launched, cooperatively first. The receipts remain."""
+    from operator_driver.processes import alive, cancel_acp, owned_processes, terminate
+
+    dest = Path(args.dest).resolve()
+    stopped = 0
+    for path in sorted((dest / "processes").glob("*.json")):
+        if path.name.endswith(".exit.json"):
+            continue
+        receipt = json.loads(path.read_text())
+        if alive(receipt):
+            cancel_acp(receipt)
+            stopped += 1
+            print(f"stopped {path.stem} (pid {receipt['pid']})")
+    for survivor in owned_processes(dest, all_commands=True):
+        terminate(survivor)
+        stopped += 1
+        print(f"stopped stray pid {survivor['pid']}: {survivor['command'][:80]}")
+    print(f"{stopped} process(es) stopped; receipts and stage products are untouched")
+    return 0
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
     path = Path(args.path) if args.path else ledger_mod.path(Path.cwd())
     rows = ledger_mod.read(path)
@@ -293,13 +339,13 @@ def cmd_batch(args: argparse.Namespace) -> int:
                 continue
             cmd_run(namespace)
             summary = json.loads((dest / "summary.json").read_text())
+            capture = summary["evidence"].get("capture") or {}
             results.append(
                 {
                     "number": row["number"],
                     "status": summary["action"],
                     "wall_s": round(time.monotonic() - started, 1),
-                    "reserved_usd": summary["evidence"]["reserved_usd"],
-                    "reported_usd": summary["evidence"]["reported_usd"],
+                    "usage_usd": (capture.get("usage_totals") or {}).get("usd_list_price"),
                     "counts": summary["counts"],
                 }
             )
@@ -313,14 +359,14 @@ def cmd_batch(args: argparse.Namespace) -> int:
                 }
             )
     (root / "batch.json").write_text(json.dumps(results, indent=2) + "\n")
-    # "reported" and not "spent": an unmetered agent reports nothing and is still
-    # charged its whole reservation against the bound.
-    print(f"\n{'pr':>6} {'status':24} {'wall':>8} {'reported':>9}")
+    # "list-price" and never "spent": a pond-derived equivalent on subscription lanes.
+    print(f"\n{'pr':>6} {'status':24} {'wall':>8} {'list-price':>11}")
     for row in results:
         status = str(row["status"])[:24]
         wall = float(row.get("wall_s") or 0)
-        spend = float(row.get("reported_usd") or 0)
-        print(f"{row['number']:6} {status:24} {wall:8.1f} {spend:9.2f}")
+        usage = row.get("usage_usd")
+        priced = f"{usage:11.2f}" if isinstance(usage, (int, float)) else f"{'-':>11}"
+        print(f"{row['number']:6} {status:24} {wall:8.1f} {priced}")
     print(f"\nbatch summary: {root}/batch.json")
     return 0
 
@@ -385,6 +431,18 @@ def main() -> int:
     post.add_argument("--dest", required=True)
     post.add_argument("--confirm", required=True, choices=verdictcalc.ACTIONS)
     post.set_defaults(func=cmd_post)
+
+    status = sub.add_parser(
+        "status", parents=[common], help="what a run has durably finished, from disk alone"
+    )
+    status.add_argument("--dest", required=True)
+    status.set_defaults(func=cmd_status)
+
+    abort = sub.add_parser(
+        "abort", parents=[common], help="end every process a run launched; receipts remain"
+    )
+    abort.add_argument("--dest", required=True)
+    abort.set_defaults(func=cmd_abort)
 
     led = sub.add_parser("ledger", parents=[common], help="measured precision per lens and model")
     led.add_argument("--path")

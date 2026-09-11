@@ -89,7 +89,13 @@ def judge_argv(spec: dict, worktree: Path, prompt: Path) -> list[str]:
 
 
 def transcript(log: bytes, *, complete: bool = True, require_cost: bool = True) -> dict:
-    """Read cumulative session cost, never sum repeated usage notifications."""
+    """Read cumulative session cost, never sum repeated usage notifications.
+
+    With require_cost, cost evidence is part of the contract and malformed evidence
+    parks - the blind judge's economics depend on it. Without it, cost is
+    observability: a missing, malformed or regressing figure is recorded as None and
+    never voids a transcript whose session evidence is otherwise sound.
+    """
     sessions = set()
     cost = None
     stop = None
@@ -135,9 +141,13 @@ def transcript(log: bytes, *, complete: bool = True, require_cost: bool = True) 
             or not math.isfinite(amount)
             or amount < 0
         ):
-            raise Park("invalid ACP USD cost evidence")
+            if require_cost:
+                raise Park("invalid ACP USD cost evidence")
+            continue
         if cost is not None and amount < cost:
-            raise Park("ACP cumulative cost moved backwards")
+            if require_cost:
+                raise Park("ACP cumulative cost moved backwards")
+            continue
         cost = float(amount)
     if complete and len(sessions) != 1:
         raise Park("judge transcript has no ACP session")

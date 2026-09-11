@@ -83,6 +83,11 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
     changed = "\n".join(f"- `{path}`" for path in shown)
     if len(listed) > len(shown):
         changed += f"\n- ... and {len(listed) - len(shown)} more (read `{paths['files']}`)"
+    # Authority files are named for every lens; only the implementation lens template
+    # carries the placeholder. This is the measured recall lever: the findings the
+    # first replays missed lived in files like GOVERNANCE.md that were in scope for
+    # every lens and read end to end by none.
+    authority = "\n".join(f"- `{path}`" for path in sidecar.get("authority_files") or [])
     brief = render(
         "reviewer-brief.md",
         {
@@ -95,6 +100,7 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
             "LENS": config.template(LENS_TEMPLATE[lens]).split("-->", 1)[-1].strip(),
             "LENS_NAME": lens,
             "REPORT_PATH": report,
+            "AUTHORITY_FILES": authority or "- (none identified in this repository)",
         },
     )
     return guard(brief, sidecar), report, witness
@@ -167,12 +173,3 @@ def claims(sidecar: dict[str, Any], paths: dict[str, Path]) -> tuple[str, str, s
         },
     )
     return guard(brief, sidecar), report, '"claims"'
-
-
-def body(summary: Path, sidecar: dict[str, Any]) -> tuple[str, str, str]:
-    report = "reports/body.json"
-    brief = render(
-        "body-brief.md",
-        {"SUMMARY_PATH": str(summary), "REPORT_PATH": report},
-    )
-    return guard(brief, sidecar), report, '"body"'

@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from operator_driver.storage import Ledger, Park, atomic, canonical
+from operator_driver.storage import Ledger, atomic, canonical
 
 from . import (
     briefs,
@@ -23,6 +23,7 @@ from . import (
     diffindex,
     dualfamily,
     houserules,
+    pondcost,
     pondsync,
     suggestions,
     synthesize,
@@ -84,7 +85,7 @@ def stage2(
 ) -> tuple[list[Task], list[dict[str, Any]]]:
     tasks: list[Task] = []
     routing: list[dict[str, Any]] = []
-    for lens in config.LENS_ORDER:
+    for lens in config.active_lenses(plan):
         for family, reason in lens_families(plan, lens, sidecar.get("author_family") or {}):
             spec = config.lens_spec(plan, lens, family=family)
             brief, report, witness = briefs.reviewer(lens, sidecar, paths)
@@ -173,6 +174,25 @@ def fuse(
     return findings_mod.merge(produced), report
 
 
+def _product(workspace: Path, name: str, compute: Callable[[], Any]) -> Any:
+    """A stage's output, durable the moment the stage finishes.
+
+    Bernstein's restart law, at this workflow's scale: a rerun re-derives from what is
+    on disk and never re-decides - or re-executes - a stage that already completed.
+    Session receipts already make model work resumable; this makes the driver-side
+    work (sandboxed test runs, rubric executions, suggestion proofs) resumable too.
+    A stale product is invalidated by deleting the file or the workspace, which is
+    also how a changed pull request head invalidates everything: setup refuses to
+    reuse a workspace built for another head.
+    """
+    path = workspace / "products" / f"{name}.json"
+    if path.is_file():
+        return json.loads(path.read_bytes())
+    result = compute()
+    atomic(path, canonical(result), mode=0o644)
+    return result
+
+
 def run(
     workspace: Path,
     sidecar: dict[str, Any],
@@ -187,36 +207,24 @@ def run(
     started = time.monotonic()
     run_id = run_id or f"{sidecar['repo'].replace('/', '-')}-{sidecar['number']}-{int(time.time())}"
     bounds = plan["bounds"]
-    # reserved: what the spend bound counts, charging a full reservation for any agent
-    # that reports nothing. reported: what an adapter actually said. They are different
-    # questions, and only the second is ever close to money - and even then only on
-    # per-token auth, since a subscription-backed CLI reports a list-price estimate.
-    charged = [0.0]
-    reported = [0.0]
-    metered = [0]
 
     def default_launch(tasks: list[Task]) -> dict[str, dict[str, Any]]:
-        receipts = run_batch(
+        return run_batch(
             tasks,
             sidecar,
             ledger,
             attempts=int(bounds["attempts_per_task"]),
-            spend_cap=float(bounds["max_spend_usd"]) - charged[0],
             wall_cap=float(bounds["max_wall_s"]),
         )
-        charged[0] += sum(receipt["charged_usd"] for receipt in receipts.values())
-        reported[0] += sum(r["cost_usd"] or 0.0 for r in receipts.values() if r["metered"])
-        metered[0] += sum(1 for r in receipts.values() if r["metered"])
-        return receipts
 
     launcher: Launcher = launch or default_launch
     diff = (workspace / sidecar["diff"]).read_text(errors="replace")
     pr = json.loads((workspace / "pr.json").read_text())
     paths = briefs.inputs(workspace, sidecar, diff, str(pr.get("body") or ""))
 
-    lint = houserules.lint(sidecar, pr, diff, tier=tier)
+    lint = _product(workspace, "stage0-lint", lambda: houserules.lint(sidecar, pr, diff, tier=tier))
     ledger.append("stage_complete", operation="stage0", findings=len(lint["findings"]))
-    gate = gate_mod.run(sidecar, tier=tier)
+    gate = _product(workspace, "stage1-gate", lambda: gate_mod.run(sidecar, tier=tier))
     ledger.append("stage_complete", operation="stage1", returncode=gate["returncode"])
 
     tasks, routing = stage2(sidecar, plan, paths)
@@ -231,7 +239,9 @@ def run(
         # A deterministic floor: shell prompts inside fenced blocks are claims whether
         # or not the extraction session came back.
         extracted = claims_mod.extract(str(pr.get("body") or ""))
-    claim_results = claims_mod.check(extracted, sidecar, tier=tier)
+    claim_results = _product(
+        workspace, "stage2-claims", lambda: claims_mod.check(extracted, sidecar, tier=tier)
+    )
 
     script_findings = [
         findings_mod.presettle(finding, "the check that produced it executed here")
@@ -239,22 +249,30 @@ def run(
         else finding
         for finding in [*lint["findings"], *gate["findings"], *claim_results["findings"]]
     ]
-    verified = verify_mod.verify(
-        [*produced, *script_findings],
-        sidecar,
-        plan,
-        ledger,
-        paths,
-        tier=tier,
-        launch=launcher,
+    verified = _product(
+        workspace,
+        "stage3-verified",
+        lambda: verify_mod.verify(
+            [*produced, *script_findings],
+            sidecar,
+            plan,
+            ledger,
+            paths,
+            tier=tier,
+            launch=launcher,
+        ),
     )
     ledger.append("stage_complete", operation="stage3", sessions=verified["sessions"])
 
-    proofs = suggestions.prove_all(
-        verified["findings"],
-        sidecar,
-        tier=tier,
-        cap=int(bounds["max_proven_suggestions"]),
+    proofs = _product(
+        workspace,
+        "stage4-proofs",
+        lambda: suggestions.prove_all(
+            verified["findings"],
+            sidecar,
+            tier=tier,
+            cap=int(bounds["max_proven_suggestions"]),
+        ),
     )
     evidence = {
         "lint": lint,
@@ -269,17 +287,9 @@ def run(
         "missing_reports": missing,
         "suggestions": proofs,
         "tier": tier,
-        "reserved_usd": round(charged[0], 4),
-        "reported_usd": round(reported[0], 4),
-        "metered_sessions": metered[0],
     }
-    body = review_body(
-        workspace, sidecar, plan, ledger, verified["findings"], evidence, launcher, paths
-    )
+    body = review_body(verified["findings"], evidence)
     evidence["wall_s"] = round(time.monotonic() - started, 1)
-    evidence["reserved_usd"] = round(charged[0], 4)
-    evidence["reported_usd"] = round(reported[0], 4)
-    evidence["metered_sessions"] = metered[0]
     # Every receipt on disk, retries included: a retry really was another session, and
     # a count derived from the task list silently omits the ones added after it.
     evidence["sessions"] = len(list((ledger.directory / "sessions").glob("*/receipt.json")))
@@ -297,67 +307,13 @@ def run(
     return summary
 
 
-def review_body(
-    workspace: Path,
-    sidecar: dict[str, Any],
-    plan: dict[str, Any],
-    ledger: Ledger,
-    verified: list[dict[str, Any]],
-    evidence: dict[str, Any],
-    launcher: Launcher,
-    paths: dict[str, Path],
-) -> str:
-    """One small model, prose only. A failure here never blocks the review."""
+def review_body(verified: list[dict[str, Any]], evidence: dict[str, Any]) -> str:
+    """The review body, by code. It used to be a model session that wrote two
+    sentences over a code-built draft, with this function as its fallback - a
+    ceremony that could fail, cost a session, and never said more than the counts."""
     from . import verdictcalc
 
     asks, follow = verdictcalc.split(verified)
-    draft = {
-        "counts": {"pre_merge": len(asks), "follow_ups": len(follow)},
-        "categories": sorted({finding["category"] for finding in asks}),
-        "gate": evidence["gate"],
-        "claims": {
-            "reproduced": evidence["claims_reproduced"],
-            "mismatched": evidence["claims_mismatched"],
-        },
-    }
-    summary_path = workspace / "inputs" / "body" / "draft.json"
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(draft, indent=2, sort_keys=True))
-    brief, report, witness = briefs.body(summary_path, sidecar)
-    spec = config.role_spec(plan, "body")
-    task = Task(
-        operation="review-body",
-        key="review-body",
-        brief=brief,
-        report=report,
-        witness=witness,
-        spec=spec,
-        lens=None,
-        family=spec["family"],
-        meta={"role": "body"},
-    )
-    fallback = _fallback_body(asks, follow, evidence)
-    try:
-        receipts = launcher([task])
-    except Park:
-        return fallback
-    receipt = receipts.get(task.operation, {})
-    if not receipt.get("ok"):
-        return fallback
-    path = ledger.directory / "sessions" / receipt["operation"] / Path(report).name
-    try:
-        data = json.loads(path.read_bytes())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return fallback
-    text = data.get("body")
-    if not isinstance(text, str) or not text.strip():
-        return fallback
-    return findings_mod.redact(text.strip())
-
-
-def _fallback_body(
-    asks: list[dict[str, Any]], follow: list[dict[str, Any]], evidence: dict[str, Any]
-) -> str:
     counts = ", ".join(
         f"{sum(1 for f in asks if f['category'] == name)} {name}"
         for name in config.REPORT_CATEGORY_ORDER
@@ -365,7 +321,8 @@ def _fallback_body(
     )
     if not asks:
         return "Nothing here blocks a merge; details of what was checked are in the report."
-    return f"{counts} - details inline on the diff."
+    tail = f" ({len(follow)} follow-up(s) noted, not part of the verdict)" if follow else ""
+    return f"{counts} - details inline on the diff.{tail}"
 
 
 def pond_capture(
@@ -375,16 +332,52 @@ def pond_capture(
     *,
     capture: bool,
 ) -> dict[str, Any]:
-    """Sync every executor session and key its transcript to the findings it produced."""
+    """Capture this run's sessions into a fresh per-run store, verified, then fold.
+
+    The per-run store is the run's provenance artifact and the substrate every in-run
+    query hits; the fold into the operator's corpus is pond's own row-verified copy.
+    A session that does not resolve is a named gap in the summary, never a silent one.
+    """
     if not capture:
         return {}
     receipts: dict[str, dict[str, Any]] = {}
     for directory in sorted((ledger.directory / "sessions").glob("*/receipt.json")):
         receipt = json.loads(directory.read_text())
         receipts[receipt["operation"]] = receipt
-    pondsync.sync()
-    resolved = pondsync.resolve(receipts, ledger.directory)
-    atomic(workspace / "sessions.json", canonical(resolved), mode=0o644)
+    store = workspace / "pond-store"
+    synced = pondsync.sync_run_store(store, receipts, ledger.directory)
+    resolved = pondsync.resolve(receipts, ledger.directory, store=store)
+    missing = sorted(op for op, row in resolved.items() if not row["resolved"])
+    rows = [
+        {"session_id": s["session_id"], "source_agent": s["source_agent"], "model": row["model"]}
+        for row in resolved.values()
+        for s in row["sessions"]
+    ]
+    priced = pondcost.usage(
+        rows, store=str(store), registry=str(config.TEMPLATES / "registry.json")
+    )
+    folded = pondsync.fold(store)
+    archived = pondsync.archive(store, workspace / "provenance.pond")
+    record = {
+        "store": str(store),
+        "synced": synced,
+        "resolved": resolved,
+        "missing": missing,
+        "fold": folded,
+        "archive": archived,
+        "usage": priced,
+    }
+    atomic(workspace / "sessions.json", canonical(record), mode=0o644)
+    summary["evidence"]["capture"] = {
+        "store": str(store),
+        "sessions_resolved": sum(1 for row in resolved.values() if row["resolved"]),
+        "sessions_missing": missing,
+        "folded": folded["ok"],
+        "archived": archived["ok"],
+        # Informative, never control flow: a pond-derived list-price equivalent, a
+        # floor, and zero real dollars on subscription lanes.
+        "usage_totals": priced.get("totals"),
+    }
     by_finding: dict[str, Any] = {}
     for finding in summary["findings"]:
         produced = f"review-{finding['lens']}-{finding['producer']}"

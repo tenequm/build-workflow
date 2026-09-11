@@ -89,7 +89,19 @@ def prove_all(
     tier: str,
     cap: int,
 ) -> dict[str, dict[str, Any]]:
-    candidates = [f for f in findings if f.get("suggestion") and f["verdict"] != "DROPPED"]
+    # Each proof is a full run of the pinned validation command, the most expensive
+    # thing this workflow executes. Only a correctness suggestion earns one; anything
+    # else posts as prose, which is what an unproven suggestion becomes anyway.
+    candidates = [
+        f
+        for f in findings
+        if f.get("suggestion") and f["verdict"] != "DROPPED" and f["category"] == "correctness"
+    ]
+    skipped = [
+        f
+        for f in findings
+        if f.get("suggestion") and f["verdict"] != "DROPPED" and f["category"] != "correctness"
+    ]
     candidates.sort(key=lambda f: (f["file"], f["line"]))
     proofs = {}
     for finding in candidates[:cap]:
@@ -100,5 +112,12 @@ def prove_all(
             "applied": False,
             "proven": False,
             "reason": f"past the {cap}-suggestion proof budget for this review",
+        }
+    for finding in skipped:
+        proofs[finding["id"]] = {
+            "id": finding["id"],
+            "applied": False,
+            "proven": False,
+            "reason": "only correctness suggestions are proven; offered as prose",
         }
     return proofs
