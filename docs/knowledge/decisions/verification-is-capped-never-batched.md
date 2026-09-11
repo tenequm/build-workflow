@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Verification fan-out is capped, and findings are never batched into one session
-description: Stage 3 spends its budget by executing rubrics in the driver first and capping the number of verifier sessions, with everything past the cap settling on its executed rubric - rather than packing several findings into one session, because a shared verifier would see every other claim and blinding is the mechanism being bought.
+description: Stage 3 spends its budget by executing rubrics in the driver first and capping the number of verifier sessions rather than packing several claims into one, because a shared verifier would see every other claim and blinding is the mechanism being bought; amended 2026-09-11 so that a claim whose rubric can only reach half of it always gets a session even when that rubric passed.
 tags: [review-pr, verification, cost, evaluation]
 status: stable
 generated: { by: claude-code/opus-5, at: "2026-09-11T03:40:00Z" }
@@ -15,6 +15,9 @@ sources:
   - id: verify
     resource: ../../../skills/review-pr/scripts/review_pr/verify.py
     title: The selection and settlement code, including the cap and the priority order
+  - id: replay
+    resource: "Paid ground-truth replay, 2026-09-11, against sipyourdrink-ltd/bernstein#5737 at commit 2512a7e3ea67"
+    title: The run where 13 of 15 findings confirmed without a verifier session
 ---
 
 # What was decided
@@ -22,16 +25,36 @@ sources:
 Stage 3 resolves the plan's open question this way:[^plan]
 
 1. Every stated rubric runs **in the driver**, deterministically, before any model is
-   spawned. A claim whose rubric passes and whose class needs no demonstration is
-   settled without a session at all.
-2. The remaining claims queue for a verifier session, ordered so that correctness and
-   gating claims and then anything with a non-`none` impact take the budget first.
-3. The queue is cut at `bounds.max_verifier_sessions`. A claim past the cut settles on
-   its executed rubric: passing is CONFIRMED for its class, failing or absent is
-   PLAUSIBLE. It is never silently dropped.
-4. **No session ever carries more than one claim.**
-5. A follow-up - anything tagged `pre-existing` or `out-of-diff` - is reported but never
+   spawned. A claim whose rubric passes and whose evidence is one-sided is settled
+   without a session at all.
+2. **A claim whose rubric cannot settle it always gets a session, even when the rubric
+   passed.** Two classes qualify: one needing a proof of concept, and one spanning two
+   artifacts - a statement and the code that decides it - where the rubric can only
+   execute against one of the two. See the amendment below.
+3. The remaining claims queue, ordered so those two classes and then anything with a
+   non-`none` impact take the budget first.
+4. The queue is cut at `bounds.max_verifier_sessions`. A claim past the cut settles on
+   its executed rubric: passing is CONFIRMED for a one-sided class, PLAUSIBLE for the
+   two-sided one, and failing or absent is PLAUSIBLE. It is never silently dropped.
+5. **No session ever carries more than one claim.**
+6. A follow-up - anything tagged `pre-existing` or `out-of-diff` - is reported but never
    verified, because it cannot enter the verdict.
+
+# Amendment, 2026-09-11: a passing rubric is not always a decided claim
+
+The original rule settled any claim whose rubric passed and whose class needed no
+proof of concept. A paid replay showed what that costs: **13 of 15 findings reached
+CONFIRMED with no verifier session at all**, most of them claim-vs-implementation
+findings whose rubric was a grep against the source file. That grep proves the code
+says X. The finding is "the documentation says Y and the code says X", and nothing had
+read the documentation side.
+
+So the test is no longer "does this class need a demonstration" but "can the rubric
+reach the whole claim". A rubric executes against a tree; a claim that spans a tree and
+a sentence is only half-checked by one. Those now always queue, and on the re-run all
+six went to a blinded verifier of the opposite family and all six survived - which is
+the evidence that the findings were real, and that the earlier CONFIRMED verdicts had
+been right by luck rather than by proof.
 
 # Why not batch
 

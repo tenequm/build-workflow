@@ -29,9 +29,23 @@ stages are driver-owned one-shot ACP sessions, for the reasons in
 [the decision record](docs/knowledge/decisions/review-sessions-are-driver-owned-ceremonies.md).
 Two rules there are load-bearing and easy to weaken by accident - the validation
 command is read from the BASE branch and never from the pull request tree, and no
-model session ever receives a credential or a GitHub token. Its fixture
-(`fixtures/review-pr/setup.py --recorded`) runs the whole pipeline over the real
-acpx transport against a recording agent, so a change to it costs no provider spend.
+model session ever receives a credential or a GitHub token.
+
+Three rules apply to anything added to it, each learned by being burned:
+
+- A new boundary that parses model output is strict only on fields a later stage reads
+  to decide something; a purely descriptive field is dropped and recorded, never fatal
+  ([why](docs/knowledge/decisions/strict-on-deciding-fields-tolerant-on-describing-ones.md)).
+- A new executable check runs a control leg first and reports inconclusive when the
+  command could not run. An exit code alone is an observation, not a finding
+  ([why](docs/knowledge/findings/a-check-that-cannot-run-refutes-nothing.md)).
+- The fixture (`fixtures/review-pr/setup.py --recorded`) runs the whole pipeline over
+  the real acpx transport for no provider spend, but it stands in for a model's
+  judgment and NOT for its obedience: a recording agent derives its own output path and
+  never reads the brief, so nothing a brief says about where to write, what to avoid or
+  which of several names to pick is covered by it
+  ([why](docs/knowledge/findings/recorded-agents-hide-brief-defects.md)). Put that class
+  of constraint in code that runs before the session.
 
 A retro item closes only as a check, a template field, or a test - never as
 another skill sentence.
