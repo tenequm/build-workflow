@@ -4,7 +4,7 @@ title: A check that cannot run refutes nothing, and every executable check needs
 description: Two separate /review-pr checks reported a defect when the truth was that the command never executed - a lint that needs network reported the author's tests as not witnessing their change, and a missing pytest turned an honest pull request body into an over-claim - so each executable check now runs a control first and reports inconclusive rather than guilty.
 tags: [review-pr, verification, sandbox, evidence]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-11T09:20:00Z" }
+generated: { by: claude-code/fable-5, at: "2026-09-11T13:55:00Z" }
 sources:
   - id: runs
     resource: "Paid /review-pr runs against sipyourdrink-ltd/bernstein#5737, 2026-09-11: tests-fail-on-base passing on exit 2, and a claim mismatch raised on exit 127"
@@ -18,6 +18,9 @@ sources:
   - id: goldgate
     resource: ../../../skills/review-pr/scripts/review_pr/rubric.py
     title: gold_gate - the same idea, arrived at first and from the literature
+  - id: evalrun
+    resource: "Synthetic-corpus eval run of 2026-09-11 (ledger row in docs/review-ledger/evals.jsonl); park triage of floor/case-04"
+    title: The third instance, caught by the eval corpus before it shipped
 ---
 
 # The two instances
@@ -61,3 +64,16 @@ change.[^goldgate] That is a control leg by another name.
 The general statement is worth keeping in front of any future stage: **an executed check
 is evidence only against a baseline where it behaves differently.** One leg is an
 observation. Two legs are a finding.
+
+# The third instance, five hours later
+
+A verifier session replaced its rubric with `sh <script>` naming a script that exists
+only in its own session worktree. Command rubrics execute on the shared tree, where the
+file is absent; `sh` on a missing file exits non-zero, and an `expect: exit_nonzero`
+rubric scores that as **passed** - a CONFIRMED verdict from a command that never ran the
+demonstration, discovered only because the run parked on an unrelated allowlist
+violation.[^evalrun] The fix follows the rule above: a command rubric that references a
+path absent from the tree is rejected and recorded before any session spends on it.
+The instance is worth its own paragraph because it inverts the first two: there the
+missing runner *accused* an innocent author; here it would have *vouched* for a claim
+it never tested. The three-outcome rule guards both directions.
