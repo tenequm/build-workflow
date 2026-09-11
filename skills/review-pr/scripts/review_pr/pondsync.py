@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -88,9 +89,43 @@ def _claude_project_dir(worktree: str) -> Path:
     return Path.home() / ".claude" / "projects" / munged
 
 
+def stage_agy_root(worktrees: set[str], destination: Path) -> Path | None:
+    """A gemini-root-shaped directory holding only this run's agy conversations.
+
+    pond's agy adapter discovers sessions from the `~/.gemini` root and walks down to
+    `antigravity-acp/conversations` itself, so a sync scoped at the conversations
+    directory matches nothing and ingests zero sessions (measured 2026-09-11). Pointing
+    it at the real root instead would ingest the operator's entire Antigravity history
+    into a store that is meant to hold one run, so the run stages its own root: the same
+    layout, carrying only the conversation files whose `.meta` names one of this run's
+    session worktrees. Returns None when this run produced no agy conversation.
+    """
+    source = Path.home() / ".gemini" / "antigravity-acp" / "conversations"
+    if not source.is_dir():
+        return None
+    staged = destination / "antigravity-acp" / "conversations"
+    staged.mkdir(parents=True, exist_ok=True)
+    found = False
+    for meta in sorted(source.glob("*.meta")):
+        try:
+            cwd = json.loads(meta.read_text()).get("cwd")
+        except (OSError, ValueError):
+            continue
+        if cwd not in worktrees:
+            continue
+        # The sqlite database plus its -wal and -shm siblings: a database copied without
+        # them loses whatever the adapter had not checkpointed.
+        for part in sorted(source.glob(f"{meta.stem}.*")):
+            if part.is_file():
+                shutil.copy2(part, staged / part.name)
+        found = True
+    return destination if found else None
+
+
 def _sources(receipts: dict[str, dict[str, Any]], ledger_dir: Path) -> dict[str, set[Path]]:
     """Per adapter, the narrowest source directories that cover this run's sessions."""
     sources: dict[str, set[Path]] = {}
+    agy_worktrees: set[str] = set()
     for operation, receipt in receipts.items():
         family = receipt.get("family")
         adapter = ADAPTERS.get(str(family))
@@ -108,9 +143,11 @@ def _sources(receipts: dict[str, dict[str, Any]], ledger_dir: Path) -> dict[str,
                         Path.home() / ".codex" / "sessions" / day.strftime("%Y/%m/%d")
                     )
         else:
-            sources.setdefault(adapter, set()).add(
-                Path.home() / ".gemini" / "antigravity-acp" / "conversations"
-            )
+            agy_worktrees.add(worktree)
+    if agy_worktrees:
+        staged = stage_agy_root(agy_worktrees, ledger_dir / "agy-root")
+        if staged:
+            sources.setdefault("agy", set()).add(staged)
     return {
         adapter: {path for path in paths if path.is_dir()} for adapter, paths in sources.items()
     }
