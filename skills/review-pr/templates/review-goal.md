@@ -267,7 +267,10 @@ block is for tooling, and both must agree:
 
 Rules for the block: `action` is exactly one of `approve`, `approve-with-comments`,
 `comment-only`, `request-changes`, matching the verdict above. Each finding's `file` is
-the repository-relative path and `line` the integer anchor of the cited line. `category`
+the repository-relative path and `line` the integer anchor of the cited line. A finding
+that a document promises what the code does not do anchors at the PROMISE - the
+documentation or comment line making the false claim - never at the implementation
+that falls short of it; the implementation is quoted in `evidence`. `category`
 is exactly one of `correctness`, `convention`, `cleanliness`, `design`, `efficiency`.
 `claim` and `evidence` are the finding's own words; `suggestion` is optional. A finding
 about the pull request text itself (its title or description, not a code line) uses

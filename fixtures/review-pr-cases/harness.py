@@ -157,6 +157,12 @@ def materialise(case: Path, work: Path) -> dict[str, Any]:
     git(repo, "checkout", "-q", "--detach")
     (repo / ".bernstein-pr.diff").write_text(git(repo, "diff", f"main...{branch}") + "\n")
     (repo / ".bernstein-pr.md").write_text(body)
+    # Worktrees share info/exclude. Without it, an agent's `git add -A` commits the
+    # copied inputs, and merging its branch back collides with the same files sitting
+    # untracked here - every agent merge fails with "would be overwritten by merge".
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text(".bernstein-pr.diff\n.bernstein-pr.md\n")
     return {"repo": repo, "head": head, "branch": branch}
 
 
@@ -304,7 +310,15 @@ def read_report(repo: Path) -> tuple[dict[str, Any] | None, str]:
     report = repo / REPORT
     if not report.is_file():
         return None, f"the run wrote no {REPORT}"
-    blocks = JSON_BLOCK.findall(report.read_text())
+    text = report.read_text()
+    blocks = JSON_BLOCK.findall(text)
+    if not blocks:
+        # A block whose closing fence never came (an output that ended at the JSON's
+        # last brace) still carries the findings; the fence is describing structure,
+        # not a deciding field. Take the last opener to end-of-file.
+        tail = re.split(r"```json\s*\n", text)
+        if len(tail) > 1:
+            blocks = [tail[-1].rsplit("```", 1)[0]]
     if not blocks:
         return None, f"{REPORT} carries no fenced json block"
     try:
@@ -343,22 +357,22 @@ def review(case: Path, work: Path, options: argparse.Namespace) -> dict[str, Any
             timeout=options.timeout,
             check=False,
         )
-        if result.returncode:
-            return {
-                "case": label(case),
-                "verdict": "MISSED",
-                "error": f"bernstein exited {result.returncode}; see {work / 'harness.log'}",
-                "wall_s": round(time.monotonic() - started, 1),
-            }
         summary, failure = read_report(repo)
         if summary is None:
+            # Only here does the exit code decide anything: with no report it is the
+            # best available explanation. With a report it is an observation - the
+            # orchestrator exits nonzero over its own bookkeeping (a task retried
+            # to success still counts as failed) while the deliverable stands.
+            exited = f"bernstein exited {result.returncode}; " if result.returncode else ""
             return {
                 "case": label(case),
                 "verdict": "MISSED",
-                "error": f"{failure}; see {work / 'harness.log'}",
+                "error": f"{exited}{failure}; see {work / 'harness.log'}",
                 "wall_s": round(time.monotonic() - started, 1),
             }
         row = score(case, summary)
+        if result.returncode:
+            row["note"] = (row.get("note", "") + f" [bernstein exited {result.returncode}]").strip()
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         row = {
             "case": label(case),
