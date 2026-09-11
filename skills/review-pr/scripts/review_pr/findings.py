@@ -118,7 +118,11 @@ def suggestion(raw: object) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         raise Park("suggestion must be an object or null")
     replacement = raw.get("replacement")
-    if not isinstance(replacement, str) or not replacement:
+    # An empty replacement is how GitHub says "delete these lines", and absence is
+    # already the branch above. It reaches suggestions.apply() as a blank line rather
+    # than a true deletion - cosmetically imperfect, gate-passing, and not a reason to
+    # refuse the correct fix for an injected line.
+    if not isinstance(replacement, str):
         raise Park("suggestion needs replacement text")
     lines = replacement.splitlines() or [""]
     if len(lines) > SUGGESTION_MAX_LINES:
@@ -171,6 +175,13 @@ def normalize(entry: object, *, lens: str, producer: str) -> dict[str, Any]:
     if len(claim.split()) < 3:
         raise Park("a claim must be a sentence, not a label")
     check = rubric(entry.get("rubric"))
+    # The same rule as the tags above, for the same reason: the brief calls `suggestion`
+    # optional and every consumer already guards for its absence, so a malformed one is
+    # dropped and recorded rather than voiding a report four sessions paid for.
+    try:
+        change, dropped_suggestion = suggestion(entry.get("suggestion")), None
+    except Park as exc:
+        change, dropped_suggestion = None, str(exc)
     finding: dict[str, Any] = {
         "id": finding_id(lens, file, line, claim),
         "lens": lens,
@@ -189,7 +200,8 @@ def normalize(entry: object, *, lens: str, producer: str) -> dict[str, Any]:
         "tags": known,
         "dropped_tags": unknown,
         "follow_up": bool({"pre-existing", "out-of-diff"} & set(known)),
-        "suggestion": suggestion(entry.get("suggestion")),
+        "suggestion": change,
+        "dropped_suggestion": dropped_suggestion,
         "verdict": "UNVERIFIED",
     }
     if start_line is not None:

@@ -126,9 +126,26 @@ class TestFindingsSchema:
 
     def test_a_suggestion_stays_small_enough_to_stage(self):
         with pytest.raises(Park, match="12 replacement lines"):
-            finding(suggestion={"line": 12, "replacement": "\n".join("x" * 13)})
+            findings.suggestion({"line": 12, "replacement": "\n".join("x" * 13)})
         with pytest.raises(Park, match="start_line"):
-            finding(suggestion={"start_line": 9, "line": 5, "replacement": "x"})
+            findings.suggestion({"start_line": 9, "line": 5, "replacement": "x"})
+
+    def test_an_empty_replacement_is_a_deletion_not_a_missing_value(self):
+        """GitHub says "delete these lines" with an empty suggestion block, and for an
+        injected instruction that is the correct fix. Measured 2026-09-11: the guard
+        read it as absent and parked a run holding a unanimous security finding."""
+        deleted = finding(suggestion={"start_line": 14, "line": 14, "replacement": ""})
+        assert deleted["suggestion"] == {"replacement": "", "line": 14, "start_line": 14}
+        assert deleted["dropped_suggestion"] is None
+
+    def test_a_malformed_suggestion_is_dropped_and_recorded_rather_than_fatal(self):
+        """The brief calls the block optional and every consumer guards for its
+        absence, so dropping one lands where the pipeline already copes."""
+        single = finding(suggestion={"line": 4, "replacement": "x"})
+        assert single["suggestion"] == {"replacement": "x", "line": 4}
+        dropped = finding(suggestion={"replacement": "x"})
+        assert dropped["suggestion"] is None
+        assert "line number" in dropped["dropped_suggestion"]
 
     def test_merging_keeps_the_rubric_and_the_strongest_impact(self):
         weak = finding(lens="cleanliness", producer="codex", tags=["pre-existing"])
