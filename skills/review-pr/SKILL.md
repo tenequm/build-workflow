@@ -17,7 +17,9 @@ finds, and then it proves or drops each of those findings by execution.
 The shape is static - lint, gate, the lens fan-out, verify, synthesise - so there is
 no planning stage. What varies per pull request is routing, and routing lives in
 `templates/stages.yaml`, where swapping a model, or parking and re-admitting a lens,
-is one line.
+is one line. `templates/stages-fast.yaml` is that same plan on one cheap family with no
+second opinion, for measuring a routing or brief change before a milestone run pays for
+it; pass either with `--stages`.
 
 Use absolute paths in commands. `<python>` below is an interpreter with `pyyaml` and
 `psutil` (the one in the installed Bernstein uv tool environment is the usual choice:

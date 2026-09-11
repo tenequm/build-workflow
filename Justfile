@@ -14,6 +14,47 @@ check:
     just --justfile bernstein_operator/Justfile check
     echo "check: clean"
 
+# Review one GitHub pull request end to end, into ~/pj/reviews/<owner>-<repo>-pr<n>.
+# Re-running against an existing workspace resumes it: stage products and session
+# receipts on disk are re-read, never re-executed.
+review url:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url='{{url}}'
+    slug=$(printf '%s\n' "$url" | sed -nE 's#^(https?://github\.com/)?([^/]+/[^/]+)/pull/([0-9]+).*#\2#p')
+    number=$(printf '%s\n' "$url" | sed -nE 's#^(https?://github\.com/)?([^/]+/[^/]+)/pull/([0-9]+).*#\3#p')
+    if [ -z "$slug" ] || [ -z "$number" ]; then
+        echo "not a pull request URL: {{url}}" >&2
+        exit 1
+    fi
+    repo="${INVOCATION_DIRECTORY:-$PWD}"
+    if ! git -C "$repo" remote get-url origin 2>/dev/null | grep -qiF "$slug"; then
+        repo="$HOME/pjv/$(printf '%s' "$slug" | tr '[:upper:]' '[:lower:]')"
+    fi
+    if [ ! -d "$repo/.git" ]; then
+        echo "no local checkout of $slug: clone it to $repo first (setup reads the base branch from it)" >&2
+        exit 1
+    fi
+    workspace="$HOME/pj/reviews/$(printf '%s' "$slug" | tr '/' '-')-pr$number"
+    mkdir -p "$(dirname "$workspace")"
+    python="$(pwd)/bernstein_operator/.venv/bin/python"
+    cli="$(pwd)/skills/review-pr/scripts/review-pr.py"
+    "$python" "$cli" ready
+    code=0
+    "$python" "$cli" setup --dest "$workspace" --pr "$number" -R "$slug" --repo-path "$repo" || code=$?
+    # Exit 2 is setup's small-diff refusal, and it is advice for the operator, not an
+    # error to override: the driver overhead loses to an interactive review down there.
+    if [ "$code" -ne 0 ]; then
+        exit "$code"
+    fi
+    "$python" "$cli" run --dest "$workspace"
+
+# Score the /review-pr eval corpus. No argument runs every floor and bar case on the
+# fast-loop template, four at a time; pass case or tier names and any harness flag
+# (--jobs N, --stages <template>) to narrow or re-route it.
+eval *ARGS:
+    python3 fixtures/review-pr-cases/harness.py {{ARGS}}
+
 # Provision the pinned pond into the operator venv (see review_pr/pondsync.py PINNED).
 install-pond version="0.17.2":
     sh scripts/install-pond.sh {{version}}

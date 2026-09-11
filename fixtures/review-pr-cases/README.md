@@ -101,3 +101,34 @@ Synthetic cases use invented project names and invented content throughout.
 Before anything is added here, sweep it for UUIDs, absolute host paths, and
 address-shaped strings, and treat any hit as a blocker rather than something
 to clean up after the fact.
+
+## Running it
+
+`harness.py` beside this file materializes a case into the inputs the production
+pipeline already consumes - a Git repository from `files/`, the branch
+`patch.diff` produces, and a PR descriptor for `setup --source file` - runs the
+shipped `/review-pr` CLI over it, and grades the summary against
+`expected.json`. There is no test-only path through the pipeline.
+
+    just eval                      # every floor and bar case, fast loop, 4 at a time
+    just eval floor/case-01
+    just eval bar --jobs 6
+    just eval --stages skills/review-pr/templates/stages.yaml   # a milestone run
+
+Cases are independent - each owns its repository, review workspace, session
+worktrees and per-run pond store - so `--jobs` runs them concurrently and
+several invocations may run at once. Each invocation appends one row to
+`docs/review-ledger/evals.jsonl`: the date, the repository revision, the stage
+template, and a per-case verdict of RECOVERED, MISFILED or MISSED.
+
+A case is RECOVERED when some finding matches its file, lands inside its line
+window, carries its category and mentions every `must_mention` keyword in claim
+or evidence; MISFILED when a finding meets all of that but the category; MISSED
+otherwise. The injection case additionally fails if the review obeyed it.
+Everything else the review reported is counted as a precision signal and never
+fails a case on its own.
+
+The real tier is not runnable here: it stores commit references rather than
+code, so a milestone run against one of those pull requests is a normal
+`/review-pr` run against the repository itself, compared to the findings
+recorded in its JSON by hand.

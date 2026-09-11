@@ -17,5 +17,5 @@ pre-commit:
       glob: "{skills/**,scripts/skill_isolation.py}"
       run: python3 scripts/skill_isolation.py
     operator-python:
-      glob: "{bernstein_operator/**,skills/build-run/scripts/**,skills/build-plan/scripts/**,skills/build-close/scripts/**,skills/review-pr/scripts/**,fixtures/review-pr/**}"
+      glob: "{bernstein_operator/**,skills/build-run/scripts/**,skills/build-plan/scripts/**,skills/build-close/scripts/**,skills/review-pr/scripts/**,fixtures/review-pr/**,fixtures/review-pr-cases/harness.py}"
       run: just --justfile bernstein_operator/Justfile check

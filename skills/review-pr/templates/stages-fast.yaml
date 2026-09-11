@@ -1,0 +1,94 @@
+# The fast-loop stage template: one family, one lane per lens, cheap models.
+#
+# Same pipeline, same stages, same briefs as stages.yaml - the routing is the only
+# difference, and that is the point. The quality loop changes one lever at a time and
+# re-runs the eval corpus; a corpus run on production routing costs hours and real
+# tokens, which is too slow a loop to learn from. This template runs every lens on the
+# gemini lane at the medium flash model, drops the dual-family second opinion, and so
+# measures one lever's effect in minutes.
+#
+# It is not a substitute for a milestone run. A number produced here is comparable
+# only with other numbers produced here; the /polish-parity claim comes from
+# stages.yaml against a real pull request.
+version: 1
+
+families:
+  gemini:
+    transport: acp
+    # A wrapper, not the .par: on Linux the ACP server needs --uid=. Point this at
+    # your own wrapper; `review-pr ready` refuses an unresolvable adapter.
+    adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']
+
+# The same three lenses production enables, so a fast-loop score and a milestone score
+# measure the same review. cleanliness and efficiency stay parked here for the reason
+# they are parked there: against the ground-truth replay they produced nit-tier noise
+# and none of the correctness or design signal.
+lenses:
+  cleanliness:
+    enabled: false
+    family: gemini
+    model: gemini-3.7-flash-medium
+    budget_usd: 5.0
+    max_turns: 40
+    timeout_s: 900
+  efficiency:
+    enabled: false
+    family: gemini
+    model: gemini-3.7-flash-medium
+    budget_usd: 5.0
+    max_turns: 40
+    timeout_s: 900
+  design:
+    family: gemini
+    model: gemini-3.7-flash-medium
+    budget_usd: 5.0
+    max_turns: 60
+    timeout_s: 1800
+  gating:
+    family: gemini
+    model: gemini-3.7-flash-medium
+    budget_usd: 5.0
+    max_turns: 60
+    timeout_s: 1800
+    forbid_families: [codex]
+  implementation:
+    family: gemini
+    model: gemini-3.7-flash-medium
+    budget_usd: 8.0
+    max_turns: 120
+    timeout_s: 2700
+
+roles:
+  verifier:
+    budget_usd: 5.0
+    max_turns: 40
+    timeout_s: 900
+    models:
+      gemini: gemini-3.7-flash-medium
+  claims:
+    family: gemini
+    model: gemini-3.7-flash-medium
+    budget_usd: 3.0
+    max_turns: 30
+    timeout_s: 900
+
+# One family is declared, so there is nothing to route opposite and nothing to disagree
+# with. Both are stated rather than omitted: a fast-loop score that silently gained a
+# second opinion would not be comparable with the run before it.
+routing:
+  opposite: {}
+  reroute_lenses: []
+
+dual_family:
+  lenses: []
+  enabled: false
+
+bounds:
+  max_verifier_sessions: 20
+  max_proven_suggestions: 10
+  max_wall_s: 5400
+  attempts_per_task: 2
+
+sandbox:
+  tier: userns
+  image: null
