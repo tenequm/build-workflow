@@ -25,6 +25,11 @@ ENV_ALLOWLIST = (
     "LC_ALL",
     "LOGNAME",
     "PATH",
+    # pi keeps providers, auth, skills and project trust under the first and its
+    # transcripts under the second. Redirecting both per session is what gives a pi lane
+    # an empty configuration and a session root holding only this run.
+    "PI_CODING_AGENT_DIR",
+    "PI_CODING_AGENT_SESSION_DIR",
     "SHELL",
     "SSL_CERT_FILE",
     "SSL_CERT_DIR",

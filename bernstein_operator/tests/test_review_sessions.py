@@ -108,7 +108,7 @@ def task(path: Path, **over) -> runner.Task:
         witness='"lens": "cleanliness"',
         spec={**spec, **over.pop("spec", {})},
         lens="cleanliness",
-        family="gemini",
+        family=over.pop("family", "gemini"),
         **over,
     )
 
@@ -336,6 +336,47 @@ class TestStageTemplate:
         other = runner.session_argv(codex, tmp_path / "tree2", tmp_path / "prompt.md")
         assert other[other.index("exec") + 2] == "reasoning_effort=high"
 
+    def test_the_pi_trial_template_routes_and_isolates_itself(self):
+        """pi is the fallback harness for the metered Gemini key. Its lane is worth
+        nothing if the reviewer opens with the operator's providers and skills loaded,
+        and worth less than nothing if a gemini verifier judges its own model's output
+        through a second harness."""
+        from review_pr import verify
+
+        plan = config.load(config.TEMPLATES / "stages-pi.yaml")
+        assert {spec["family"] for spec in plan["lenses"].values()} == {"pi"}
+        assert all(spec.get("effort") == "high" for spec in plan["lenses"].values())
+        family = plan["families"]["pi"]
+        # Both roots, not just the session one: without the config redirect a pi session
+        # loads the operator's providers, skills, extensions and saved project trust.
+        assert family["env"] == ["PI_CODING_AGENT_DIR", "PI_CODING_AGENT_SESSION_DIR"]
+        assert verify.opposite(plan, "pi") == "claude"
+        assert "gemini" not in plan["families"]
+        assert plan["dual_family"]["enabled"] is False
+
+    def test_the_pi_effort_option_is_pi_s_own_thinking_knob(self, tmp_path):
+        """pi-acp names it `thought_level` and answers any other id with -32602; Codex's
+        `reasoning_effort` would leave the lens at pi's default of `medium`."""
+        plan = config.load(config.TEMPLATES / "stages-pi.yaml")
+        spec = config.lens_spec(plan, "implementation")
+        argv = runner.session_argv(spec, tmp_path / "tree", tmp_path / "prompt.md")
+        after = argv[argv.index("exec") :]
+        assert after[1:3] == ["--config-option", "thought_level=high"]
+
+    def test_the_reviewed_tree_cannot_hand_pi_its_own_skills_or_settings(self, tmp_path):
+        """pi loads `.pi` resources and project `.agents/skills` from its cwd once the
+        project is trusted, and a project extension is TypeScript pi executes."""
+        plan = config.load(config.TEMPLATES / "stages-pi.yaml")
+        strip = config.lens_spec(plan, "design")["strip_paths"]
+        assert strip == [".pi", ".agents/skills"]
+        (tmp_path / ".pi").mkdir()
+        (tmp_path / ".pi/settings.json").write_text('{"defaultProvider": "evil"}\n')
+        (tmp_path / ".agents/skills").mkdir(parents=True)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src/app.py").write_text("x = 1\n")
+        assert runner.strip_project_config(tmp_path, strip) == [".agents/skills", ".pi"]
+        assert (tmp_path / "src/app.py").is_file(), "only the named paths go"
+
     def test_a_family_may_only_redirect_allowlisted_environment_names(self, tmp_path):
         """The allowlist is the credential fence; a template that could name anything
         could name a provider key back into a reviewer's environment."""
@@ -358,6 +399,23 @@ class TestStageTemplate:
         )
         overlay = workspace["dir"] / "sessions/review-cleanliness-gemini/env/xdg_data_home"
         assert overlay.is_dir(), "the session's redirected store must exist where capture looks"
+
+    def test_the_pi_redirects_land_exactly_where_capture_looks(self, workspace, tmp_path):
+        """The overlay's directory naming and pondsync's source lookup are two halves of
+        one contract; a rename on either side captures nothing, and says nothing."""
+        redirected = task(
+            agent(tmp_path),
+            family="pi",
+            spec={"env": ["PI_CODING_AGENT_DIR", "PI_CODING_AGENT_SESSION_DIR"]},
+        )
+        receipts = runner.run_batch(
+            [redirected], workspace["sidecar"], workspace["ledger"], attempts=1, wall_cap=300
+        )
+        session = workspace["dir"] / "sessions/review-cleanliness-gemini"
+        assert (session / "env/pi_coding_agent_dir").is_dir()
+        assert pondsync._sources(receipts, workspace["dir"]) == {
+            "pi-coding-agent": {session / "env/pi_coding_agent_session_dir"}
+        }
 
     def test_a_template_that_pins_a_forbidden_family_is_refused(self, tmp_path):
         import yaml

@@ -1,9 +1,9 @@
 """Executor sessions land in pond, so a review's provenance survives the workspace.
 
-Every session this workflow spawns is a claude, codex, agy or opencode CLI session - the
-formats pond ingests losslessly. Capture is a verified stage against a fresh per-run store, not
-a best-effort sync into whatever the host has: the run provisions its own store inside
-the workspace, ingests only its own session sources, requires every session receipt to
+Every session this workflow spawns is a claude, codex, agy, opencode or pi CLI session -
+the formats pond ingests losslessly. Capture is a verified stage against a fresh per-run
+store, not a best-effort sync into whatever the host has: the run provisions its own
+store inside the workspace, ingests only its own session sources, requires every receipt to
 resolve to a stored transcript, and then folds the store into the operator's corpus
 with pond's row-verified copy. The per-run store is also the run's provenance artifact:
 `pond copy --from <store> --to provenance.pond` exports it whole.
@@ -34,7 +34,13 @@ ADAPTERS = {
     "codex": "codex-cli",
     "gemini": "agy",
     "opencode": "opencode",
+    "pi": "pi-coding-agent",
 }
+
+
+def _redirect(directory: Path, name: str) -> Path:
+    """Where a session's redirected `name` landed - the value proc.env_overlay gave it."""
+    return Path(env_overlay([name], directory)[name])
 
 
 def binary() -> str:
@@ -157,8 +163,18 @@ def _sources(receipts: dict[str, dict[str, Any]], ledger_dir: Path) -> dict[str,
             # XDG_DATA_HOME per session (proc.env_overlay), which leaves a store holding
             # that session and nothing else. Naming it here is what keeps the operator's
             # whole opencode history out of a store that is meant to hold one run.
-            root = Path(env_overlay(["XDG_DATA_HOME"], directory)["XDG_DATA_HOME"])
-            sources.setdefault(adapter, set()).add(root / "opencode")
+            sources.setdefault(adapter, set()).add(
+                _redirect(directory, "XDG_DATA_HOME") / "opencode"
+            )
+        elif adapter == "pi-coding-agent":
+            # Same manufactured scope, one directory shallower: pi writes every session
+            # under one root keyed by cwd, the family redirects
+            # PI_CODING_AGENT_SESSION_DIR per session, and pond's adapter reads that
+            # root directly - its configured default, `~/.pi/agent/sessions`, is the
+            # same shape.
+            sources.setdefault(adapter, set()).add(
+                _redirect(directory, "PI_CODING_AGENT_SESSION_DIR")
+            )
         elif adapter == "agy":
             agy_worktrees.add(worktree)
     if agy_worktrees:
