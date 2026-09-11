@@ -6,7 +6,12 @@ requires-python = ">=3.13"
 dependencies = ["bernstein", "pyyaml", "psutil>=6"]
 
 [dependency-groups]
-dev = ["ruff>=0.15.0", "ty==0.0.79", "pytest>=9.0.0", "pytest-asyncio>=1.3.0", "pre-commit>=4.0.0"]
+dev = [
+    "ruff>=0.16.6",          # 0.16 is the rule set this config is written against
+    "ty==0.0.79",            # beta: pin tight, inference changes between minors
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
 
 [tool.uv.sources]
 bernstein = { git = "https://github.com/sipyourdrink-ltd/bernstein", rev = "0a6bf9f2d69daae4ad468a9ba6a2713f79d67fdf" }
