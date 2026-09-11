@@ -2,7 +2,10 @@
 
 Every field a later stage depends on is validated here, at the boundary where an
 untrusted model wrote it, so no downstream stage has to guess what it received. A
-malformed findings file is a failed attempt, never a partially trusted one.
+findings file whose load-bearing fields are malformed is a failed attempt, never a
+partially trusted one - but strictness is spent on fields that decide something, and
+a purely descriptive one that a model invented is dropped rather than allowed to void
+a report that is otherwise sound.
 """
 
 from __future__ import annotations
@@ -132,8 +135,15 @@ def normalize(entry: object, *, lens: str, producer: str) -> dict[str, Any]:
     if impact not in IMPACTS:
         raise Park(f"finding impact must be one of {IMPACTS}")
     raw_tags = entry.get("tags", [])
-    if not isinstance(raw_tags, list) or any(tag not in TAGS for tag in raw_tags):
-        raise Park(f"finding tags must be a list drawn from {TAGS}")
+    if not isinstance(raw_tags, list) or any(not isinstance(tag, str) for tag in raw_tags):
+        raise Park("finding tags must be a list of strings")
+    # Strict where a field decides something, tolerant where it only describes. Only
+    # four tags change behaviour; a model that invents a descriptive fifth has still
+    # produced a usable finding, so the extra is dropped and kept as evidence rather
+    # than voiding the whole report. Measured 2026-09-11: one invented `docs-drift`
+    # tag parked a run that had seven good sessions behind it.
+    known = sorted({tag for tag in raw_tags if tag in TAGS})
+    unknown = sorted({tag for tag in raw_tags if tag not in TAGS})
     scope = entry.get("scope", "diff")
     if scope not in SCOPES:
         raise Park(f"finding scope must be one of {SCOPES}")
@@ -166,8 +176,9 @@ def normalize(entry: object, *, lens: str, producer: str) -> dict[str, Any]:
         # The plan's demotion rule, applied where the rubric is read rather than
         # trusted to a later stage: no rubric, no verdict above SUGGESTION.
         "unverifiable": check is None,
-        "tags": sorted(set(raw_tags)),
-        "follow_up": bool({"pre-existing", "out-of-diff"} & set(raw_tags)),
+        "tags": known,
+        "dropped_tags": unknown,
+        "follow_up": bool({"pre-existing", "out-of-diff"} & set(known)),
         "suggestion": suggestion(entry.get("suggestion")),
         "verdict": "UNVERIFIED",
     }

@@ -42,6 +42,9 @@ def judge_argv(spec: dict, worktree: Path, prompt: Path) -> list[str]:
             spec["model"],
             "--turns",
             str(spec["max_turns"]),
+            # A judge never persists; a caller that needs the transcript ingested later
+            # asks for it explicitly.
+            *(["--persist"] if spec.get("persist_session") else []),
             "--",
             *spec["adapter_argv"],
         ]

@@ -101,9 +101,29 @@ def load(path: Path) -> list[dict[str, Any]]:
         raise Park(f"unreadable claims report {path.name}: {exc}") from exc
 
 
-def _matched(claim: dict[str, Any], result: dict[str, Any]) -> tuple[bool, str]:
+NOT_EXECUTABLE = re.compile(r"command not found|No such file or directory|not recognized", re.I)
+
+
+def _executable(result: dict[str, Any]) -> bool:
+    """Whether the command ran at all, as opposed to running and disagreeing.
+
+    Measured 2026-09-11 on a paid replay: a body listed the test files it had run, the
+    command became `pytest ...`, and the sandbox has no `pytest` on PATH - so exit 127
+    was reported as the author over-claiming. A check that cannot execute has not
+    refuted anything, and saying otherwise is the worst thing this workflow can do.
+    """
+    if result.get("timed_out"):
+        return False
+    output = result["stdout"] + result["stderr"]
+    return not (result["returncode"] == 127 or NOT_EXECUTABLE.search(output))
+
+
+def _matched(claim: dict[str, Any], result: dict[str, Any]) -> tuple[bool | None, str]:
     output = (result["stdout"] + result["stderr"]).strip()
     expect = claim["expect"]
+    if not _executable(result):
+        reason = "timed out" if result.get("timed_out") else "is not available here"
+        return None, f"the command {reason}, so this claim was not checked"
     if expect == "exit_zero" and result["returncode"] != 0:
         return False, f"the command exited {result['returncode']}"
     if expect == "exit_nonzero" and result["returncode"] == 0:
@@ -184,14 +204,15 @@ def check(
         results.append(
             {
                 **claim,
-                "ran": True,
+                "ran": ok is not None,
                 "matched": ok,
                 "reason": reason,
                 "returncode": result["returncode"],
                 "actual_tail": (result["stdout"] + result["stderr"]).strip()[-2000:],
             }
         )
-        if not ok:
+        # None means the check could not run: no verdict either way, and no finding.
+        if ok is False:
             validation = bool(VALIDATION.search(claim["quote"]))
             hits.append(
                 findings_mod.normalize(
@@ -224,4 +245,5 @@ def check(
         "findings": hits,
         "reproduced": sum(1 for row in results if row.get("matched")),
         "mismatched": sum(1 for row in results if row.get("matched") is False),
+        "unchecked": sum(1 for row in results if row.get("matched") is None),
     }

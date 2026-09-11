@@ -217,6 +217,21 @@ downgraded, and runs the whole pipeline with a recording agent instead of a prov
 
     python3 <repo>/fixtures/review-pr/setup.py /tmp/fx --recorded
 
+## What it does not reach
+
+Measured against a real hand review of a governance-docs pull request, this workflow
+recovered 4 of 14 findings and missed every one whose shape was "this prose asserts
+something the implementation does not do" - the kind that needs a file the diff never
+touches. The four lenses come from a code-review skill and are scoped to the diff on
+purpose, so on a documentation or governance change read the output as a precise
+supplement to a human review rather than a substitute for one. The analysis, and what would
+close it, is in [the finding](https://github.com/tenequm/build-workflow/blob/main/docs/knowledge/findings/review-lenses-miss-claim-vs-implementation.md)
+(this skill installs standalone, so that is a URL rather than a repository path).
+
+Precision is the half that held: on that run 7 of 8 pre-merge findings were confirmed
+by an executed rubric or a cross-family verifier, and three were real findings the
+human had not raised.
+
 ## Non-goals
 
 It does not review business-logic correctness - that belongs to a correctness review.

@@ -15,6 +15,10 @@ families:
   claude:
     transport: claude
     adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
+    # Without this the Claude harness saves nothing, so pond has nothing to ingest and
+    # a finding produced on this family cannot point at the transcript behind it.
+    # Codex and agy write their own rollouts and need no equivalent.
+    persist_session: true
   codex:
     transport: acp
     adapter_argv: [npx, --yes, '@agentclientprotocol/codex-acp@1.1.5']

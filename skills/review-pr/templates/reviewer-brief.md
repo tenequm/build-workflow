@@ -7,8 +7,10 @@ claim you cannot make checkable is worth less than no claim at all.
 ## Inputs
 
 - The diff under review: `{{DIFF_PATH}}` (read it in full)
-- The checked-out tree at the pull request head: `{{TREE}}`
+- **The pull request head is checked out in your current working directory.** That
+  checkout is yours alone; read it there, and write your report there.
 - The base tree, for comparing behaviour of moved or rewritten code: `{{BASE_TREE}}`
+  (read-only, and shared - never write into it)
 - The author's stated intent: `{{BODY_PATH}}`
 - Changed files in scope:
 
@@ -34,7 +36,9 @@ evidence that the code does what it says.
 
 ## Your output
 
-Write exactly one file and no others: `{{REPORT_PATH}}`, relative to `{{TREE}}`.
+Write exactly one file and no others: `{{REPORT_PATH}}`, resolved against your current
+working directory. Do not write it under any absolute path named above - those are
+shared, and a report written into one is a report nobody collects.
 Do not modify any other file. Do not commit. Do not run the project's build.
 
 The file is JSON in this shape:

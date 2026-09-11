@@ -384,19 +384,60 @@ and what it costs, is in
   finding outside a hunk, one on a file absent from the diff and one on a
   deleted file, and requires the script to catch all three before a payload
   is assembled.
-- **Ground-truth replay against PR #5737 (item 1): not run.** It needs paid
-  model sessions against upstream and was not authorised in the build
-  session. The command is `review-pr setup --pr 5737 -R
-  sipyourdrink-ltd/bernstein` then `review-pr run`; the pull request is open
-  and reachable, and it is docs-only, so the deterministic stages replay
-  without executing anything.
-- **A real weekly batch (item 3): not run,** same reason. `review-pr batch
-  --label needs-committer-review` is the entry point and records wall time
-  and charged spend per pull request into `batch.json`.
+- **Ground-truth replay against PR #5737 (item 1): RUN 2026-09-11, and it
+  fails its own bar.** Replayed against commit `2512a7e3ea67`, the tree the
+  hand review's second round actually saw - reviewing today's head would score
+  a tree whose 14 findings were already applied. Result: 4 recovered exactly,
+  1 partially, 9 missed, 3 found that the human did not raise. Against the bar
+  above (`recover the correctness findings and the applied design findings`):
+  **0 of 3 correctness, 1 of 7 design**. Precision held - 7 of 8 pre-merge
+  findings were CONFIRMED by an executed rubric or a cross-family verifier -
+  but recall did not. Every miss has one shape, and the analysis is in
+  [its own finding](../knowledge/findings/review-lenses-miss-claim-vs-implementation.md):
+  the four lenses are polish's code-review lenses, and the missed findings all
+  check a claim the diff adds against an implementation the diff does not
+  touch. Closing it needs a fifth lens, not a better model.
+- **A real weekly batch (item 3): still not run.** `review-pr batch --label
+  needs-committer-review` is the entry point and records wall time and charged
+  spend per pull request into `batch.json`. The replay gives the per-pull-request
+  shape it would multiply: 11 sessions, 169s of wall time once stage 2 was warm,
+  and roughly $15 of measured provider cost at the shipped budgets - which is
+  above the plan's "predictable cost" target and is the number to attack first.
 
-### Known environment gap
+### What the paid replay cost, and what it bought
 
-`review-pr ready` refuses on this operator host: pond is 0.17.1 and this
-workflow pins >= 0.17.2, because agy sessions are only ingested from that
-release. Either re-deploy the pinned tools or run with `--no-pond` and accept
-that session capture is off for that run.
+About $29 of provider spend across two attempts. It found four defects that no
+recorded-agent test could have found, all fixed in this change:
+
+1. **Every stage-2 session wrote its report where nothing collects it.** The brief
+   named an absolute path to the shared reviewed tree; each session is validated
+   against its own worktree. All seven sessions obeyed the brief, exited 0, and
+   produced nothing - and the report-witness law caught it exactly as designed,
+   retried once, and recorded an honest failure. The fixture had masked it because
+   the recording agent writes relative to its working directory and never read the
+   instruction. Briefs now resolve every write target against the working directory,
+   and `briefs.guard` refuses any brief that names the shared tree.
+2. **One invented tag parked a run with seven good sessions behind it.** A model
+   tagged a finding `docs-drift`. Tags are decorative; only four of them decide
+   anything. Unknown tags are now dropped and kept as `dropped_tags`, while every
+   field that decides something stays strict.
+3. **A claim that could not be executed was reported as the author over-claiming.**
+   The body listed the tests it had run, the extractor turned that into `pytest ...`,
+   and the sandbox has no `pytest` - exit 127 became "the body's own evidence does
+   not reproduce". A check that cannot run refutes nothing; such claims are now
+   counted as `unchecked` and raise no finding. This is the same control the
+   tests-fail-on-base rule already gained from the first real run.
+4. **Claude-family sessions were invisible to pond.** Codex and agy write their own
+   rollouts and were captured; the Claude bridge sets `persistSession: False`, which
+   is right for a blind judge and wrong for a review whose transcript is the
+   provenance a posted finding points at. It is now a flag, off by default, and the
+   review template turns it on - verified end to end: the session file lands keyed by
+   its ACP session id and pond ingests it as `claude-code`.
+
+### Environment
+
+`review-pr ready` is green on the operator host as of 2026-09-11, with pond
+0.17.2 installed to `~/.local/bin` (ahead of the Home Manager copy) and the `agy`
+adapter enabled. Folding 0.17.2 into the Home Manager pin is the operator's own
+change; until then the binary in `~/.local/bin` is what satisfies the check, and
+removing it restores 0.17.1 and the refusal.

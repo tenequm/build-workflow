@@ -25,6 +25,24 @@ LENS_TEMPLATE = {
 BRIEF_CAP = 16000
 
 
+def guard(brief: str, sidecar: dict[str, Any]) -> str:
+    """No brief may name the shared reviewed tree.
+
+    Each session gets its own worktree and is validated against it, so a brief that
+    hands the model an absolute path to the shared tree gets exactly what it asked
+    for: a report written where nothing collects it, and a session that exits clean
+    having produced nothing. Measured 2026-09-11 on the first paid run, where all
+    seven stage-2 sessions did precisely that.
+    """
+    shared = str(sidecar.get("tree") or "")
+    if shared and shared in brief:
+        raise Park(
+            f"brief names the shared reviewed tree {shared!r}; write targets are "
+            "resolved against each session's own working directory"
+        )
+    return brief
+
+
 def render(template: str, values: dict[str, str]) -> str:
     text = config.template(template)
     for key, value in values.items():
@@ -69,7 +87,6 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
         {
             "NUMBER": str(sidecar["number"]),
             "DIFF_PATH": str(paths["diff"]),
-            "TREE": sidecar["tree"],
             "BASE_TREE": sidecar["base_tree"],
             "BODY_PATH": str(paths["body"]),
             "CHANGED_FILES": changed,
@@ -79,7 +96,7 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
             "REPORT_PATH": report,
         },
     )
-    return brief, report, witness
+    return guard(brief, sidecar), report, witness
 
 
 def verifier(
@@ -123,7 +140,6 @@ def verifier(
     brief = render(
         "verifier-brief.md",
         {
-            "TREE": sidecar["tree"],
             "BASE_TREE": sidecar["base_tree"],
             "DIFF_PATH": str(paths["diff"]),
             "FILE": finding["file"],
@@ -137,7 +153,7 @@ def verifier(
             "FINDING_ID": finding["id"],
         },
     )
-    return brief, report, witness
+    return guard(brief, sidecar), report, witness
 
 
 def claims(sidecar: dict[str, Any], paths: dict[str, Path]) -> tuple[str, str, str]:
@@ -146,17 +162,16 @@ def claims(sidecar: dict[str, Any], paths: dict[str, Path]) -> tuple[str, str, s
         "claims-brief.md",
         {
             "BODY_PATH": str(paths["body"]),
-            "TREE": sidecar["tree"],
             "REPORT_PATH": report,
         },
     )
-    return brief, report, '"claims"'
+    return guard(brief, sidecar), report, '"claims"'
 
 
 def body(summary: Path, sidecar: dict[str, Any]) -> tuple[str, str, str]:
     report = "reports/body.json"
     brief = render(
         "body-brief.md",
-        {"SUMMARY_PATH": str(summary), "TREE": sidecar["tree"], "REPORT_PATH": report},
+        {"SUMMARY_PATH": str(summary), "REPORT_PATH": report},
     )
-    return brief, report, '"body"'
+    return guard(brief, sidecar), report, '"body"'

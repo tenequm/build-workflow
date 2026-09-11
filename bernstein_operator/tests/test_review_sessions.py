@@ -280,6 +280,35 @@ class TestStageTemplate:
         assert argv[argv.index("exec") + 1] == "--config-option"
         assert argv[argv.index("exec") + 2] == "reasoning_effort=high"
 
+    def test_a_review_session_persists_so_pond_can_ingest_it(self, tmp_path):
+        """Measured 2026-09-11: codex and agy write their own rollouts and were captured,
+        while every Claude review session was invisible to pond because the bridge
+        defaults to not saving one."""
+        plan = config.load()
+        bridge = runner.session_argv(config.lens_spec(plan, "gating"), tmp_path, tmp_path / "p.md")
+        assert "--persist" in bridge[bridge.index("--agent") + 1]
+        from operator_driver.claude_acp import bind_session
+
+        saved = bind_session({"method": "session/new"}, budget=1, model="m", turns=2, persist=True)
+        assert saved["params"]["_meta"]["claudeCode"]["options"]["persistSession"] is True
+
+    def test_a_blind_judge_still_leaves_no_session_behind(self):
+        """The build judge's default must not move: it reviews blind and resumes never."""
+        from operator_driver.acp import judge_argv
+        from operator_driver.claude_acp import bind_session
+
+        default = bind_session({"method": "session/new"}, budget=1, model="m", turns=2)
+        assert default["params"]["_meta"]["claudeCode"]["options"]["persistSession"] is False
+        spec = {
+            "budget_usd": 1,
+            "model": "m",
+            "max_turns": 2,
+            "timeout_s": 5,
+            "adapter_argv": ["npx", "adapter"],
+        }
+        argv = judge_argv(spec, Path("/tmp"), Path("/tmp/p.md"))
+        assert "--persist" not in argv[argv.index("--agent") + 1]
+
     def test_a_claude_session_goes_through_the_budget_bridge(self, tmp_path):
         plan = config.load()
         argv = runner.session_argv(config.lens_spec(plan, "gating"), tmp_path, tmp_path / "p.md")

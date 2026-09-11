@@ -257,6 +257,7 @@ def run(
         "gating_findings": sum(1 for f in produced if f["lens"] == "gating"),
         "claims_reproduced": claim_results["reproduced"],
         "claims_mismatched": claim_results["mismatched"],
+        "claims_unchecked": claim_results["unchecked"],
         "missing_reports": missing,
         "suggestions": proofs,
         "tier": tier,

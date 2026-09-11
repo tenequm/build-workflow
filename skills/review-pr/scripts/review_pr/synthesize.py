@@ -122,7 +122,8 @@ def correctness_zero(evidence: dict[str, Any]) -> str:
         f"{verify.get('sessions', 0)} verifier session(s) ran and "
         f"{verify.get('settled_by_rubric', 0)} claim(s) settled on an executed rubric.",
         f"Claims in the body re-executed: {evidence.get('claims_reproduced', 0)} reproduced, "
-        f"{evidence.get('claims_mismatched', 0)} did not.",
+        f"{evidence.get('claims_mismatched', 0)} did not, "
+        f"{evidence.get('claims_unchecked', 0)} could not be run here.",
     ]
     return " ".join(parts)
 

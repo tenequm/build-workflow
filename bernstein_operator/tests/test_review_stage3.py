@@ -192,6 +192,61 @@ class TestBlinding:
         assert "not required for this class" in brief
 
 
+class TestWriteTargets:
+    """Where a brief tells a model to write is the difference between a review and a
+    session that exits clean having produced nothing. Measured on the first paid run:
+    the brief named the shared tree, all seven sessions obeyed it, and every report
+    landed where nothing collects it."""
+
+    side = {
+        "number": 1,
+        "tree": "/w/tree",
+        "base_tree": "/w/base",
+        "reviewable_files": ["a.py"],
+        "repo": "o/r",
+    }
+    paths = {
+        "diff": Path("/w/inputs/diff.patch"),
+        "body": Path("/w/inputs/pr-body.md"),
+        "files": Path("/w/inputs/changed-files.txt"),
+    }
+
+    def briefs_for(self):
+        from review_pr import briefs
+
+        made = [
+            briefs.reviewer(lens, self.side, self.paths)
+            for lens in ("cleanliness", "design", "efficiency", "gating")
+        ]
+        made.append(briefs.verifier(finding(), self.side, self.paths))
+        made.append(briefs.claims(self.side, self.paths))
+        made.append(briefs.body(Path("/w/draft.json"), self.side))
+        return made
+
+    def test_no_brief_names_the_shared_reviewed_tree(self):
+        for brief, _, _ in self.briefs_for():
+            assert self.side["tree"] not in brief
+
+    def test_every_brief_sends_its_report_to_the_working_directory(self):
+        for brief, report, _ in self.briefs_for():
+            assert report in brief
+            assert "current working directory" in brief.replace("\n", " ")
+
+    def test_the_base_tree_is_still_named_and_marked_read_only(self):
+        from review_pr import briefs
+
+        brief, _, _ = briefs.reviewer("design", self.side, self.paths)
+        assert self.side["base_tree"] in brief
+        assert "never write into it" in brief
+
+    def test_a_brief_that_names_the_shared_tree_is_refused(self):
+        from review_pr import briefs
+
+        with pytest.raises(Park, match="shared reviewed tree"):
+            briefs.guard("write your report to /w/tree/reports/x.json", self.side)
+        assert briefs.guard("write it to reports/x.json", self.side)
+
+
 class TestDualFamily:
     def row(self, file, line, producer, rubric=None, suggestion=None):
         return {
@@ -268,6 +323,28 @@ class TestClaims:
         assert result["mismatched"] == 1 and result["reproduced"] == 0
         assert result["findings"][0]["category"] == "correctness"
         assert "permanent commit message" in result["findings"][0]["claim"]
+
+    def test_a_command_that_cannot_run_here_refutes_nothing(self, tmp_path):
+        """Measured on a paid replay: the body listed the tests it ran, the extractor
+        made that `pytest ...`, the sandbox has no pytest, and exit 127 was reported as
+        the author over-claiming."""
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        rows = [
+            {
+                "id": "c1",
+                "quote": "all tests pass",
+                "kind": "command",
+                "run": "definitely-not-a-real-command --version",
+                "expect": "exit_zero",
+                "contains": None,
+                "claimed_output": None,
+            }
+        ]
+        result = claims.check(rows, {"tree": str(tree)}, tier="none")
+        assert result["mismatched"] == 0 and result["unchecked"] == 1
+        assert result["findings"] == [], "an unrunnable check must not accuse the author"
+        assert "not available here" in result["claims"][0]["reason"]
 
     def test_a_body_whose_evidence_reproduces_produces_nothing(self, tmp_path):
         tree = tmp_path / "tree"

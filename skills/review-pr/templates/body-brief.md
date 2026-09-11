@@ -21,7 +21,11 @@ One to two sentences of judgment, then the finding counts. Nothing else.
 
 ## Your output
 
-Write exactly one file and no others: `{{REPORT_PATH}}`, relative to `{{TREE}}`:
+Write exactly one file and no others: `{{REPORT_PATH}}`, resolved against your current
+working directory. Do not write it under any absolute path named above - those are
+shared, and a report written into one is a report nobody collects.
+
+Its shape:
 
 ```json
 {"body": "Your one to two sentences."}

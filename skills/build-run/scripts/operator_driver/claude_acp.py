@@ -13,7 +13,9 @@ import subprocess
 import sys
 
 
-def bind_session(message: dict, *, budget: float, model: str, turns: int) -> dict:
+def bind_session(
+    message: dict, *, budget: float, model: str, turns: int, persist: bool = False
+) -> dict:
     if message.get("method") in {"session/load", "session/resume", "session/fork"}:
         raise ValueError("blind judge cannot load, resume, or fork a session")
     if message.get("method") != "session/new":
@@ -27,7 +29,12 @@ def bind_session(message: dict, *, budget: float, model: str, turns: int) -> dic
             "model": model,
             "maxTurns": turns,
             "settingSources": [],
-            "persistSession": False,
+            # A blind judge leaves no resumable session behind, so this stays off by
+            # default. A review session is the opposite case: its transcript is the
+            # provenance a posted finding points at, and an unpersisted Claude session
+            # is invisible to pond while codex and agy, which write their own rollouts,
+            # are captured. Measured 2026-09-11 on the first paid review run.
+            "persistSession": persist,
             "tools": ["Read", "Glob", "Grep", "Bash", "Write", "Edit"],
             "mcpServers": {},
         }
@@ -41,6 +48,11 @@ def main() -> None:
     parser.add_argument("--budget", type=float, required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--turns", type=int, required=True)
+    parser.add_argument(
+        "--persist",
+        action="store_true",
+        help="let the harness save this session so it can be ingested later",
+    )
     parser.add_argument("adapter", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     argv = args.adapter[1:] if args.adapter[:1] == ["--"] else args.adapter
@@ -53,7 +65,11 @@ def main() -> None:
     try:
         for line in sys.stdin.buffer:
             message = bind_session(
-                json.loads(line), budget=args.budget, model=args.model, turns=args.turns
+                json.loads(line),
+                budget=args.budget,
+                model=args.model,
+                turns=args.turns,
+                persist=args.persist,
             )
             pipe.write((json.dumps(message, separators=(",", ":")) + "\n").encode())
             pipe.flush()

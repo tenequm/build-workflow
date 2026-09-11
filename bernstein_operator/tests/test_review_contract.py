@@ -109,6 +109,21 @@ class TestFindingsSchema:
         with pytest.raises(Park, match="PR:<part>"):
             finding(scope="meta", file="somewhere")
 
+    def test_an_invented_tag_is_dropped_rather_than_voiding_the_report(self):
+        """Measured 2026-09-11 on a paid run: one model tagged a finding `docs-drift`
+        and the whole run parked, discarding seven sessions that had done real work."""
+        tagged = finding(tags=["docs-drift", "pre-existing"])
+        assert tagged["tags"] == ["pre-existing"]
+        assert tagged["dropped_tags"] == ["docs-drift"]
+        assert tagged["follow_up"] is True, "a known tag still decides"
+        with pytest.raises(Park, match="list of strings"):
+            finding(tags=[{"not": "a string"}])
+
+    def test_a_field_that_decides_something_is_still_strict(self):
+        for bad in ({"category": "vibes"}, {"impact": "catastrophic"}, {"scope": "elsewhere"}):
+            with pytest.raises(Park):
+                finding(**bad)
+
     def test_a_credential_is_named_and_never_reproduced(self):
         assert findings.redact("token ghp_abcdefghijklmnopqrst here") == "token ghp_**** here"
         assert (
