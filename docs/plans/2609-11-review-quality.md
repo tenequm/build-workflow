@@ -13,7 +13,13 @@ but dropped the floor to 3/8 - lens crowding (the lens found defects and
 discarded them as out-of-scope), two parks (case-04 verifier scratch, case-05
 suggestion boundary), and unchecked pr.md test claims. Iteration 2 fixes all
 five causes; lever (b) stays drafted-but-undeployed since bar-04/06 recovered
-without it.
+without it. Iteration-2 measurement (run 6, --jobs 3 on the metered API-key
+lane): 13/14, floor 8/8; the one bar miss was a scorer artifact - the finding
+recovered the planted defect exactly but carried a must_mention keyword only
+in its proven suggestion text - so the scorer now scans the suggestion too
+(c34c985) and the rescored run-6 corpus is 14/14 RECOVERED, 0 MISFILED,
+0 MISSED, 7 extra findings across 14 cases. The corpus gate is green; Wave 4
+is in flight.
 
 Driver rule: the driver does as little as possible - it launches lanes (gemini
 acpx, model gemini-3.7-flash-medium) and subagents (opus, NEVER fable), reads
