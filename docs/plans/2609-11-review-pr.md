@@ -245,10 +245,12 @@ task's session id keyed to the finding ids it produced. What this buys:
 
 Boundaries: transcripts are stored and queried, never fed back into
 briefs (they are a prompt-injection surface and the corpus provably
-carries credentials - evidence, not instructions). Known gap: agy/Gemini
-sessions are not pond-indexed today; a lens routed to that family
-reviews fine but leaves no transcript, so lenses whose findings need
-provenance stay on codex/claude families until that gap closes.
+carries credentials - evidence, not instructions). agy/Gemini sessions
+are collected too (decision: Misha, 2026-09-11): pond does not index the
+agy format today, so agy ingest lands in pond as a dependency of this
+plan; until it does, the raw agy session files are archived alongside
+the run evidence so no transcript is lost, and full provenance
+queries cover that family the moment ingest exists.
 
 ## The precision ledger (the level-above loop)
 
