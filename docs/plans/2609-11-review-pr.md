@@ -1,23 +1,26 @@
 # /review-pr: the polish skill as a Bernstein workflow
 
-Status: DRAFT, awaiting Misha's sign-off. Designed 2026-09-11 from the
+Status: BUILT 2026-09-11 and locally verified; see `## Delivered` at the end
+for what exists, what was proven, and what still needs a paid run. Designed
+2026-09-11 from the
 [polish skill v3.1.0](https://github.com/tenequm/skills/blob/main/skills/polish/SKILL.md),
 the operator at v0.1.21, the knowledge bundle, and the
 [2609-02 research overview](../research/2609-02-research-overview.md)
 (all paper/blog citations below resolve there). Upstream's own review
 machinery, which this tool complements, is documented in
 [the upstream-review-automation reference](../knowledge/references/upstream-review-automation.md).
-Nothing here is built yet.
+The phase map below is the design; one deviation from it is recorded under
+`## Open questions, resolved at implementation`.
 
-**For a fresh agent picking this up:** this document is the spec
-substrate - run `/build-plan` with it as intake; the probes resolve
-anything left open here, and sign-off freezes the result. Two hard
-requirements that are easy to miss: (1) the four lens briefs, the polish
-Rules block, and the verdict table must be VENDORED into this repository
-(copied, then owned here) - the runtime never fetches tenequm/skills;
-(2) every acceptance item in this plan is executable without this
-design conversation - if one is not, that is a plan defect to fix, not
-context to go hunting for.
+**For a fresh agent picking this up:** the workflow is built - read
+[the skill](../../skills/review-pr/SKILL.md) and run the fixture before
+reading further here. This document remains the design record and the
+rationale index; `## Delivered` maps each requirement to the code that
+carries it. The two hard requirements it set are met: the four lens briefs,
+the polish Rules block and the verdict table are VENDORED under
+`skills/review-pr/templates/` (copied from polish v3.1.0, then owned here -
+the runtime never fetches tenequm/skills), and every acceptance item is
+executable from a clean checkout.
 
 Goal: point a command at one or many Bernstein PRs and get a review at or
 above the level `/polish` produces today - faster per weekly batch, more
@@ -317,19 +320,191 @@ collected as a side effect, spent later.
    claim-vs-tool-call verifier over those stored transcripts - but its
    substrate is being collected from the first run.
 
-## Open questions for sign-off
+## Open questions, resolved at implementation
 
-- Verify fan-out cost ceiling per PR (stage 3 is the expensive stage;
-  cap N verifier tasks and batch small findings per task?).
-- Does stage 0's tests-fail-on-base check run on every PR or only when
-  the PR adds tests? (Their bot runs it selectively.)
-- Ledger location: in-repo (public) vs `.agents/` (dies with worktrees -
-  known scar). Proposal: in-repo under `docs/review-ledger/`, since the
-  repo is public-by-design and the ledger is evidence.
-- Whether `/review-pr` should also serve non-Bernstein repos day one
-  (stage 0 is Bernstein-specific; everything else is generic - proposal:
-  stage 0 loads per-repo rule modules, Bernstein first).
-- Author-family detection heuristic: PR-body style markers, disclosure
-  lines, and receipts are candidates, none proven; when detection is
-  ambiguous the router falls back to the default table above rather
-  than guessing.
+Answered 2026-09-11 while building. Each answer is in code, and the two that
+carry real rationale have decision records.
+
+- **Verify fan-out cost ceiling.** Capped at `bounds.max_verifier_sessions`
+  (12), correctness and gating claims first; past the cap a finding settles on
+  its driver-executed rubric. Findings are NOT batched into a shared session:
+  a verifier that sees four claims reads each in the context of the others,
+  which destroys the blinding stage 3 exists to buy. Rationale in
+  [the decision record](../knowledge/decisions/verification-is-capped-never-batched.md).
+- **Does tests-fail-on-base run on every PR?** Only when the pull request
+  touches test files, matching their bot's own selectivity - and the skip is
+  recorded with its reason, because an unrecorded skip cannot be told from a
+  pass. `houserules.tests_fail_on_base`.
+- **Ledger location.** In-repo at `docs/review-ledger/runs.jsonl`, as
+  proposed: the repo is public by design, the ledger is evidence, and an
+  `.agents/` ledger dies with the worktree that wrote it.
+- **Non-Bernstein repos day one.** Yes. Stage 0 loads a rule set per
+  repository: `bernstein` adds the release-notes fragment and the bisect
+  annotation, every other repo gets `generic` (prose hygiene, no sign-off,
+  injection scan, validation-command provenance, tests-fail-on-base). The set
+  is chosen from the remote slug and overridable with `--rules`.
+- **Author-family detection.** Disclosure lines and trailers score 2, unicode
+  punctuation in the body scores 1, and a tie or a zero score returns
+  `unknown`, which leaves the default routing table untouched. The confidence
+  is recorded in the sidecar, so a review never hides which table it used.
+
+One further deviation, recorded because it changes the phase map above: the
+model stages run as driver-owned one-shot ACP sessions rather than Bernstein
+task-server runs. All eight quality mechanisms are preserved; the reasoning,
+and what it costs, is in
+[the decision record](../knowledge/decisions/review-sessions-are-driver-owned-ceremonies.md).
+
+## Delivered
+
+| requirement | where |
+|---|---|
+| 1. executable rubric per finding | `review_pr/findings.py` (schema, `unverifiable` demotion), `review_pr/rubric.py` (execution) |
+| 2. PoC-or-demote with the gold gate | `review_pr/verify.py:settle`, `review_pr/rubric.py:gold_gate` |
+| 3. PR-body claim re-execution | `review_pr/claims.py`, `templates/claims-brief.md` |
+| 4. dual-family lens diff | `review_pr/dualfamily.py`, `templates/stages.yaml:dual_family` |
+| 5. author-family routing, blinded verifier | `review_pr/checkout.py:author_family`, `pipeline.py:lens_families`, `briefs.py:verifier` |
+| 6. the precision ledger | `review_pr/ledger.py`, `review-pr.py ledger` |
+| 7. proven suggestions | `review_pr/suggestions.py`, `synthesize.py:comment_body` |
+| 8. house-rule lint stage | `review_pr/houserules.py` |
+| the deterministic spine | `checkout.py`, `diffindex.py`, `anchors.py`, `verdictcalc.py`, `synthesize.py` |
+| the vendored briefs | `skills/review-pr/templates/` |
+| pond session capture | `review_pr/pondsync.py`, wired in `pipeline.py:pond_capture` |
+| the batch driver | `review-pr.py batch` |
+
+### Acceptance evidence, as it stands
+
+- **Seeded fixture (item 2): done and executable.**
+  `python3 fixtures/review-pr/setup.py /tmp/fx --recorded` materialises the
+  repository and the pull request; `test_review_fixture.py` runs the whole
+  pipeline over the real `acpx` transport against a recording agent and
+  asserts each plant, the injection reported-and-not-obeyed, the claim
+  mismatch, the dual-family agreement, the proven and the downgraded
+  suggestion, and the ledger rows. 33 assertions, no provider spend.
+- **Anchor check proven (item 4): done.** `test_review_contract.py` puts a
+  finding outside a hunk, one on a file absent from the diff and one on a
+  deleted file, and requires the script to catch all three before a payload
+  is assembled.
+- **Ground-truth replay against PR #5737 (item 1): RUN 2026-09-11, twice.**
+  Replayed against commit `2512a7e3ea67`, the tree the hand review's second
+  round actually saw - reviewing today's head would score a tree whose 14
+  findings were already applied.
+
+  The first run, with the four polish lenses, recovered 3 of 14 and missed every
+  finding whose shape was "this prose asserts something the implementation does
+  not do". That failure was the useful result: it named a structural gap, not a
+  model problem, and the fix was a fifth lens
+  ([the finding](../knowledge/findings/review-lenses-miss-claim-vs-implementation.md)).
+
+  The second run added that lens and raised every ceiling so no session was
+  budget-bound:
+
+  | | four lenses | five lenses |
+  |---|---|---|
+  | recovered of the 14 | 3 | 5 |
+  | of the 7 tagged Design | 1 | 3 |
+  | pre-merge findings | 8 | 15 |
+  | correctness findings | 4 | 7 |
+  | verifier sessions | 2 | 7 |
+
+  The bar - recover the correctness findings and the applied design findings -
+  is met for neither category in full: 0 of the 3 the reviewer tagged
+  Correctness, 3 of 7 Design. The remaining misses cluster on one further gap,
+  and the plan for it is in the finding above: they each need a single authority
+  file read end to end rather than grepped.
+- **A real weekly batch (item 3): still not run.** `review-pr batch --label
+  needs-committer-review` is the entry point and records wall time and charged
+  spend per pull request into `batch.json`. The replay gives the per-pull-request
+  shape it would multiply: 18 sessions and about 12 minutes of wall time for a
+  7-file, 176-line pull request. The dollar figure needs care: of the $15.33 the bound counted, $10.00 was
+  a full reservation charged against five sessions that reported no cost at all
+  (codex on `auth_mode = chatgpt`, and the Antigravity lane - both
+  subscription-backed), and the $5.33 that was reported came from the Claude
+  bridge, which computes a list-price estimate from token counts regardless of
+  the account behind it. On the operator's Max subscription none of it is a
+  charge; it measures quota. The real per-pull-request cost on per-token auth
+  would have to be measured on per-token auth.
+
+### What the paid replay found
+
+Every family ran on a subscription (Claude Max, codex `auth_mode = chatgpt`, the
+Antigravity OAuth lane), so the runs consumed quota and wall time rather than
+API charges; the dollar figures below are usage meters, not invoices.
+
+Six defects that no recorded-agent test could have found, all fixed:
+
+1. **Every stage-2 session wrote its report where nothing collects it.** The
+   brief named an absolute path to the shared reviewed tree; each session is
+   validated against its own worktree. All seven obeyed the brief, exited 0 and
+   produced nothing - and the report-witness law caught it, retried once and
+   recorded an honest failure, which is exactly what it is for. The fixture had
+   masked it: the recording agent writes relative to its working directory and
+   never reads that instruction. Briefs now resolve every write target against
+   the working directory, and `briefs.guard` refuses any brief naming the
+   shared tree.
+2. **One invented tag parked a run** with seven good sessions behind it. Tags
+   are decorative and only four decide anything, so unknown ones are dropped
+   and kept as `dropped_tags`.
+3. **A malformed replacement rubric from a verifier parked another.** The
+   verdict and the reason decide; a sharper rubric is an optimisation, so a bad
+   one is dropped and recorded.
+4. **A claim that could not be executed was reported as the author
+   over-claiming** - the body listed the tests it ran, the extractor made that
+   `pytest ...`, and the sandbox has no `pytest`. Exit 127 now counts as
+   `unchecked` and raises no finding.
+5. **Claude-family sessions were invisible to pond.** Codex and agy write their
+   own rollouts; the Claude bridge sets `persistSession: False`, right for a
+   blind judge and wrong for a review whose transcript is a finding's
+   provenance. Now a flag, off by default, turned on by the review template.
+6. **Thirteen of fifteen findings were confirmed with no verifier at all**, on
+   rubrics that execute against the code while the claim they contradict is a
+   statement in a document. A claim spanning two artifacts now always gets a
+   blinded cross-family reader; past the session cap it settles at PLAUSIBLE
+   rather than CONFIRMED.
+
+Numbers two and three are the same lesson twice, and it is now a rule: be strict
+on a field that decides something, tolerant on one that only describes, and
+never let the second void a report the first would have accepted.
+
+### Environment
+
+`review-pr ready` is green on the operator host as of 2026-09-11, with pond
+0.17.2 installed to `~/.local/bin` (ahead of the Home Manager copy) and the `agy`
+adapter enabled. Folding 0.17.2 into the Home Manager pin is the operator's own
+change; until then the binary in `~/.local/bin` is what satisfies the check, and
+removing it restores 0.17.1 and the refusal.
+
+## Addendum, 2026-09-11 (post-ship refactor): quality over ceremony
+
+A retrospective after the paid runs judged several subsystems against the goal -
+result quality on subscription-backed lanes - and this landed as one refactor:
+
+1. **Money control flow deleted.** No spend bound, no reservation ledger, no parks
+   on cost evidence; per-session budget/turn/timeout ceilings plus the batch wall
+   clock are the runaway protection. Cost is reported after the run from pond,
+   priced by `templates/registry.json` (LiteLLM/ccusage rates), labeled a
+   list-price floor
+   ([decision](../knowledge/decisions/cost-is-observability-never-control-flow.md)).
+2. **Capture is a verified stage on a per-run pond store**, with the pond binary
+   pinned into the operator venv (`just install-pond`) like the bernstein dep;
+   every session must resolve or the summary names the gap; the store folds into
+   the corpus best-effort and exports `provenance.pond`
+   ([decision](../knowledge/decisions/per-run-pond-store-for-capture.md)).
+3. **Dual-family agreement now decides.** A two-sided claim two families made, with
+   a passing rubric, settles without a verifier; contested claims jump the queue;
+   PoC classes still always queue (second amendment in
+   [the verification decision](../knowledge/decisions/verification-is-capped-never-batched.md)).
+4. **Stage products are durable** (`products/*.json`): a re-run re-reads finished
+   stages instead of re-executing them, and `status`/`abort` subcommands replace
+   hand-run PID hunting.
+5. **Lens fan-out tuned for signal**: cleanliness and efficiency parked
+   (`enabled: false`, one line to re-admit), the review-body model session replaced
+   by code, suggestion proofs limited to correctness class, and the implementation
+   lens now receives the repository's authority files with an instruction to read
+   each end to end - the measured recall lever.
+6. **Tests**: 28 mirror-tests deleted, new coverage for every behavior above;
+   `just test` (acceptance harness) 266 passed; `just check` clean.
+
+Acceptance items 1 and 3 are still owed on this new shape: re-run the ground-truth
+replay against PR #5737 (does recall move past 5/14, and does correctness move off
+0/3 with authority files as input), then the real weekly batch against
+`needs-committer-review`.

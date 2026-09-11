@@ -1,0 +1,196 @@
+"""Executor sessions land in pond, so a review's provenance survives the workspace.
+
+Every session this workflow spawns is a claude, codex or agy CLI session - the formats
+pond ingests losslessly. Capture is a verified stage against a fresh per-run store, not
+a best-effort sync into whatever the host has: the run provisions its own store inside
+the workspace, ingests only its own session sources, requires every session receipt to
+resolve to a stored transcript, and then folds the store into the operator's corpus
+with pond's row-verified copy. The per-run store is also the run's provenance artifact:
+`pond copy --from <store> --to provenance.pond` exports it whole.
+
+The binary is pinned like the bernstein dependency: the operator venv carries its own
+pond at PINNED (installed by `just install-pond`), so a drifting host pond never
+changes what a review does. Transcripts are stored and queried; they are never fed
+back into a brief - they are a prompt-injection surface and the corpus provably
+carries credentials. Evidence, not instructions.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from .proc import command
+
+PINNED = (0, 17, 2)
+# family (stages.yaml) -> the pond adapter that ingests that harness's sessions.
+ADAPTERS = {"claude": "claude-code", "codex": "codex-cli", "gemini": "agy"}
+
+
+def binary() -> str:
+    """The workflow's own pond, never the host's by accident.
+
+    POND_BIN overrides for tests and unusual layouts; the operator venv's copy is the
+    pinned install; bare PATH is the last resort and version() still gates it.
+    """
+    override = os.environ.get("POND_BIN")
+    if override:
+        return override
+    venv = Path(sys.executable).resolve().parent / "pond"
+    if venv.is_file():
+        return str(venv)
+    return "pond"
+
+
+def _pond(args: list[str], *, store: Path | None = None, timeout: float = 300) -> tuple[int, str]:
+    scoped = ["--storage-path", str(store)] if store else []
+    code, out, err = command([binary(), *scoped, *args], Path.cwd(), timeout=timeout)
+    return code, (out + err).decode(errors="replace")
+
+
+def version() -> tuple[tuple[int, ...] | None, str]:
+    code, text = _pond(["--version"], timeout=30)
+    text = text.strip()
+    if code:
+        return None, text or "pond is not installed"
+    for token in text.split():
+        bits = token.split(".")
+        if len(bits) >= 3 and all(bit.isdigit() for bit in bits[:3]):
+            return tuple(int(bit) for bit in bits[:3]), text
+    return None, text
+
+
+def current(pinned: tuple[int, ...] = PINNED) -> dict[str, Any]:
+    """Exact pin, not a floor: a host pond ahead of the pin is as much drift as one
+    behind it, and the workflow's store operations must not depend on host state."""
+    found, text = version()
+    return {
+        "binary": binary(),
+        "version": ".".join(str(part) for part in found) if found else None,
+        "pinned": ".".join(str(part) for part in pinned),
+        "raw": text,
+        "ok": bool(found and found == pinned),
+    }
+
+
+def adapters() -> dict[str, Any]:
+    code, text = _pond(["adapters", "list"], timeout=60)
+    return {"ok": code == 0, "agy": "agy" in text, "output": text.strip()[-2000:]}
+
+
+def _claude_project_dir(worktree: str) -> Path:
+    """The directory Claude Code writes a session's JSONL under, derived from its cwd."""
+    munged = "".join(char if char.isalnum() else "-" for char in worktree)
+    return Path.home() / ".claude" / "projects" / munged
+
+
+def _sources(receipts: dict[str, dict[str, Any]], ledger_dir: Path) -> dict[str, set[Path]]:
+    """Per adapter, the narrowest source directories that cover this run's sessions."""
+    sources: dict[str, set[Path]] = {}
+    for operation, receipt in receipts.items():
+        family = receipt.get("family")
+        adapter = ADAPTERS.get(str(family))
+        if adapter is None:
+            continue
+        directory = ledger_dir / "sessions" / receipt.get("operation", operation)
+        worktree = str(directory / "worktree")
+        if adapter == "claude-code":
+            sources.setdefault(adapter, set()).add(_claude_project_dir(worktree))
+        elif adapter == "codex-cli":
+            for stamp in (receipt.get("started"), receipt.get("finished")):
+                if stamp:
+                    day = datetime.fromtimestamp(stamp, UTC)
+                    sources.setdefault(adapter, set()).add(
+                        Path.home() / ".codex" / "sessions" / day.strftime("%Y/%m/%d")
+                    )
+        else:
+            sources.setdefault(adapter, set()).add(
+                Path.home() / ".gemini" / "antigravity-acp" / "conversations"
+            )
+    return {
+        adapter: {path for path in paths if path.is_dir()} for adapter, paths in sources.items()
+    }
+
+
+def sync_run_store(
+    store: Path, receipts: dict[str, dict[str, Any]], ledger_dir: Path
+) -> list[dict[str, Any]]:
+    """Ingest exactly this run's session sources into the fresh per-run store."""
+    store.mkdir(parents=True, exist_ok=True)
+    results = []
+    for adapter, paths in sorted(_sources(receipts, ledger_dir).items()):
+        for path in sorted(paths):
+            code, output = _pond(["sync", adapter, "--path", str(path)], store=store, timeout=900)
+            results.append(
+                {"adapter": adapter, "path": str(path), "ok": code == 0, "tail": output[-1500:]}
+            )
+    return results
+
+
+def fold(store: Path) -> dict[str, Any]:
+    """Merge the run store into the operator's corpus, row-verified by pond itself.
+
+    pond copy is an idempotent union merge that exits 6 when any row failed to land.
+    Best-effort and recorded, never fatal: a box whose configured store is remote may
+    hold read-only credentials (measured 2026-09-11, a 403 on the copy path), and the
+    host's own scheduled sync ingests the same session sources regardless.
+    """
+    code, output = _pond(["copy", "--from", str(store), "--to", "@"], timeout=900)
+    return {"ok": code == 0, "returncode": code, "tail": output[-2000:]}
+
+
+def archive(store: Path, target: Path) -> dict[str, Any]:
+    """Export the run store as a compact restorable `.pond` archive - the provenance
+    artifact that travels with the run even where the corpus fold cannot land."""
+    code, output = _pond(["copy", "--from", str(store), "--to", str(target)], timeout=900)
+    return {"ok": code == 0, "path": str(target), "tail": output[-1000:]}
+
+
+def _stamp(seconds: float) -> str:
+    return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def resolve(
+    receipts: dict[str, dict[str, Any]], ledger_dir: Path, *, store: Path | None = None
+) -> dict[str, Any]:
+    """Link each session's worktree and time window to the stored transcript.
+
+    A session's `--cwd` is its own throwaway worktree, which makes `project` a unique
+    key; the ACP session id is the adapter's, not the stored one, so it is recorded
+    alongside rather than used as the join.
+    """
+    resolved: dict[str, Any] = {}
+    for operation, receipt in receipts.items():
+        directory = ledger_dir / "sessions" / receipt.get("operation", operation)
+        worktree = str(directory / "worktree")
+        started = receipt.get("started")
+        finished = receipt.get("finished")
+        window = {
+            "project": worktree,
+            "from": _stamp(started) if started else None,
+            "to": _stamp(finished) if finished else None,
+            "acp_session": (receipt.get("acp") or {}).get("session_id"),
+            "model": receipt.get("model"),
+            "family": receipt.get("family"),
+        }
+        rows: list[dict[str, Any]] = []
+        if started and finished:
+            sql = (
+                "SELECT session_id, source_agent, created_at FROM sessions "
+                f"WHERE project = '{worktree}' "
+                f"AND created_at >= '{window['from']}' AND created_at <= '{window['to']}'"
+            )
+            code, output = _pond(["sql", "--format", "ndjson", sql], store=store, timeout=120)
+            if code == 0:
+                for line in output.splitlines():
+                    if line.strip():
+                        try:
+                            rows.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+        resolved[operation] = {**window, "sessions": rows, "resolved": bool(rows)}
+    return resolved

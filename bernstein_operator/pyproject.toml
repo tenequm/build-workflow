@@ -46,4 +46,4 @@ line-ending = "lf"
 [tool.ty.environment]
 python-version = "3.13"
 extra-paths = ["../skills/build-run/scripts"]
-root = ["src", "../skills/build-run/scripts", "../skills/build-plan/scripts", "../skills/build-close/scripts"]
+root = ["src", "../skills/build-run/scripts", "../skills/build-plan/scripts", "../skills/build-close/scripts", "../skills/review-pr/scripts"]

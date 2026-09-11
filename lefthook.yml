@@ -13,6 +13,9 @@ pre-commit:
     kb-index:
       glob: "{docs/knowledge/*,docs/knowledge/**/*,scripts/kb_index.py}"
       run: python3 scripts/kb_index.py --check
+    skill-isolation:
+      glob: "{skills/**,scripts/skill_isolation.py}"
+      run: python3 scripts/skill_isolation.py
     operator-python:
-      glob: "{bernstein_operator/**,skills/build-run/scripts/**,skills/build-plan/scripts/**,skills/build-close/scripts/**}"
+      glob: "{bernstein_operator/**,skills/build-run/scripts/**,skills/build-plan/scripts/**,skills/build-close/scripts/**,skills/review-pr/scripts/**,fixtures/review-pr/**}"
       run: just --justfile bernstein_operator/Justfile check

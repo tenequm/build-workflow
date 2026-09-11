@@ -58,7 +58,7 @@ the integration branch and consume the whole-build retry budget before
 anything is delivered. Prefer the strongest model the budget allows for
 executor roles, and treat a repeated "agent died, nothing committed" cycle as
 a capability signal before investigating the sandbox. The reverse case is
-cheap to test: [the slugify fixture](/fixtures/README.md) runs one step against
+cheap to test: [the slugify fixture](../../../fixtures/README.md) runs one step against
 one judge, so swapping `--resolver-model` and re-running separates the two in a
 single build.
 

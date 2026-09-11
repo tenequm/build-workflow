@@ -1,12 +1,15 @@
 {
   "name": "tenequm-build",
-  "owner": { "name": "Mykhaylo Kolesnik", "url": "https://github.com/tenequm" },
+  "owner": {
+    "name": "Mykhaylo Kolesnik",
+    "url": "https://github.com/tenequm"
+  },
   "description": "Misha's build pipeline.",
   "plugins": [
     {
       "name": "build-workflow",
       "source": "./",
-      "description": "Three-stage plan/run/close build pipeline."
+      "description": "Build pipeline plus /review-pr, an evidence-first pull request review."
     }
   ]
 }

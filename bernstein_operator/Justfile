@@ -1,9 +1,9 @@
-python_paths := "src tests scripts ../skills/build-run/scripts ../skills/build-plan/scripts ../skills/build-close/scripts"
+python_paths := "src tests scripts ../skills/build-run/scripts ../skills/build-plan/scripts ../skills/build-close/scripts ../skills/review-pr/scripts ../fixtures/review-pr"
 
 # Non-mutating checks, also run by the repository's existing hook runner.
 check:
     uv run python scripts/sync-skill-code.py --check
-    uv run ty check src ../skills/build-run/scripts ../skills/build-plan/scripts/plan-check.py ../skills/build-close/scripts
+    uv run ty check src ../skills/build-run/scripts ../skills/build-plan/scripts/plan-check.py ../skills/build-close/scripts ../skills/review-pr/scripts/review_pr ../skills/review-pr/scripts/review-pr.py
     uv run ruff check --config pyproject.toml {{python_paths}}
     uv run ruff format --check --config pyproject.toml {{python_paths}}
 

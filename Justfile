@@ -9,9 +9,14 @@ check:
     cmp -s skills/build-plan/templates/judge-prompt.md skills/build-run/templates/judge-prompt.md || (echo "judge-prompt.md template copies diverged" && exit 1)
     shellcheck skills/build-plan/scripts/*.sh
     python3 scripts/kb_index.py --check
+    python3 scripts/skill_isolation.py
     claude plugin validate . --strict
     just --justfile bernstein_operator/Justfile check
     echo "check: clean"
+
+# Provision the pinned pond into the operator venv (see review_pr/pondsync.py PINNED).
+install-pond version="0.17.2":
+    sh scripts/install-pond.sh {{version}}
 
 # Bump the patch version in both plugin manifests, commit, and push.
 # Plugin consumers only receive updates when the version changes.

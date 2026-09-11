@@ -1,7 +1,7 @@
 {
   "name": "build-workflow",
-  "version": "0.1.21",
-  "description": "Three-stage plan/run/close pipeline for multi-phase software builds driven by Bernstein.",
+  "version": "0.1.25",
+  "description": "Plan, run and land multi-phase Bernstein builds, and review pull requests with evidence that was executed.",
   "author": {
     "name": "Mykhaylo Kolesnik",
     "url": "https://github.com/tenequm"
@@ -9,9 +9,11 @@
   "repository": "https://github.com/tenequm/build-workflow",
   "license": "MIT",
   "keywords": [
-    "build",
-    "orchestration",
     "bernstein",
+    "build",
+    "code-review",
+    "orchestration",
+    "review",
     "workflow"
   ]
 }
