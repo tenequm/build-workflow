@@ -162,6 +162,40 @@ class TestReportWitnessLaw:
         assert any("does not witness" in problem for problem in receipt["problems"])
 
 
+class TestProviderOutage:
+    """A turn that ends on the provider's error, with the adapter still exiting 0 and
+    the stream still closing `end_turn`. Measured on the first corpus run: 11 of 67
+    sessions ended this way, and nothing in the receipt said so."""
+
+    ERROR_CHUNK = (
+        'print(json.dumps({"jsonrpc": "2.0", "method": "session/update", "params": '
+        '{"sessionId": "recorded", "update": {"sessionUpdate": "agent_message_chunk", '
+        '"content": {"type": "text", "text": "Agent execution error: model unreachable: '
+        'Error 429, Status: RESOURCE_EXHAUSTED"}}}}), flush=True)'
+    )
+
+    def test_a_report_written_before_a_provider_error_is_never_accepted(
+        self, workspace, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(runner, "PROVIDER_BACKOFF_S", 0.0)
+        stalled = agent(tmp_path, extra=self.ERROR_CHUNK)
+        with pytest.raises(Park, match="provider error"):
+            runner.run_batch(
+                [task(stalled)],
+                workspace["sidecar"],
+                workspace["ledger"],
+                attempts=2,
+                wall_cap=300,
+            )
+        path = workspace["dir"] / "sessions/review-cleanliness-gemini/receipt.json"
+        receipt = json.loads(path.read_text())
+        assert receipt["ok"] is False
+        assert any(runner.PROVIDER_PROBLEM in problem for problem in receipt["problems"])
+        assert receipt["report"], "it did write a report - it is the stream that refuses it"
+        operations = {row.get("operation") for row in workspace["ledger"].events}
+        assert "review-cleanliness-gemini#2" in operations, "the failed attempt must be retried"
+
+
 class TestIsolation:
     def test_a_session_that_writes_outside_its_allowlist_parks_the_stage(self, workspace, tmp_path):
         nosy = agent(tmp_path, extra='Path("app.py").write_text("tampered\\n")')

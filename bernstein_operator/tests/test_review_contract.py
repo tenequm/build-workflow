@@ -5,9 +5,11 @@ Nothing here spawns a model: this is the deterministic spine, and it is tested c
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from operator_driver.storage import Park
-from review_pr import anchors, diffindex, findings, verdictcalc
+from review_pr import anchors, diffindex, findings, runner, verdictcalc
 
 DIFF = """diff --git a/src/app.py b/src/app.py
 index 1111111..2222222 100644
@@ -308,3 +310,84 @@ class TestCommentBody:
         )
         assert "```suggestion" not in body
         assert "offered as prose" in body and "only correctness suggestions" in body
+
+
+class TestProviderFailure:
+    """A turn that ends on the provider's error is not a lens that found nothing.
+
+    Shapes taken from the first corpus run (2026-09-11): the gemini backend returned
+    429 RESOURCE_EXHAUSTED on 11 of 67 sessions, and the stream still closed
+    `end_turn` with the adapter exiting 0.
+    """
+
+    def update(self, **over):
+        return json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {"sessionId": "s", "update": over},
+            }
+        )
+
+    def message(self, text):
+        return self.update(
+            sessionUpdate="agent_message_chunk", content={"text": text, "type": "text"}
+        )
+
+    def tool(self, status, raw=""):
+        return self.update(
+            sessionUpdate="tool_call_update", toolCallId="t", status=status, rawOutput=raw
+        )
+
+    def log(self, *lines):
+        return (
+            "\n".join(
+                [
+                    *lines,
+                    json.dumps({"jsonrpc": "2.0", "id": 3, "result": {"stopReason": "end_turn"}}),
+                ]
+            )
+            + "\n"
+        ).encode()
+
+    def test_a_turn_that_ends_on_the_provider_error_is_a_failure(self):
+        log = self.log(
+            self.message("Reviewing the diff."),
+            self.tool(
+                "failed",
+                "Encountered retryable error from model provider: Agent execution terminated "
+                'due to error. ("request failed (code 429): You have exhausted your capacity '
+                'on this model. Resets in 0s.")',
+            ),
+            self.message(
+                "Agent execution error: model unreachable: Error 429, Message: You have "
+                "exhausted your capacity on this model., Status: RESOURCE_EXHAUSTED"
+            ),
+        )
+        assert runner.provider_failure(log) is not None
+
+    def test_a_provider_error_the_turn_recovered_from_is_not_a_failure(self):
+        """Measured: sessions hit a 429, retried inside the same turn and still wrote a
+        full report. Failing those would throw away real review work."""
+        log = self.log(
+            self.tool("failed", "request failed (code 429): You have exhausted your capacity"),
+            self.tool("completed", "ok"),
+            self.message("The review report has been written to `reports/findings-design.json`."),
+            self.tool("completed", ""),
+        )
+        assert runner.provider_failure(log) is None
+
+    def test_a_turn_ending_on_an_ordinary_tool_failure_is_not_a_provider_failure(self):
+        log = self.log(self.tool("failed", "grep: no matches found"))
+        assert runner.provider_failure(log) is None
+
+    def test_a_clean_turn_carries_no_signature(self):
+        assert runner.provider_failure(self.log(self.message("Done."))) is None
+        assert runner.provider_failure(b"") is None
+
+    def test_a_split_error_message_is_still_caught(self):
+        """Chunks arrive in pieces; the signature can straddle two of them."""
+        log = self.log(
+            self.message("Agent execution error: model "), self.message("unreachable: Error 429")
+        )
+        assert runner.provider_failure(log) is not None

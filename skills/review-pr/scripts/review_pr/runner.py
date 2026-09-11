@@ -16,6 +16,7 @@ batch returns only after every receipt is written.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,18 @@ from operator_driver.storage import Ledger, Park, atomic, canonical, digest, imm
 from .proc import git, removals
 
 POLL_S = 0.25
+# The measured 429 is a burst limiter on a subscription window, not a hard quota, so a
+# retry that relaunches immediately spends itself on the same exhausted window.
+PROVIDER_BACKOFF_S = 60.0
+PROVIDER_PROBLEM = "session stream ended in a provider error"
+PROVIDER_ERROR = re.compile(
+    r"model unreachable"
+    r"|RESOURCE_EXHAUSTED"
+    r"|RATE_LIMIT_EXCEEDED"
+    r"|Agent execution terminated due to error"
+    r"|request failed \(code [45]\d\d\)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -71,6 +84,39 @@ def session_argv(spec: dict[str, Any], worktree: Path, prompt: Path) -> list[str
             *argv[index + 1 :],
         ]
     return argv
+
+
+def provider_failure(log: bytes) -> str | None:
+    """The provider error a turn ended on, if it ended on one.
+
+    A 429 in the middle of a turn is not a failure: the first corpus run has sessions
+    that hit one, recovered inside the same turn and wrote a full report. What is a
+    failure is the turn ENDING on one - the agent's last word is the provider error,
+    the stop reason is still `end_turn`, the adapter exits 0, and the receipt would
+    otherwise read as a lens that ran and found nothing. A check that could not run
+    refutes nothing, so that shape must never reach stage 3 as an empty findings list.
+    """
+    terminal = ""
+    speaking = False
+    for line in log.splitlines():
+        try:
+            message = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if not isinstance(message, dict) or message.get("method") != "session/update":
+            continue
+        update = (message.get("params") or {}).get("update") or {}
+        kind = update.get("sessionUpdate")
+        if kind == "agent_message_chunk":
+            content = update.get("content")
+            text = content.get("text") if isinstance(content, dict) else content
+            terminal = terminal + str(text or "") if speaking else str(text or "")
+            speaking = True
+        elif kind in ("tool_call", "tool_call_update") and update.get("status") == "failed":
+            terminal = str(update.get("rawOutput") or "")
+            speaking = False
+    found = PROVIDER_ERROR.search(terminal)
+    return found.group(0) if found else None
 
 
 def validate_tree(worktree: Path, head: str, allowed: set[str]) -> None:
@@ -206,6 +252,9 @@ def _settle(
         problems.append(f"ACP evidence: {exc}")
     if protocol["stop_reason"] != "end_turn" or protocol["errors"]:
         problems.append("ACP prompt did not finish successfully")
+    stalled = provider_failure(log)
+    if stalled:
+        problems.append(f"{PROVIDER_PROBLEM}: {stalled}")
     cost = protocol["cost_usd"]
     if body:
         immutable(directory / Path(task.report).name, body)
@@ -258,10 +307,14 @@ def run_batch(
     """
     results: dict[str, dict[str, Any]] = {}
     deadline = time.monotonic() + wall_cap
+    throttled = False
     for attempt in range(1, attempts + 1):
         outstanding = [task for task in tasks if task.operation not in results]
         if not outstanding:
             break
+        if throttled:
+            time.sleep(max(0.0, min(PROVIDER_BACKOFF_S, deadline - time.monotonic())))
+            throttled = False
         live: list[tuple[Task, dict[str, Any]]] = []
         for task in outstanding:
             operation = task.operation if attempt == 1 else f"{task.operation}#{attempt}"
@@ -283,6 +336,18 @@ def run_batch(
                         remaining.append((task, record))
                         continue
                     receipt = _settle(task, sidecar, ledger, record)
+                    stalled = next(
+                        (row for row in receipt["problems"] if row.startswith(PROVIDER_PROBLEM)),
+                        None,
+                    )
+                    if stalled:
+                        throttled = True
+                        if attempt == attempts:
+                            raise Park(
+                                f"{record['operation']} spent every attempt on a provider "
+                                f"error: a lens that could not run is not a lens with no "
+                                f"findings ({stalled})"
+                            )
                     if receipt["ok"] or attempt == attempts:
                         results[task.operation] = receipt
                 live = remaining
