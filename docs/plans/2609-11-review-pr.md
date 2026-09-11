@@ -245,12 +245,12 @@ task's session id keyed to the finding ids it produced. What this buys:
 
 Boundaries: transcripts are stored and queried, never fed back into
 briefs (they are a prompt-injection surface and the corpus provably
-carries credentials - evidence, not instructions). agy/Gemini sessions
-are collected too (decision: Misha, 2026-09-11): pond does not index the
-agy format today, so agy ingest lands in pond as a dependency of this
-plan; until it does, the raw agy session files are archived alongside
-the run evidence so no transcript is lost, and full provenance
-queries cover that family the moment ingest exists.
+carries credentials - evidence, not instructions). All three executor
+families are covered: pond v0.17.2 (2026-09-11) ingests agy sessions,
+including those its ACP server writes - both lanes under `~/.gemini`.
+Readiness therefore pins `pond >= 0.17.2` on the operator host, and
+setup runs `pond adapters enable agy` once on hosts that synced before
+that release.
 
 ## The precision ledger (the level-above loop)
 
