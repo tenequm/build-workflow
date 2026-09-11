@@ -51,6 +51,18 @@ def load(path: Path | None = None) -> dict[str, Any]:
         redirect = family.get("env") or []
         if not isinstance(redirect, list) or set(redirect) - set(ENV_ALLOWLIST):
             raise Park(f"family {name} env must name only allowlisted variables")
+        # Paths removed from the reviewed worktree before the session reads them. They
+        # are worktree-relative by construction: the point is to disarm the pull request
+        # tree, never to reach outside it.
+        strip = family.get("strip_paths") or []
+        if not isinstance(strip, list) or not all(
+            isinstance(value, str)
+            and value
+            and not Path(value).is_absolute()
+            and ".." not in Path(value).parts
+            for value in strip
+        ):
+            raise Park(f"family {name} strip_paths must be relative paths inside the worktree")
     lenses = data.get("lenses")
     if not isinstance(lenses, dict) or set(lenses) != set(LENS_ORDER):
         raise Park(f"stage template must declare exactly the lenses {LENS_ORDER}")

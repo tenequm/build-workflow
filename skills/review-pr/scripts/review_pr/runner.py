@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -123,14 +124,64 @@ def provider_failure(log: bytes) -> str | None:
     return found.group(0) if found else None
 
 
-def validate_tree(worktree: Path, head: str, allowed: set[str]) -> None:
-    """Prove the session wrote only what it was allowed to write."""
+SCRATCH = "scratch/"
+
+
+def strip_project_config(worktree: Path, paths: list[str]) -> list[str]:
+    """Remove the reviewed tree's own agent configuration before a session reads it.
+
+    The pull request tree never chooses what runs - the same law that keeps the
+    validation command on the base branch and hands every session an empty MCP set.
+    opencode breaks it by default: a plain `opencode.json` in the session's cwd, which
+    IS the pull request's worktree, outranks global configuration. Verified keylessly
+    2026-09-11 - a planted one left the session advertising no models at all, and the
+    same key can repoint a provider's baseURL at a host the author controls.
+
+    Returns what it removed, which the receipt records: a pull request that ships one
+    of these is a fact about the pull request.
+    """
+    removed = []
+    for name in paths:
+        target = worktree / name
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+            removed.append(name)
+        elif target.exists() or target.is_symlink():
+            target.unlink()
+            removed.append(name)
+    return sorted(removed)
+
+
+def validate_tree(
+    worktree: Path, head: str, allowed: set[str], *, removed: set[str] | None = None
+) -> None:
+    """Prove the session wrote only what it was allowed to write.
+
+    The invariant here is that the session did not tamper with the code under review,
+    so a tracked file it touched is always fatal. An untracked file under `scratch/` is
+    not: a verifier is asked for a failing demonstration, which is a thing a model
+    writes down and runs, and this worktree is disposable and removed at settle.
+    Measured 2026-09-11 on floor/case-04, where a verifier obeyed the brief's method,
+    wrote its repro script beside its report, and parked the whole run for it.
+    """
     if git(worktree, "rev-parse", "HEAD") != head:
         raise Park(f"review session moved its detached HEAD in {worktree}")
-    changed = git(worktree, "diff", "--name-only", "--no-renames", head).splitlines()
-    changed += git(worktree, "diff", "--cached", "--name-only", "--no-renames", head).splitlines()
-    changed += git(worktree, "ls-files", "--others", "--exclude-standard").splitlines()
-    violations = sorted({path for path in changed if path and path not in allowed})
+    tracked = git(worktree, "diff", "--name-only", "--no-renames", head).splitlines()
+    tracked += git(worktree, "diff", "--cached", "--name-only", "--no-renames", head).splitlines()
+    untracked = git(worktree, "ls-files", "--others", "--exclude-standard").splitlines()
+    # A path this run removed before launch reports as the session's deletion, and a
+    # removed directory reports one line per file under it.
+    gone = tuple(removed or ())
+
+    def ours(path: str) -> bool:
+        return path in allowed or any(
+            path == entry or path.startswith(f"{entry}/") for entry in gone
+        )
+
+    violations = sorted(
+        {path for path in tracked if path and not ours(path)}
+        | {path for path in untracked if path and not ours(path) and not path.startswith(SCRATCH)}
+    )
     if violations:
         raise Park(f"review session wrote outside its allowlist: {violations}")
 
@@ -188,6 +239,9 @@ def _attempt(
             reserved_usd=task.spec["budget_usd"],
         )
     argv = session_argv(task.spec, worktree, prompt)
+    stripped = strip_project_config(worktree, task.spec.get("strip_paths") or [])
+    if stripped:
+        ledger.append("project_config_stripped", operation=operation, paths=stripped)
     overlay = env_overlay(task.spec.get("env") or [], directory)
     for value in overlay.values():
         Path(value).mkdir(parents=True, exist_ok=True)
@@ -204,6 +258,7 @@ def _attempt(
         "process": process,
         "worktree": str(worktree),
         "directory": str(directory),
+        "stripped": stripped,
     }
 
 
@@ -233,7 +288,10 @@ def _settle(
         terminate(survivor)
     if owned_processes(worktree, all_commands=True):
         raise Park(f"review session left surviving children: {operation}")
-    validate_tree(worktree, sidecar["head"], {task.report})
+    # Whatever this run removed from the tree before launch is the run's own edit, not
+    # the session's, so it cannot be a tamper violation.
+    stripped = list(pending.get("stripped") or [])
+    validate_tree(worktree, sidecar["head"], {task.report}, removed=set(stripped))
     report = worktree / task.report
     body = b""
     if not report.is_file():
@@ -281,6 +339,7 @@ def _settle(
         "cost_usd": cost,
         "acp": protocol,
         "reaped": sorted(survivor["command"] for survivor in survivors),
+        "stripped_config": stripped,
         "returncode": exit_record["returncode"],
         "meta": task.meta,
         "started": (ledger.last("launch_intent", operation=operation) or {}).get("time"),

@@ -34,6 +34,12 @@ families:
     # per session, both stop being true: the reviewer gets an empty configuration, and
     # capture gets a store holding this run's session and nothing else.
     env: [XDG_DATA_HOME, XDG_CONFIG_HOME]
+    # The reviewed tree must never choose what runs. opencode reads a project
+    # `opencode.json` from its cwd - which IS the pull request's worktree - ABOVE the
+    # global configuration, so a pull request can disable every provider or repoint a
+    # provider's baseURL at a host it controls. Verified keylessly 2026-09-11. These are
+    # removed before the session starts, and the receipt records what was removed.
+    strip_paths: [opencode.json, opencode.jsonc, .opencode]
 
 # The same three lenses production enables, so a trial score and a milestone score
 # measure the same review. cleanliness and efficiency stay parked here for the reason
