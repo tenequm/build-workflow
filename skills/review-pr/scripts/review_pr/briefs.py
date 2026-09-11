@@ -72,6 +72,34 @@ def inputs(workspace: Path, sidecar: dict[str, Any], diff: str, body: str) -> di
     return files
 
 
+def authority_section(files: list[str]) -> str:
+    """One explicit extraction directive per authority file, assembled here and not
+    left to the brief's prose.
+
+    Authority files are named for every lens; only the implementation lens template
+    carries the placeholder. This is the measured recall lever: the findings the first
+    replays missed lived in files like GOVERNANCE.md that were in scope for every lens
+    and read end to end by none. A flat list of paths did not move that - a model reads
+    a list as context and goes back to the diff - so each path arrives as its own
+    addressed task, which is a thing a model can be observed to have skipped.
+    """
+    if not files:
+        return (
+            "No authority file was found in this repository. Phase 1 has nothing to\n"
+            "extract from; check the diff's claims against the implementation directly."
+        )
+    # A block names its path once and states no category: this section scales with
+    # AUTHORITY_CAP and the brief has a hard cap, so the categories are spelled out
+    # once, in the template, and the per-file blocks only bind the work to a file.
+    return "\n\n".join(
+        f"### `{path}`\n"
+        f"Read it whole before any diff hunk, then write out its claims in all five\n"
+        f"categories, each with its line number here. A category it is silent on is\n"
+        f"written down as silent."
+        for path in files
+    )
+
+
 def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tuple[str, str, str]:
     """Returns (brief, report path, witness literal) for one lens."""
     if lens not in LENS_TEMPLATE:
@@ -83,11 +111,7 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
     changed = "\n".join(f"- `{path}`" for path in shown)
     if len(listed) > len(shown):
         changed += f"\n- ... and {len(listed) - len(shown)} more (read `{paths['files']}`)"
-    # Authority files are named for every lens; only the implementation lens template
-    # carries the placeholder. This is the measured recall lever: the findings the
-    # first replays missed lived in files like GOVERNANCE.md that were in scope for
-    # every lens and read end to end by none.
-    authority = "\n".join(f"- `{path}`" for path in sidecar.get("authority_files") or [])
+    authority = authority_section(sidecar.get("authority_files") or [])
     brief = render(
         "reviewer-brief.md",
         {
@@ -100,7 +124,7 @@ def reviewer(lens: str, sidecar: dict[str, Any], paths: dict[str, Path]) -> tupl
             "LENS": config.template(LENS_TEMPLATE[lens]).split("-->", 1)[-1].strip(),
             "LENS_NAME": lens,
             "REPORT_PATH": report,
-            "AUTHORITY_FILES": authority or "- (none identified in this repository)",
+            "AUTHORITY_FILES": authority,
         },
     )
     return guard(brief, sidecar), report, witness

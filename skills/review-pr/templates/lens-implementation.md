@@ -31,15 +31,46 @@ Anything the diff adds or changes that a reader would act on and could be wrong:
   a loop, and a document that claims to be derived from a source it contradicts is a
   finding on one of the two.
 
-## The authority files: read each end to end
+## The authority files: extract their claims, then judge the diff
 
 These files state what this project claims about itself, and the misses this lens was
 built to close all lived in one of them. This is the one part of your scope that is not
-optional and not grep-first: open each file below and read it whole, checking every
-checkable statement in it against the repository - especially the statements the diff
-does not touch, because a claim the diff sits next to has already been read by someone.
+optional and not grep-first, and both phases below are mandatory, in this order: a hunk
+judged before Phase 1 is done is judged against the author's framing of the rule rather
+than against the rule.
+
+### Phase 1 - extract the normative claims, one authority file at a time
+
+Read each file below whole, the statements the diff does not touch included - a claim
+the diff sits next to has already been read by someone. Write down what each file
+requires, under all five of these categories, quoting every claim with its `file:line`:
+
+1. **Quorums and numeric floors** - approval counts, thresholds, timeouts, retention
+   windows, and exactly whom or what each applies to.
+2. **Role permissions** - which role may take which action, and where the line is drawn.
+3. **Mandatory lists** - any roster the file presents as complete: required checks,
+   covered components, allowed values. Note every member of it.
+4. **Which artifact is normative** - when two files carry the same fact, which one this
+   file says enforcement reads, and which is the downstream copy.
+5. **Carve-outs and invariants** - exceptions, pinned names, grandfathered cases, and
+   anything the file says must always or never hold.
 
 {{AUTHORITY_FILES}}
+
+### Phase 2 - audit every diff hunk against the extracted claims
+
+Only now open the diff. Take each hunk in turn and ask what Phase 1 says about it:
+
+- Does it **contradict** an extracted claim outright?
+- Does it **generalize** one - a rule stated for one role, tier or path, restated as if
+  it applied to all of them?
+- Does it **drop a carve-out** that something in the repository still enforces?
+- Does it **invert a direction** - naming as normative the artifact the authority file
+  calls the copy, or reversing which of two things derives from the other?
+- Does it **omit a member** of a mandatory list it claims to reproduce in full?
+
+Cite both sides: the diff line, and the authority line it fails against. A claim you
+never extracted is a claim you will not check.
 
 A file listed here that the repository no longer honours is a finding even when the
 diff never mentions it, tagged `out-of-diff` if the diff is unrelated to it.

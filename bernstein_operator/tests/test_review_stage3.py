@@ -252,6 +252,66 @@ class TestWriteTargets:
         assert briefs.guard("write it to reports/x.json", self.side)
 
 
+class TestAuthorityBriefs:
+    """The implementation lens is told to extract each authority file's claims before
+    it reads a hunk. The flat list it replaced was read as context and skipped, so the
+    per-file directives are assembled in code and not left to the brief's prose."""
+
+    side = {
+        "number": 1,
+        "tree": "/w/tree",
+        "base_tree": "/w/base",
+        "reviewable_files": ["a.py"],
+        "repo": "o/r",
+    }
+    paths = {
+        "diff": Path("/w/inputs/diff.patch"),
+        "body": Path("/w/inputs/pr-body.md"),
+        "files": Path("/w/inputs/changed-files.txt"),
+    }
+
+    def brief(self, lens, authority):
+        from review_pr import briefs
+
+        side = {**self.side, "authority_files": authority}
+        return briefs.reviewer(lens, side, self.paths)[0]
+
+    def test_every_authority_file_gets_its_own_addressed_block(self):
+        found = ["GOVERNANCE.md", "docs/retention-policy.md", "STANDARDS.md"]
+        brief = self.brief("implementation", found)
+        for path in found:
+            assert f"### `{path}`" in brief, f"{path} was named but not addressed"
+        assert brief.count("Read it whole before any diff hunk") == len(found)
+
+    def test_extraction_is_ordered_before_the_hunk_audit(self):
+        brief = self.brief("implementation", ["GOVERNANCE.md"])
+        first = brief.index("### Phase 1")
+        assert first < brief.index("### `GOVERNANCE.md`") < brief.index("### Phase 2")
+        assert "quorums and numeric floors" in brief.lower()
+        assert "carve-outs and invariants" in brief.lower()
+
+    def test_a_repo_with_no_authority_files_still_renders(self):
+        brief = self.brief("implementation", [])
+        assert "{{" not in brief
+        assert "No authority file was found" in brief
+        assert "###" not in brief.split("### Phase 1")[1].split("### Phase 2")[0]
+
+    def test_a_full_cap_of_long_paths_stays_inside_the_brief_cap(self):
+        """AUTHORITY_CAP blocks times their size is what keeps this section under
+        BRIEF_CAP; nothing else bounds it, so the two caps are pinned together."""
+        from review_pr import briefs, checkout
+
+        long = "docs/knowledge/decisions/" + "g" * 55 + ".md"
+        brief = self.brief("implementation", [long] * checkout.AUTHORITY_CAP)
+        assert len(brief) <= briefs.BRIEF_CAP
+
+    def test_only_the_implementation_lens_carries_the_section(self):
+        for lens in ("cleanliness", "design", "efficiency", "gating"):
+            brief = self.brief(lens, ["GOVERNANCE.md"])
+            assert "### `GOVERNANCE.md`" not in brief
+            assert "{{" not in brief
+
+
 class TestDualFamily:
     def row(self, file, line, producer, rubric=None, suggestion=None):
         return {
