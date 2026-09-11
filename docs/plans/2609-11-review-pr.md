@@ -293,10 +293,10 @@ collected as a side effect, spent later.
    body. One command materializes it; the pipeline must catch the plants,
    report the injection as a finding without acting on it, and flag the
    claim mismatch.
-3. **A real weekly batch**: the current `needs-committer-review` set,
-   wall time and dollars recorded against the interactive-polish
-   baseline. Target: under 8 min and predictable cost per mid-size PR;
-   the batch unattended.
+3. **A real weekly batch** - dropped 2026-09-11 - see Refocus section.
+   The current `needs-committer-review` set, wall time and dollars
+   recorded against the interactive-polish baseline. Target: under 8 min
+   and predictable cost per mid-size PR; the batch unattended.
 4. Anchor check proven: a deliberately mis-anchored finding is caught by
    the script, not by GitHub's 422.
 
@@ -508,3 +508,30 @@ Acceptance items 1 and 3 are still owed on this new shape: re-run the ground-tru
 replay against PR #5737 (does recall move past 5/14, and does correctness move off
 0/3 with authority files as input), then the real weekly batch against
 `needs-committer-review`.
+
+## Refocus, 2026-09-11: one run at /polish quality
+
+The goal is now a single run whose review matches the operator's interactive
+`/polish` reviews. Batching - former acceptance item 3 - is explicitly out of
+scope until asked for: do not build or run batch machinery.
+
+**Ground-truth replay 3** against PR #5737 (2026-09-11, with authority files,
+agreement-as-second-reading, 3 lenses) recovered 8 of 14 hand-review findings,
+up from 5. Correctness 2 of 3 (was 0), Design 4 of 7, Cleanliness 2 of 4. All
+16 tool findings held up on read - no hallucinations. The tool also surfaced
+real issues the hand review had no row for: uncovered JS manifests, and a stale
+`SECURITY.md` supported-versions table.
+
+**The remaining misses cluster on `GOVERNANCE.md`.** The file was in the
+authority list yet produced zero findings. The missed class is claims about
+which artifact is normative (`quorum-roster.toml` vs `CODEOWNERS`), and a floor
+the charter states for one role generalized to all. Studying why the
+implementation lens read it and found nothing is the next quality lever.
+
+**Where the fixes came from.** An eight-defect fix round came from a blind
+gemini cross-family review of the refactor diff (commit `3449a8f`); a ninth -
+the query-runner signature - was caught by the replay's own capture stage. Test
+corpuses from now on come from real reviewed PRs dug out of pond, plus a small
+deterministic planted-defect corpus. The recorded fixture stays a plumbing test
+only, per the
+[recorded-agents-hide-brief-defects finding](../knowledge/findings/recorded-agents-hide-brief-defects.md).
