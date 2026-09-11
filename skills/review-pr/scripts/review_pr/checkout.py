@@ -161,10 +161,13 @@ def gate_edited(root: Path, provenance: dict[str, Any], head: str) -> bool:
 # ones match only as the whole stem, because "security" names eval scenarios and test
 # fixtures all over a tree. Segments join with - or _ only, so an extension is never
 # swallowed and test_governance.py stays out.
+# "requirements" is deliberately absent: requirements.txt is a dependency manifest, and
+# it would outrank real authority docs under the root-first cap in most Python trees.
 AUTHORITY_NAMES = re.compile(
     r"(?i)^(?:"
     r"(?:[a-z0-9_-]+[-_])?"
-    r"(?:governance|charter|roster|maintainers|codeowners|contributing|code_of_conduct)"
+    r"(?:governance|charter|roster|maintainers|codeowners|contributing|code_of_conduct"
+    r"|policy|standards|guidelines)"
     r"(?:[-_][a-z0-9_-]+)?"
     r"|owners|security"
     r")(\.(md|rst|txt|toml|ya?ml))?$"

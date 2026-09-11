@@ -368,6 +368,33 @@ class TestAuthorityFiles:
         found = checkout.authority_files(root, head)
         assert found == ["docs/quorum-roster.toml", "docs/review-charter.md"]
 
+    def test_policy_and_standards_documents_are_authority_and_manifests_are_not(self, repo):
+        """The bar-tier misses hung on POLICY.md and STANDARDS.md, which the matcher
+        skipped entirely. requirements.txt stays out: it is a dependency manifest, and
+        under the root-first cap it would displace the documents this lens needs."""
+        root = repo["root"]
+        git(root, "switch", "-q", "feat/x")
+        (root / "POLICY.md").write_text("# policy\n")
+        (root / "STANDARDS.md").write_text("# standards\n")
+        (root / "requirements.txt").write_text("pytest\n")
+        (root / "requirements-dev.txt").write_text("ruff\n")
+        (root / "docs").mkdir()
+        (root / "docs/retention-policy.md").write_text("# retention\n")
+        (root / "docs/coding-standards.rst").write_text("standards\n")
+        (root / "docs/contribution-guidelines.md").write_text("# guidelines\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "docs: policy")
+        head = git(root, "rev-parse", "HEAD")
+        git(root, "switch", "-q", "main")
+        found = checkout.authority_files(root, head)
+        assert found == [
+            "POLICY.md",
+            "STANDARDS.md",
+            "docs/coding-standards.rst",
+            "docs/contribution-guidelines.md",
+            "docs/retention-policy.md",
+        ]
+
     def test_the_list_is_capped(self, repo):
         root = repo["root"]
         git(root, "switch", "-q", "feat/x")
