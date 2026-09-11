@@ -12,10 +12,13 @@ its receipts under `.sdd/`; the review doctrine lives entirely in
 
 ## Fence
 
-Free opencode Zen model ids train on prompts. Review PUBLIC repositories and
-the eval corpus only. Never point this at a private repo, and never hand a
-model session a credential or a GitHub token - the two fetch commands below
-are the only place `gh` runs.
+Review PUBLIC repositories and the eval corpus only. The lanes run on
+personal subscription accounts whose data-use terms are settled at the
+account, not per run, and a reviewed tree can still reconfigure its own
+reviewer: stock bernstein does not strip a hostile `opencode.json`,
+`.agy/` or `.claude/` from the tree it checks out. Never point this at a
+private repo, and never hand a model session a credential or a GitHub
+token - the two fetch commands below are the only place `gh` runs.
 
 ## Invocation
 

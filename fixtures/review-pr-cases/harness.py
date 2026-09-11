@@ -35,6 +35,7 @@ import argparse
 import json
 import os
 import re
+import socket
 import subprocess
 import tempfile
 import time
@@ -242,12 +243,25 @@ def score(case: Path, summary: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def bernstein_argv(goal_path: str, seed_path: str, budget: float, timeout: float) -> list[str]:
+def free_port() -> int:
+    """A port the task server can bind, so concurrent cases do not collide on 8052."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def bernstein_argv(
+    goal_path: str, seed_path: str, budget: float, timeout: float, port: int
+) -> list[str]:
     """The stock path-A invocation, run from inside the case's checkout.
 
     `--quiet` is what makes `run` block and print only the final summary, and `--wait`
     doubles as the orchestrator's own in-run ceiling, so it is capped independently of
     the harness timeout that guards the subprocess.
+
+    The task server's port is the one piece of global state two cases share: its default
+    is fixed, so a second run binds nothing, crash-loops its server, and mints a fresh
+    auth token on each restart until the waiter is locked out of its own run.
     """
     return [
         "bernstein",
@@ -262,6 +276,8 @@ def bernstein_argv(goal_path: str, seed_path: str, budget: float, timeout: float
         "--quiet",
         "--wait",
         str(int(min(timeout, WAIT_CEILING))),
+        "--port",
+        str(port),
     ]
 
 
@@ -309,7 +325,9 @@ def review(case: Path, work: Path, options: argparse.Namespace) -> dict[str, Any
     try:
         built = materialise(case, work)
         repo = built["repo"]
-        argv = bernstein_argv(options.goal, options.seed, options.budget, options.timeout)
+        argv = bernstein_argv(
+            options.goal, options.seed, options.budget, options.timeout, free_port()
+        )
         # The orchestrator detaches and re-reads its seed from the environment; passing
         # the absolute path there costs nothing and survives that hop. It also writes its
         # own state under <repo>/.sdd/, which is the case's scratch to keep.

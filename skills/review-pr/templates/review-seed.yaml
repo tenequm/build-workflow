@@ -1,24 +1,24 @@
-# /review-pr path A seed: stock bernstein, free opencode Zen models only.
-# Fence: free Zen model ids train on prompts - review public repositories
-# and the eval corpus only. The goal text arrives via --goal (see SKILL.md);
-# this file never carries it; the goal line below is a parser-required
-# placeholder (the orchestrator re-parses this file for adapter config and
-# refuses a seed without a goal string - the CLI --goal text is what runs).
+# /review-pr path A seed: stock bernstein over subscription-backed CLIs.
+# The goal text arrives via --goal (see SKILL.md); this file never carries it.
+# The goal line below is a parser-required placeholder - the orchestrator
+# re-parses this file for adapter config and refuses a seed without a goal
+# string, while the CLI --goal text is what actually runs.
 goal: "Review the pull request per the goal text passed via --goal."
-cli: opencode
-model: opencode/muse-spark-1.3-contributor-free
+cli: agy
+model: gemini-3.7-flash-medium
 max_agents: 4
 budget: $3.00
 internal_llm_provider: none
 
-# Other free Zen ids, if a role needs a second opinion:
-# opencode/nemotron-3-ultra-free, opencode/mimo-v2.5-free,
-# opencode/muse-spark-1.2-contributor-free
+# The manager decomposes the goal and drives the task server over curl, which
+# punishes loose tool discipline; the three lens roles are rubric-driven bulk
+# reading, which is what flash is for. Both lanes are subscription-backed, so
+# a run spends quota, never dollars - `agy` reports its own remaining quota.
 role_model_policy:
-  manager:  { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
-  reviewer: { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
-  security: { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
-  qa:       { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
+  manager:  { cli: claude, model: claude-sonnet-5, effort: high }
+  reviewer: { cli: agy, model: gemini-3.7-flash-medium, effort: medium }
+  security: { cli: agy, model: gemini-3.7-flash-medium, effort: medium }
+  qa:       { cli: agy, model: gemini-3.7-flash-medium, effort: medium }
 
 # The PR diff and text sit untracked at the repo root; agents work in git
 # worktrees cut from the base commit, where untracked files are invisible.
