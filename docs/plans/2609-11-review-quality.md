@@ -125,3 +125,12 @@ axis (speed, cost, batch) becomes worth discussing again.
 Standing bar throughout: lean codebase, no bs - the harness is a scorer, a
 runner, a ledger and Justfile recipes, nothing more; oversized diffs are a
 defect to rule on.
+
+Forward requirement (operator, 2026-09-11): shadow model runs will later run
+alongside the primary picks and be compared afterwards FROM POND - so pond
+capture is strategic data collection, not observability. Every session
+(production, eval, shadow lane) must be capturable into a per-run pond store
+carrying model id, family, lens/operation, and run identity, so two models'
+sessions line up side by side on the same case or PR. Free opencode Zen lanes
+are operator-cleared for OPEN-SOURCE repositories only (their free tier
+trains on prompts); bernstein reviews qualify.
