@@ -19,6 +19,9 @@ sources:
   - id: lane
     resource: ../../../skills/review-pr/templates/stages-opencode.yaml
     title: The committed opencode trial lane
+  - id: pilane
+    resource: ../../../skills/review-pr/templates/stages-pi.yaml
+    title: The committed pi trial lane
   - id: policy
     resource: ../decisions/free-tier-models-are-open-source-only-lanes.md
     title: The open-source-only fence for free routes
@@ -86,9 +89,15 @@ session-dir redirects with precedence (`--session-dir` flag >
 `pi-coding-agent` adapter synced exactly one redirected session into a
 fresh store while the host's existing sessions stayed untouched - both
 directly and over the real acpx transport via the third-party `pi-acp`
-adapter.[^pidig] Wiring it as a review family needs roughly six lines plus
-a family block; config isolation additionally needs `PI_CODING_AGENT_DIR`,
-because a pi session otherwise loads the operator's skills and extensions.
+adapter.[^pidig] It is now wired as a family: both roots are redirected per session
+(`PI_CODING_AGENT_DIR` too, because a pi session otherwise loads the
+operator's skills and extensions), capture points pond's `pi-coding-agent`
+adapter straight at the redirected session root, and `.pi` plus project
+`.agents/skills` are stripped from the reviewed tree.[^pilane] The effort knob
+is pi-acp's `thought_level` - Codex's `reasoning_effort` is a -32602 - and
+pi-acp rejects pi's own `max` level, accepting only off through xhigh. What
+neither redirect cleans is what hangs off `HOME`: pi still discovers
+`~/.agents/skills/`, the same gap opencode's XDG redirects leave.
 
 bernstein itself ships a `pi` adapter, but a shallow, dated one: it targets
 the npm-deprecated pre-rename package and builds an interactive (not
