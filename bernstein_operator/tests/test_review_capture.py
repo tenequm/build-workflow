@@ -27,9 +27,15 @@ def conversation(root: Path, name: str, cwd: str, *, wal: bool = True) -> None:
         (directory / f"{name}.db-shm").write_bytes(b"")
 
 
-def receipts(ledger_dir: Path, *operations: tuple[str, str]) -> dict[str, dict]:
+def receipts(ledger_dir: Path, *operations: tuple[str, str], adapter: str | None = None) -> dict:
     return {
-        operation: {"operation": operation, "family": family, "started": 1.0, "finished": 2.0}
+        operation: {
+            "operation": operation,
+            "family": family,
+            "pond_adapter": adapter,
+            "started": 1.0,
+            "finished": 2.0,
+        }
         for operation, family in operations
     }
 
@@ -150,3 +156,18 @@ class TestOpencodeSource:
             receipts(ledger_dir, ("review-design-mystery", "mystery")), ledger_dir
         )
         assert sources == {}
+
+    def test_a_new_family_names_its_pond_adapter_in_the_registry(self, tmp_path, monkeypatch):
+        """A new lane is usually a new model on a harness pond already reads, so it
+        declares `pond_adapter` in its `families:` entry and is captured with no code
+        change here. Without that its transcripts are captured as nothing."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
+        ledger_dir = tmp_path / "workspace"
+        operation = "review-gating-pi"
+        worktree = str(ledger_dir / "sessions" / operation / "worktree")
+        conversation(tmp_path / "home", "eeeeeeee-5555-5555-5555-555555555555", worktree)
+        sources = pondsync._sources(
+            receipts(ledger_dir, (operation, "pi"), adapter="agy"), ledger_dir
+        )
+        assert set(sources) == {"agy"}

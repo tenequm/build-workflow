@@ -308,7 +308,7 @@ class TestStageTemplate:
         plan = config.load(config.TEMPLATES / "stages-fast.yaml")
         assert {spec["family"] for spec in plan["lenses"].values()} == {"gemini"}
         assert plan["dual_family"]["enabled"] is False
-        assert verify.opposite(plan, "gemini") == "claude"
+        assert verify.opposite(plan, "gemini")[0] == "claude"
 
     def test_the_opencode_trial_template_routes_and_fences_itself(self):
         """A trial lane on OpenCode Zen's free tier. The models there train on prompts,
@@ -321,7 +321,7 @@ class TestStageTemplate:
         plan = config.load(path)
         assert {spec["family"] for spec in plan["lenses"].values()} == {"opencode"}
         assert all(spec.get("effort") == "high" for spec in plan["lenses"].values())
-        assert verify.opposite(plan, "opencode") == "gemini"
+        assert verify.opposite(plan, "opencode")[0] == "gemini"
         assert plan["dual_family"]["enabled"] is False
 
     def test_the_effort_option_id_is_the_family_s_to_name(self, tmp_path):
