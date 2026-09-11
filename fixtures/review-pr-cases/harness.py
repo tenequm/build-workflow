@@ -56,7 +56,9 @@ VERDICTS = ("RECOVERED", "MISFILED", "MISSED")
 # the category decides RECOVERED against MISFILED, so an unmapped label stops the run
 # rather than scoring a case by accident. A label naming several pipeline categories is
 # one the pipeline may legitimately file either way - a false validation claim is
-# `correctness` when it asserts a result and `convention` when it asserts only a process.
+# `correctness` when it asserts a result and `convention` when it asserts only a process,
+# and an inverted dependency direction between two artifacts is `correctness` read as a
+# contradiction of the authority hierarchy and `design` read as the structure it names.
 CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
     "claim-vs-implementation": ("correctness",),
     "false gating claim": ("correctness", "convention"),
@@ -65,7 +67,7 @@ CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
     "silent behavior change": ("correctness",),
     "numeric_floor_generalization": ("correctness",),
     "normative_artifact_mismatch": ("correctness",),
-    "inverted_dependency_direction": ("correctness",),
+    "inverted_dependency_direction": ("correctness", "design"),
     "dropped_carveout": ("correctness",),
     "omitted_mandatory_item": ("correctness",),
     "live_config_mismatch": ("correctness",),

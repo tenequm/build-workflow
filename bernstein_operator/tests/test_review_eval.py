@@ -124,6 +124,41 @@ class TestScoring:
             "both categories the pipeline may file this under count"
         )
 
+    @pytest.mark.parametrize("category", ["correctness", "design"])
+    def test_an_inverted_dependency_direction_counts_under_either_category(
+        self, tmp_path, category
+    ):
+        """A reversed authority hierarchy is a contradiction and a structure, both real."""
+        expected = {
+            "category": "inverted_dependency_direction",
+            "file": "docs/drift-matrix.md",
+            "line_low": 10,
+            "line_high": 12,
+            "must_mention": ["POLICY.md", "proto/events.proto"],
+        }
+        reported = finding(
+            file="docs/drift-matrix.md",
+            line=11,
+            category=category,
+            claim="The matrix makes proto/events.proto upstream of api/openapi.yaml.",
+            evidence="docs/drift-matrix.md:11 inverts POLICY.md:13-18.",
+        )
+        row = harness.score(
+            case(tmp_path, expected), {"findings": [reported], "action": "request-changes"}
+        )
+        assert row["verdict"] == "RECOVERED"
+
+    def test_an_inverted_dependency_direction_filed_as_cleanliness_is_misfiled(self, tmp_path):
+        expected = {
+            "category": "inverted_dependency_direction",
+            "file": "README.md",
+            "line_low": 9,
+            "line_high": 9,
+            "must_mention": ["suffix", "truncate"],
+        }
+        summary = {"findings": [finding(category="cleanliness")], "action": "comment-only"}
+        assert harness.score(case(tmp_path, expected), summary)["verdict"] == "MISFILED"
+
     def test_a_body_case_is_not_recovered_by_a_finding_on_a_source_file(self, tmp_path):
         expected = {**EXPECTED, "file": "pr.md", "must_mention": ["suffix"]}
         summary = {"findings": [finding()], "action": "request-changes"}
