@@ -4,10 +4,16 @@ Goal: a single /review-pr run whose review matches the operator's interactive
 /polish reviews. Everything here serves that one number: how much of a real
 hand review the tool recovers without hallucinating. Batching is out of scope.
 
-Where it stands (2026-09-11): ground-truth replay against bernstein#5737
-recovered 8 of 14 hand findings (was 5), correctness 2 of 3 (was 0), zero
-hallucinations among 16 tool findings. The misses cluster on one shape: a diff
-sentence that only reads wrong after an authority file is read end to end.
+Where it stands (2026-09-11, after Wave 3 iteration 1): ground-truth replay
+against bernstein#5737 recovered 8 of 14 hand findings (was 5), correctness 2
+of 3 (was 0), zero hallucinations among 16 tool findings. Lever (a) then
+closed the authority-file miss class: the first honest corpus run (ledger row
+at rev 74b203e) found all 6 bar cases (5 RECOVERED + 1 scorer-side MISFILED)
+but dropped the floor to 3/8 - lens crowding (the lens found defects and
+discarded them as out-of-scope), two parks (case-04 verifier scratch, case-05
+suggestion boundary), and unchecked pr.md test claims. Iteration 2 fixes all
+five causes; lever (b) stays drafted-but-undeployed since bar-04/06 recovered
+without it.
 
 Driver rule: the driver does as little as possible - it launches lanes (gemini
 acpx, model gemini-3.7-flash-medium) and subagents (opus, NEVER fable), reads
