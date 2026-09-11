@@ -15,25 +15,26 @@ their one-page reports, and rules accept/reject. Intake reviews, verification
 sweeps, harness code, and repo assembly are all delegated; the driver
 adjudicates only flagged disagreements.
 
-## 1. The corpus (gathering is in flight)
+## 1. The corpus (DONE - committed as fixtures/review-pr-cases/, e69740a)
 
 Three tiers, all committable and safe to share publicly:
 
 - **floor** - 8 tiny synthetic cases, one objective defect each, defect visible
-  in the diff hunk. DONE, intake-reviewed. Job: regression guard; a floor miss
-  means the pipeline is broken, ship nothing.
+  in the diff hunk. Job: regression guard; a floor miss means the pipeline is
+  broken, ship nothing.
 - **bar** - 6 synthetic cases modeled one-to-one on the measured misses: the
   defect is invisible from the hunk alone and requires reading an authority
   file whole (floor-for-one-role generalized, wrong artifact treated as
   normative, dependency row backwards, dropped carve-out still enforced by
   config, omission from a policy-named list, doc claim vs untouched config).
-  DRAFTED; a verifier lane is intake-checking them now. Job: the improvement
-  signal.
+  Intake-verified: all six confirmed single-defect and cross-artifact. Job: the
+  improvement signal.
 - **real** - hand-reviewed PRs as pure commit references (repo, PR number,
   reviewed-head SHA, findings as file:line + fate + fixing-commit SHA; no
-  copied code, no session ids, no host paths): bernstein#5737 (14 findings),
-  #5736 (4), #5739 (7) - fates being commit-verified by a lane now; a second,
-  wider pond dig for more is running. Job: the truth the synthetic tiers
+  copied code, no session ids, no host paths): bernstein#5737 (14 findings, all
+  applied), #5736 (4, one fate unknown), #5739 (7, one fate unknown) - all
+  fates commit-verified. A wider pond dig found no further qualified corpuses,
+  so the real tier is final at three. Job: the truth the synthetic tiers
   approximate.
 
 Rules: a case passes intake only if its planted defect is the ONLY defect and
@@ -56,8 +57,12 @@ special test path), run, score deterministically:
   logged as a precision signal, not auto-failure.
 - fast loop runs a reduced one-family-per-lens stages file (cheap lanes);
   milestone runs use production routing - same code, different stages file.
-- every run appends date, git rev, stages file, per-case verdicts to an evals
-  JSONL ledger; a Justfile recipe runs one case or all.
+- cases run in parallel (isolated per-case workspaces, atomic ledger appends);
+  every run appends date, git rev, stages file, per-case verdicts to an evals
+  JSONL ledger; a Justfile recipe runs one case or the whole corpus.
+- one-command user entry point: `just review <github-pr-url>` parses the URL
+  and chains the canonical ready/setup/run flow into a conventional workspace -
+  a thin wrapper, no new behavior.
 - fold in the known capture bug: pondsync._sources points the agy adapter at
   ~/.gemini/antigravity-acp/conversations, but pond discovers from the
   ~/.gemini root, so the scoped agy sync ingests nothing - sync from a staged
@@ -82,6 +87,14 @@ plan refocus 8e6e3e8.
 the fast loop; scoreboard lands in the ledger. Floor must be ~all RECOVERED
 (else fix the pipeline first). Bar misses, ranked, become the quality worklist.
 
+Sequencing deviation, taken deliberately (2026-09-11): lever (a) and an
+authority-discovery bug fix (POLICY.md/STANDARDS.md were never collected as
+authority files) were applied BEFORE the first corpus run - replay 3 against
+#5737 (8/14) is the baseline, the regex gap needed no measurement to justify,
+and the two changes landed as separate commits so each reverts independently
+if the floor regresses. The first scoreboard therefore measures the
+post-lever-(a) pipeline.
+
 **Wave 3 - the quality loop, one lever per iteration, repeat until the bar
 tier is green:** pick the top bar miss -> change ONE thing (lens brief wording,
 authority-file handling, routing, verifier semantics) -> gemini cross-family
@@ -94,7 +107,8 @@ lens reads them shallowly; force a per-authority-file claim extraction step;
 
 **Wave 4 - milestone gate:** only when the fast loop shows a real jump, spend
 on one full-routing run against a real corpus PR (fresh one, not #5737 - it is
-training data for the bar tier now) and compare to its hand review. That
+training data for the bar tier now; candidate: bernstein#5791 once its review
+comments' fates resolve) and compare to its hand review. That
 number, recovered-of-N with zero hallucinations, is the /polish-parity claim -
 or the next round's miss list.
 
@@ -103,5 +117,11 @@ or the next round's miss list.
 A full-routing run on a real, previously-unseen corpus PR recovers the hand
 review's correctness and applied-design findings with no hallucinated
 CONFIRMED, and the bar tier stays green across two consecutive unrelated
-changes. Then quality is no longer the bottleneck and the next axis (speed,
-cost, batch) becomes worth discussing again.
+changes. The deliverable at that point is a report with the verified numbers
+(floor/bar/real scoreboards and the milestone recovered-of-N) and the working
+one-command invocation. Then quality is no longer the bottleneck and the next
+axis (speed, cost, batch) becomes worth discussing again.
+
+Standing bar throughout: lean codebase, no bs - the harness is a scorer, a
+runner, a ledger and Justfile recipes, nothing more; oversized diffs are a
+defect to rule on.
