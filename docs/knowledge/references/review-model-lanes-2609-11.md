@@ -5,7 +5,7 @@ description: The measured model-routing landscape for review lanes - opencode is
 tags: [review-pr, models, providers, cost]
 status: stable
 stale_after: "2026-12-11T00:00:00Z"
-generated: { by: claude-code/fable-5, at: "2026-09-11T13:50:00Z" }
+generated: { by: claude-code/fable-5, at: "2026-09-11T14:20:00Z" }
 sources:
   - id: survey
     resource: "Session research sweep of 2026-09-11: provider docs, Artificial Analysis index, Terminal-Bench listings, provider ToS pages, and the Meta muse-spark announcement"
@@ -58,6 +58,24 @@ hang off `HOME`.[^zenprobe]
   pass ~$5-8 at list, absorbed by the Antigravity subscription. Its 5-hour
   burst limiter, not quota exhaustion, caused the 429 storm that shaped the
   runner's provider-failure detection.[^survey]
+
+# The metered gemini fallback lane
+
+When the subscription window exhausts, the same agy ACP server runs on a plain
+Gemini API key with no key rotation in the code: the server honours `GEMINI_HOME`,
+so a second tree whose `antigravity-acp/settings.json` declares `gemini-api-key`
+auth is a fully isolated lane - the subscription lane's oauth config is never
+touched, and unsetting two environment variables restores it exactly. The two names
+(`GEMINI_API_KEY`, `GEMINI_HOME`) are on the session env allowlist with an
+exposure-parity note: a session that can be talked into printing its environment
+can equally read the subscription token file under `HOME`, so the lane adds no new
+leak class.[^survey]
+
+The lane's constraint is per-minute, not per-window: the API tier rejected a
+7-cases-concurrent corpus run outright (429 "exceeded your current quota" on every
+session) yet ran the same corpus cleanly at 3 - with ~120k-token briefs, tokens per
+minute is the binding limit, so concurrency is a dial to ramp, never a place to
+start high.[^survey]
 
 # pi, the fallback - scopable after all
 
