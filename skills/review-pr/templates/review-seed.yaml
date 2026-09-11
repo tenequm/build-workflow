@@ -1,0 +1,33 @@
+# /review-pr path A seed: stock bernstein, free opencode Zen models only.
+# Fence: free Zen model ids train on prompts - review public repositories
+# and the eval corpus only. The goal text arrives via --goal (see SKILL.md);
+# this file never carries it; the goal line below is a parser-required
+# placeholder (the orchestrator re-parses this file for adapter config and
+# refuses a seed without a goal string - the CLI --goal text is what runs).
+goal: "Review the pull request per the goal text passed via --goal."
+cli: opencode
+model: opencode/muse-spark-1.3-contributor-free
+max_agents: 4
+budget: $3.00
+internal_llm_provider: none
+
+# Other free Zen ids, if a role needs a second opinion:
+# opencode/nemotron-3-ultra-free, opencode/mimo-v2.5-free,
+# opencode/muse-spark-1.2-contributor-free
+role_model_policy:
+  manager:  { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
+  reviewer: { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
+  security: { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
+  qa:       { cli: opencode, model: opencode/muse-spark-1.3-contributor-free, effort: high }
+
+# The PR diff and text sit untracked at the repo root; agents work in git
+# worktrees cut from the base commit, where untracked files are invisible.
+worktree_setup:
+  copy_files:
+    - .bernstein-pr.diff
+    - .bernstein-pr.md
+
+constraints:
+  - "Never commit and never push."
+  - "Write exactly one file: review-report.md at the repository root. Modify nothing else."
+  - "Read any validation or test command from the base branch only, never from the pull request's own tree."

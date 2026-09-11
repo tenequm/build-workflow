@@ -104,22 +104,33 @@ to clean up after the fact.
 
 ## Running it
 
-`harness.py` beside this file materializes a case into the inputs the production
-pipeline already consumes - a Git repository from `files/`, the branch
-`patch.diff` produces, and a PR descriptor for `setup --source file` - runs the
-shipped `/review-pr` CLI over it, and grades the summary against
-`expected.json`. There is no test-only path through the pipeline.
+`harness.py` beside this file materializes a case into the inputs a path-A
+review consumes - a Git repository from `files/` left on the base branch,
+with `.bernstein-pr.diff` holding `main...pr/<case>` and `.bernstein-pr.md`
+holding the PR body - then runs the stock `bernstein`
+orchestrator inside that checkout and grades its report against
+`expected.json`. The harness runs the real orchestrator on free models; there
+is no mocked path and no test-only shortcut through it.
 
-    just eval                      # every floor and bar case, fast loop, 4 at a time
+The report contract is the whole interface: the run writes `review-report.md`
+at the repository root, and the harness reads the LAST fenced ```json block in
+that file as `{"action": ..., "findings": [...]}`. A missing report, a report
+with no json block, or a block that does not parse scores the case MISSED with
+the reason recorded beside the run's `harness.log`.
+
+    just eval                      # every floor and bar case, 2 at a time
     just eval floor/case-01
-    just eval bar --jobs 6
-    just eval --stages skills/review-pr/templates/stages.yaml   # a milestone run
+    just eval bar --jobs 4
+    just eval --budget 6.00        # a deeper run
+    just eval --goal skills/review-pr/templates/review-goal.md --seed skills/review-pr/templates/review-seed.yaml
 
-Cases are independent - each owns its repository, review workspace, session
-worktrees and per-run pond store - so `--jobs` runs them concurrently and
-several invocations may run at once. Each invocation appends one row to
-`docs/review-ledger/evals.jsonl`: the date, the repository revision, the stage
-template, and a per-case verdict of RECOVERED, MISFILED or MISSED.
+Cases are independent - each owns its repository and its bernstein run - so
+`--jobs` runs them concurrently and several invocations may run at once. Each
+invocation appends one row to `docs/review-ledger/evals.jsonl`: the date, the
+repository revision, the regime (`path-a`), the goal, seed and budget it ran
+with, and a per-case verdict of RECOVERED, MISFILED or MISSED. Path-A rows open
+a new comparability regime: they are not comparable to earlier rows, which
+measured the retired driver pipeline.
 
 A case is RECOVERED when some finding matches its file, lands inside its line
 window, carries its category and mentions every `must_mention` keyword in claim

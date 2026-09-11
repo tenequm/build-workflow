@@ -56,9 +56,9 @@ review url:
     fi
     "$python" "$cli" run --dest "$workspace"
 
-# Score the /review-pr eval corpus. No argument runs every floor and bar case on the
-# fast-loop template, four at a time; pass case or tier names and any harness flag
-# (--jobs N, --stages <template>) to narrow or re-route it.
+# Score the /review-pr eval corpus. No argument runs every floor and bar case through a
+# stock bernstein review, two at a time; pass case or tier names and any harness flag
+# (--jobs N, --goal <template>, --seed <config>, --budget N) to narrow or re-route it.
 eval *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
