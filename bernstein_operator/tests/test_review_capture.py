@@ -39,6 +39,7 @@ class TestAgyStagedRoot:
         self, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
         ledger_dir = tmp_path / "workspace"
         operation = "review-gating-gemini"
         worktree = str(ledger_dir / "sessions" / operation / "worktree")
@@ -51,6 +52,7 @@ class TestAgyStagedRoot:
 
     def test_only_this_run_s_conversations_are_staged(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
         ledger_dir = tmp_path / "workspace"
         operation = "review-design-gemini"
         worktree = str(ledger_dir / "sessions" / operation / "worktree")
@@ -68,8 +70,23 @@ class TestAgyStagedRoot:
             "aaaaaaaa-1111-1111-1111-111111111111.meta",
         ]
 
+    def test_gemini_home_redirects_the_staging_source(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.setenv("GEMINI_HOME", str(tmp_path / "api-lane" / ".gemini"))
+        ledger_dir = tmp_path / "workspace"
+        operation = "review-design-gemini"
+        worktree = str(ledger_dir / "sessions" / operation / "worktree")
+        conversation(tmp_path / "api-lane", "dddddddd-4444-4444-4444-444444444444", worktree)
+        conversation(tmp_path / "home", "eeeeeeee-5555-5555-5555-555555555555", worktree)
+        staged = pondsync.stage_agy_root({worktree}, ledger_dir / "agy-root")
+        assert staged is not None
+        names = {p.name for p in (staged / "antigravity-acp/conversations").iterdir()}
+        assert "dddddddd-4444-4444-4444-444444444444.meta" in names
+        assert "eeeeeeee-5555-5555-5555-555555555555.meta" not in names
+
     def test_a_run_with_no_agy_conversation_syncs_no_agy_source(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
         ledger_dir = tmp_path / "workspace"
         conversation(tmp_path / "home", "cccccccc-3333-3333-3333-333333333333", "/somewhere/else")
         sources = pondsync._sources(
@@ -79,6 +96,7 @@ class TestAgyStagedRoot:
 
     def test_the_other_two_families_keep_their_own_source_directories(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
         ledger_dir = tmp_path / "workspace"
         worktree = str(ledger_dir / "sessions" / "review-gating-claude" / "worktree")
         claude_dir = pondsync._claude_project_dir(worktree)
@@ -110,6 +128,7 @@ class TestOpencodeSource:
 
     def test_the_operator_s_own_opencode_history_is_never_a_source(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
         globaldb = tmp_path / "home" / ".local/share/opencode"
         globaldb.mkdir(parents=True)
         (globaldb / "opencode.db").write_bytes(b"SQLite format 3\x00")
@@ -123,6 +142,7 @@ class TestOpencodeSource:
         """The branch used to be an `else`, so any family added without touching this
         file was staged as agy - which meant captured as nothing, silently."""
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.delenv("GEMINI_HOME", raising=False)
         ledger_dir = tmp_path / "workspace"
         worktree = str(ledger_dir / "sessions" / "review-design-mystery" / "worktree")
         conversation(tmp_path / "home", "dddddddd-4444-4444-4444-444444444444", worktree)

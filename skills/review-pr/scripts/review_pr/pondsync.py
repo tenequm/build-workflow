@@ -105,7 +105,11 @@ def stage_agy_root(worktrees: set[str], destination: Path) -> Path | None:
     layout, carrying only the conversation files whose `.meta` names one of this run's
     session worktrees. Returns None when this run produced no agy conversation.
     """
-    source = Path.home() / ".gemini" / "antigravity-acp" / "conversations"
+    # GEMINI_HOME relocates the whole agy tree (the metered API-key lane runs under one);
+    # honouring it here keeps capture pointed at the lane the sessions actually used.
+    gemini_home = os.environ.get("GEMINI_HOME")
+    root = Path(gemini_home) if gemini_home else Path.home() / ".gemini"
+    source = root / "antigravity-acp" / "conversations"
     if not source.is_dir():
         return None
     staged = destination / "antigravity-acp" / "conversations"
