@@ -1,6 +1,6 @@
 {
   "name": "build-workflow",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Plan, run and land multi-phase Bernstein builds, and review pull requests with evidence that was executed.",
   "author": {
     "name": "Mykhaylo Kolesnik",
