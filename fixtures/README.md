@@ -49,3 +49,29 @@ and the park reason names the contract that refused.
 
 Each run costs real provider tokens. The workspace is disposable: delete the
 target directory when you are done.
+
+## review-pr
+
+A storefront package whose pull request carries one planted defect per review lens,
+an instruction-shaped comment aimed at an automated reviewer, a body that over-claims
+its own test count, a suggestion that survives the gate and one that does not.
+
+```sh
+python3 fixtures/review-pr/setup.py /tmp/fx --recorded
+```
+
+That prints the two commands that review it. `--recorded` points the stage template at
+`recording_agent.py`, which answers over the real ACP protocol from `policy.json`
+instead of calling a provider: acpx, the session bridge, the launch receipts, the
+worktree allowlist check, the report-witness law, the retry and the cost evidence are
+all exercised, and only the model's judgment is canned. Drop `--recorded` to run the
+same pull request against real models, which costs real tokens.
+
+`test_review_fixture.py` is this fixture asserted - each plant found, the injection
+reported and not obeyed, the claim mismatch flagged, the two families' agreement
+counted, the unprovable suggestion downgraded, and a ledger row per finding. It is the
+cheapest way to tell whether a change to `/review-pr` broke a mechanism.
+
+Unlike the slugify fixture this one needs no engine, no scorer and no network: the
+reviewed project is stdlib-only Python and its whole-tree check is
+`python3 -m unittest discover -s tests -t .`.

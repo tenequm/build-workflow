@@ -1,9 +1,16 @@
 # build-workflow
 
-Three self-contained skills for planning, running and landing a Bernstein build.
-The driver plans and supervises; native Bernstein executors write application
-code. Each phase gets its own engine run. A detached ACP reviewer judges the cumulative
-result between runs, and actionable findings trigger a pinned fix mini-run.
+Three self-contained skills for planning, running and landing a Bernstein build,
+and a fourth for reviewing someone else's pull request. The driver plans and
+supervises; native Bernstein executors write application code. Each phase gets its
+own engine run. A detached ACP reviewer judges the cumulative result between runs,
+and actionable findings trigger a pinned fix mini-run.
+
+`/review-pr` is the review half: it points a lens fan-out at a pull request and
+returns findings that were proved by execution rather than asserted - an executable
+rubric per finding, a proof of concept before any correctness claim confirms, the
+pull request body's own claims re-run, and suggestions applied and gated before they
+are offered. It runs no task engine and never posts without your word.
 
 ## Install
 
@@ -26,8 +33,15 @@ npm install -g acpx@0.15.1
 # must already work; this help command does not make a model call.
 npx --yes @agentclientprotocol/claude-agent-acp@0.60.0 --help
 npx -y skills add tenequm/build-workflow -y \
-  --skill build-plan --skill build-run --skill build-close
+  --skill build-plan --skill build-run --skill build-close --skill review-pr
 ```
+
+`/review-pr` needs less than the build skills do: an interpreter with `pyyaml` and
+`psutil`, `acpx`, `gh`, `git` and `rg`, plus an ACP adapter for each family a lens
+routes to. It runs no task engine, so it needs neither the patched engine checkout
+nor the scorer plugin. Session capture into pond needs `pond >= 0.17.2`, which is
+where agy sessions start being ingested; `review-pr ready` checks all of this and
+refuses before anything is spent.
 
 The native Codex adapter passes only `-m`, so Codex effort comes from
 `~/.codex/config.toml`. Readiness requires every codex role's declared `effort`
@@ -60,6 +74,11 @@ new verified source pin and acceptance run, not removal of admission checks.
 3. `/build-close <plan dir>`: authorized merge/release, outcome report, verified
    evidence preservation, then workspace cleanup.
 
+Separately, `/review-pr <number>` reviews a pull request: mechanical house rules,
+the base-pinned validation command, four review lenses in parallel, per-finding
+verification by a different model family, then a computed verdict and a payload
+whose every anchor has been checked. It ends at "post it?" and waits.
+
 Each skill carries its own scripts and templates. A skill never reads another
 skill's installed directory. The repository's sync check verifies shared copies.
 Starting execution authorizes its planned paid work. Publishing and merging use
@@ -75,6 +94,8 @@ existing user authorization or an explicit final decision.
 | Native analyst executors | agent worktrees | Claude claude-opus-5, high effort |
 | ACP judge | detached workflow-owned worktree | fresh blind cumulative review with model/turn/time/spend limits; `claude` binds them through its session bridge, `acp` asks acpx for them |
 | Installed scorer plugin | executor worktree at both native gate call sites | observed diff, ownership, validation, report checks and immutable receipts |
+| Review sessions (`/review-pr`) | one detached worktree per session, no engine | four lenses, one blinded verifier per finding, claim extraction, review body; allowlist-checked afterwards |
+| Review rubrics and repros (`/review-pr`) | the sandbox tier readiness resolved | every mechanical check, the gold gate and each suggestion's proof run here, with the environment cut to a credential allowlist |
 
 The Python package installs only the scorer entry point. Coordination lives in
 `skills/build-run/scripts/`, admission copies in build-plan, and preservation in
@@ -93,6 +114,17 @@ Run from the workspace using the installed Bernstein interpreter:
 <python> <build-run-skill>/scripts/build-operator.py resume --root <workspace> --plan <plan.yaml>
 <python> <build-run-skill>/scripts/build-operator.py status --root <workspace> --plan <plan.yaml>
 <python> <build-close-skill>/scripts/preserve-evidence.py --root <workspace> --run <run-dir> --dest <primary-run-dir>
+```
+
+`/review-pr` is separate and needs no workspace:
+
+```text
+<python> <review-pr-skill>/scripts/review-pr.py ready
+<python> <review-pr-skill>/scripts/review-pr.py setup --dest <dir> --pr <n> [-R owner/repo]
+<python> <review-pr-skill>/scripts/review-pr.py run   --dest <dir>
+<python> <review-pr-skill>/scripts/review-pr.py post  --dest <dir> --confirm <action>
+<python> <review-pr-skill>/scripts/review-pr.py batch --dest <root> --label <label> -R owner/repo
+<python> <review-pr-skill>/scripts/review-pr.py ledger [--fate <finding-id> <fate>]
 ```
 
 The driver starts the server alone, POSTs full task payloads, verifies admission,

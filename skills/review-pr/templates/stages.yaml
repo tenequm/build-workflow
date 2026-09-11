@@ -1,0 +1,119 @@
+# The template plan for /review-pr.
+#
+# The shape is static: stage 0 lints, stage 1 gates, stage 2 reviews through four
+# lenses, stage 3 verifies one task per surviving finding, stage 4 synthesises. No
+# planning machinery re-derives that per pull request. What DOES change per pull
+# request is the routing, and it changes here - swapping a model is one line.
+#
+# Every stage is a separate driver-owned batch of one-shot ACP sessions. Stage 3 must
+# never share a task board with stage 2: the engine releases dependents on
+# worker-reported DONE, before verification, so reviewed-then-verified ordering is a
+# property of the driver's boundary and nothing else.
+version: 1
+
+families:
+  claude:
+    transport: claude
+    adapter_argv: [npx, --yes, '@agentclientprotocol/claude-agent-acp@0.60.0']
+  codex:
+    transport: acp
+    adapter_argv: [npx, --yes, '@agentclientprotocol/codex-acp@1.1.5']
+  gemini:
+    transport: acp
+    # A wrapper, not the .par: on Linux the ACP server needs --uid=. Point this at
+    # your own wrapper; `review-pr ready` refuses an unresolvable adapter.
+    adapter_argv: ['{{HOME}}/.local/bin/agy-acp-server']
+
+# Stage 2. Four lenses, no more: both Anthropic's guidance and this project's
+# capability-floor arc say discipline beats fan-out.
+lenses:
+  cleanliness:
+    family: gemini
+    model: gemini-3.7-flash-medium
+    budget_usd: 1.0
+    max_turns: 24
+    timeout_s: 900
+  efficiency:
+    family: claude
+    model: claude-sonnet-5
+    budget_usd: 1.5
+    max_turns: 30
+    timeout_s: 1200
+  design:
+    family: codex
+    model: gpt-5.6-sol
+    effort: high
+    budget_usd: 2.0
+    max_turns: 40
+    timeout_s: 1800
+  gating:
+    family: claude
+    model: claude-opus-5
+    budget_usd: 2.5
+    max_turns: 40
+    timeout_s: 1800
+    # A correctness rule, not a preference: OpenAI's content filter silently truncates
+    # turns on exactly this brief's vocabulary (race, exploit, attack, sweep) and the
+    # truncated turn presents as a clean completion.
+    forbid_families: [codex]
+
+# Stage 3 and stage 4.
+roles:
+  verifier:
+    budget_usd: 1.5
+    max_turns: 30
+    timeout_s: 1200
+    models:
+      claude: claude-sonnet-5
+      codex: gpt-5.6-terra
+      gemini: gemini-3.7-flash-medium
+  claims:
+    family: claude
+    model: claude-sonnet-5
+    budget_usd: 1.0
+    max_turns: 24
+    timeout_s: 900
+  body:
+    family: claude
+    model: claude-haiku-4-5-20251001
+    budget_usd: 0.25
+    max_turns: 6
+    timeout_s: 300
+
+# Review direction is asymmetric: Claude reviewing Codex 71.6 -> 89.7, Codex reviewing
+# Claude 91.4 -> 82.8. When setup detects the author's family, the two lenses that
+# reason hardest route to the opposite family. Ambiguous detection changes nothing.
+routing:
+  opposite:
+    claude: codex
+    codex: claude
+    gemini: claude
+  reroute_lenses: [design, gating]
+
+# Cross-family ensembles realise 43-44% of the theoretical independence gain (same-model
+# under 30%), and disagreement alone detects about two thirds of incorrect programs at
+# zero false positives. Agreements auto-confirm cheaply; disagreements are where the
+# stage-3 budget goes.
+dual_family:
+  lenses: [design, gating]
+  enabled: true
+
+bounds:
+  # Stage 3 is the expensive stage, so the fan-out is capped. Correctness and gating
+  # findings take the budget first; past the cap a finding settles on its
+  # driver-executed rubric alone. Findings are never batched into one session: a
+  # shared verifier would see every other claim and the blinding is the point.
+  max_verifier_sessions: 12
+  # A suggestion is only attached once it has been applied and gated for real, and
+  # each proof is a full run of the pinned command, so the count is bounded.
+  max_proven_suggestions: 6
+  max_spend_usd: 24.0
+  max_wall_s: 3600
+  # A task whose report is missing or unwitnessed is retried once, then parks.
+  attempts_per_task: 2
+
+sandbox:
+  # container needs a pinned image that can run this repo's gate; userns needs
+  # unprivileged user namespaces. Readiness resolves this before any run.
+  tier: userns
+  image: null

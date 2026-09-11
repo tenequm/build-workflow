@@ -1,23 +1,26 @@
 # /review-pr: the polish skill as a Bernstein workflow
 
-Status: DRAFT, awaiting Misha's sign-off. Designed 2026-09-11 from the
+Status: BUILT 2026-09-11 and locally verified; see `## Delivered` at the end
+for what exists, what was proven, and what still needs a paid run. Designed
+2026-09-11 from the
 [polish skill v3.1.0](https://github.com/tenequm/skills/blob/main/skills/polish/SKILL.md),
 the operator at v0.1.21, the knowledge bundle, and the
 [2609-02 research overview](../research/2609-02-research-overview.md)
 (all paper/blog citations below resolve there). Upstream's own review
 machinery, which this tool complements, is documented in
 [the upstream-review-automation reference](../knowledge/references/upstream-review-automation.md).
-Nothing here is built yet.
+The phase map below is the design; one deviation from it is recorded under
+`## Open questions, resolved at implementation`.
 
-**For a fresh agent picking this up:** this document is the spec
-substrate - run `/build-plan` with it as intake; the probes resolve
-anything left open here, and sign-off freezes the result. Two hard
-requirements that are easy to miss: (1) the four lens briefs, the polish
-Rules block, and the verdict table must be VENDORED into this repository
-(copied, then owned here) - the runtime never fetches tenequm/skills;
-(2) every acceptance item in this plan is executable without this
-design conversation - if one is not, that is a plan defect to fix, not
-context to go hunting for.
+**For a fresh agent picking this up:** the workflow is built - read
+[the skill](../../skills/review-pr/SKILL.md) and run the fixture before
+reading further here. This document remains the design record and the
+rationale index; `## Delivered` maps each requirement to the code that
+carries it. The two hard requirements it set are met: the four lens briefs,
+the polish Rules block and the verdict table are VENDORED under
+`skills/review-pr/templates/` (copied from polish v3.1.0, then owned here -
+the runtime never fetches tenequm/skills), and every acceptance item is
+executable from a clean checkout.
 
 Goal: point a command at one or many Bernstein PRs and get a review at or
 above the level `/polish` produces today - faster per weekly batch, more
@@ -317,19 +320,83 @@ collected as a side effect, spent later.
    claim-vs-tool-call verifier over those stored transcripts - but its
    substrate is being collected from the first run.
 
-## Open questions for sign-off
+## Open questions, resolved at implementation
 
-- Verify fan-out cost ceiling per PR (stage 3 is the expensive stage;
-  cap N verifier tasks and batch small findings per task?).
-- Does stage 0's tests-fail-on-base check run on every PR or only when
-  the PR adds tests? (Their bot runs it selectively.)
-- Ledger location: in-repo (public) vs `.agents/` (dies with worktrees -
-  known scar). Proposal: in-repo under `docs/review-ledger/`, since the
-  repo is public-by-design and the ledger is evidence.
-- Whether `/review-pr` should also serve non-Bernstein repos day one
-  (stage 0 is Bernstein-specific; everything else is generic - proposal:
-  stage 0 loads per-repo rule modules, Bernstein first).
-- Author-family detection heuristic: PR-body style markers, disclosure
-  lines, and receipts are candidates, none proven; when detection is
-  ambiguous the router falls back to the default table above rather
-  than guessing.
+Answered 2026-09-11 while building. Each answer is in code, and the two that
+carry real rationale have decision records.
+
+- **Verify fan-out cost ceiling.** Capped at `bounds.max_verifier_sessions`
+  (12), correctness and gating claims first; past the cap a finding settles on
+  its driver-executed rubric. Findings are NOT batched into a shared session:
+  a verifier that sees four claims reads each in the context of the others,
+  which destroys the blinding stage 3 exists to buy. Rationale in
+  [the decision record](../knowledge/decisions/verification-is-capped-never-batched.md).
+- **Does tests-fail-on-base run on every PR?** Only when the pull request
+  touches test files, matching their bot's own selectivity - and the skip is
+  recorded with its reason, because an unrecorded skip cannot be told from a
+  pass. `houserules.tests_fail_on_base`.
+- **Ledger location.** In-repo at `docs/review-ledger/runs.jsonl`, as
+  proposed: the repo is public by design, the ledger is evidence, and an
+  `.agents/` ledger dies with the worktree that wrote it.
+- **Non-Bernstein repos day one.** Yes. Stage 0 loads a rule set per
+  repository: `bernstein` adds the release-notes fragment and the bisect
+  annotation, every other repo gets `generic` (prose hygiene, no sign-off,
+  injection scan, validation-command provenance, tests-fail-on-base). The set
+  is chosen from the remote slug and overridable with `--rules`.
+- **Author-family detection.** Disclosure lines and trailers score 2, unicode
+  punctuation in the body scores 1, and a tie or a zero score returns
+  `unknown`, which leaves the default routing table untouched. The confidence
+  is recorded in the sidecar, so a review never hides which table it used.
+
+One further deviation, recorded because it changes the phase map above: the
+model stages run as driver-owned one-shot ACP sessions rather than Bernstein
+task-server runs. All eight quality mechanisms are preserved; the reasoning,
+and what it costs, is in
+[the decision record](../knowledge/decisions/review-sessions-are-driver-owned-ceremonies.md).
+
+## Delivered
+
+| requirement | where |
+|---|---|
+| 1. executable rubric per finding | `review_pr/findings.py` (schema, `unverifiable` demotion), `review_pr/rubric.py` (execution) |
+| 2. PoC-or-demote with the gold gate | `review_pr/verify.py:settle`, `review_pr/rubric.py:gold_gate` |
+| 3. PR-body claim re-execution | `review_pr/claims.py`, `templates/claims-brief.md` |
+| 4. dual-family lens diff | `review_pr/dualfamily.py`, `templates/stages.yaml:dual_family` |
+| 5. author-family routing, blinded verifier | `review_pr/checkout.py:author_family`, `pipeline.py:lens_families`, `briefs.py:verifier` |
+| 6. the precision ledger | `review_pr/ledger.py`, `review-pr.py ledger` |
+| 7. proven suggestions | `review_pr/suggestions.py`, `synthesize.py:comment_body` |
+| 8. house-rule lint stage | `review_pr/houserules.py` |
+| the deterministic spine | `checkout.py`, `diffindex.py`, `anchors.py`, `verdictcalc.py`, `synthesize.py` |
+| the vendored briefs | `skills/review-pr/templates/` |
+| pond session capture | `review_pr/pondsync.py`, wired in `pipeline.py:pond_capture` |
+| the batch driver | `review-pr.py batch` |
+
+### Acceptance evidence, as it stands
+
+- **Seeded fixture (item 2): done and executable.**
+  `python3 fixtures/review-pr/setup.py /tmp/fx --recorded` materialises the
+  repository and the pull request; `test_review_fixture.py` runs the whole
+  pipeline over the real `acpx` transport against a recording agent and
+  asserts each plant, the injection reported-and-not-obeyed, the claim
+  mismatch, the dual-family agreement, the proven and the downgraded
+  suggestion, and the ledger rows. 33 assertions, no provider spend.
+- **Anchor check proven (item 4): done.** `test_review_contract.py` puts a
+  finding outside a hunk, one on a file absent from the diff and one on a
+  deleted file, and requires the script to catch all three before a payload
+  is assembled.
+- **Ground-truth replay against PR #5737 (item 1): not run.** It needs paid
+  model sessions against upstream and was not authorised in the build
+  session. The command is `review-pr setup --pr 5737 -R
+  sipyourdrink-ltd/bernstein` then `review-pr run`; the pull request is open
+  and reachable, and it is docs-only, so the deterministic stages replay
+  without executing anything.
+- **A real weekly batch (item 3): not run,** same reason. `review-pr batch
+  --label needs-committer-review` is the entry point and records wall time
+  and charged spend per pull request into `batch.json`.
+
+### Known environment gap
+
+`review-pr ready` refuses on this operator host: pond is 0.17.1 and this
+workflow pins >= 0.17.2, because agy sessions are only ingested from that
+release. Either re-deploy the pinned tools or run with `--no-pond` and accept
+that session capture is off for that run.
