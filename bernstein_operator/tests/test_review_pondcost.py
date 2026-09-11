@@ -661,3 +661,28 @@ def test_empty_query_result_produces_note(registry_path: Path) -> None:
     assert sess["tokens"] is None
     assert sess["usd_list_price"] is None
     assert sess["note"] == "no usage recorded for session"
+
+
+def test_default_runner_signature_pinned_against_real_command(
+    registry_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default runner is proc.command, so call it for real: arity drift fails here.
+
+    Every other test in this file passes a fake runner that accepts (argv, cwd, timeout)
+    positionally, which hid a call the real command() - whose timeout is keyword-only -
+    rejects outright. Pointing the pinned pond binary at a path that does not exist makes
+    the query fail for a reason that is not the signature: the note must name the missing
+    binary, never a TypeError about positional arguments.
+    """
+    monkeypatch.setenv("POND_BIN", "/nonexistent/pond")
+    sessions = [{"session_id": "sess-real-runner", "source_agent": "claude-code"}]
+
+    result = usage(sessions, registry=registry_path)
+
+    sess = result["sessions"][0]
+    note = sess["note"]
+    assert note is not None
+    assert "positional argument" not in note
+    assert "No such file" in note or "not found" in note.lower()
+    assert sess["tokens"] is None
+    assert result["totals"]["priced_sessions"] == 0

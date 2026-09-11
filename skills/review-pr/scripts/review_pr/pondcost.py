@@ -105,7 +105,7 @@ def _run_pond_query(
         argv = [pond, "sql", "--format", "ndjson", "--timeout", "120", sql]
 
     try:
-        code, out_bytes, err_bytes = run(argv, Path.cwd(), 120)
+        code, out_bytes, err_bytes = run(argv, Path.cwd(), timeout=120)
     except Exception as exc:
         return -1, [], f"query runner exception: {exc}"
 
