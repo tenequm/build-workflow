@@ -3,7 +3,7 @@
 Everything discovered and considered in the session that produced this repo.
 Sources are linked; numbers are the ones measured or quoted, with their tier
 (measured by us, lab-reported, paper, second-hand). Companion decision record:
-`docs/2609-02-design.md`. Raw eval records live in the `personal` repo under
+`docs/plans/2609-02-design.md`. Raw eval records live in the `personal` repo under
 `docs/codex-subagents-herd-eval/` (runs.jsonl, per-run dirs, judge ledgers).
 
 ## 1. Executor evals (measured by us)
@@ -298,7 +298,7 @@ Bernstein docs set. Sources: `spike-report.md`, `stage1-report.md` through
 `native-migration-plan.md` in the session scratchpad.
 It supersedes section 11's "herdr adapter only" line: executors and judges now
 run through Bernstein's native adapters (see "Why native adapters" in
-`docs/2609-02-design.md`).
+`docs/plans/2609-02-design.md`).
 
 ### Bernstein docs vs the code we measured (`bernstein-docs-review.md`)
 

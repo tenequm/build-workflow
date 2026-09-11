@@ -28,4 +28,6 @@ another skill sentence.
 Durable project knowledge lives in `docs/knowledge/` (an OKF bundle; read its
 `index.md` first). Load the okf-project-knowledge-base skill before reading or
 writing it, and after substantial work review whether a durable decision or
-finding should be captured there.
+finding should be captured there. The index listing is generated: after any
+concept change run `python3 scripts/kb_index.py` (pre-commit enforces
+`--check`). There is no update log - git history is the log.
