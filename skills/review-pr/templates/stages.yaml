@@ -11,6 +11,14 @@
 # property of the driver's boundary and nothing else.
 version: 1
 
+# The family registry. A new lane is added here and nowhere else: declare its
+# transport and pinned adapter_argv, a model for it under roles.verifier.models, and -
+# only when its name is not already a pond adapter - `pond_adapter:` naming the harness
+# whose sessions it writes (claude-code, codex-cli, agy, opencode). Optional per
+# family: `env:` (allowlisted names redirected per session), `strip_paths:` (the
+# reviewed tree's own agent config, removed before the session reads it),
+# `effort_option:` (the config id that family takes reasoning effort under),
+# `persist_session:`. `review-pr --family <name>` then runs the whole plan on it.
 families:
   claude:
     transport: claude

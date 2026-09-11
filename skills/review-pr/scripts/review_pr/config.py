@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 from pathlib import Path
 from typing import Any
@@ -91,8 +92,22 @@ def load(path: Path | None = None) -> dict[str, Any]:
     routing = data.get("routing") or {}
     if set(routing.get("opposite") or {}) - set(families):
         raise Park("routing names an undeclared family")
+    # The values, not only the keys: an opposite that names a family with no verifier
+    # model used to pass here and fail at role_spec, one launched stage later.
+    for producer, chosen in (routing.get("opposite") or {}).items():
+        if chosen == producer:
+            raise Park(f"routing verifies {producer} findings with {producer} itself")
+        if chosen not in families:
+            raise Park(f"routing verifies {producer} findings with an undeclared family: {chosen}")
+        if chosen not in verifier["models"]:
+            raise Park(f"routing verifies {producer} findings with {chosen}, which has no model")
     if set(routing.get("reroute_lenses") or []) - set(LENS_ORDER):
         raise Park("routing reroutes an unknown lens")
+    # routing.override is set by --family, never authored: it is what the routing
+    # evidence cites as the reason a lens ran where it ran, and a template that could
+    # write it could make that evidence say something the run did not do.
+    if "override" in routing:
+        raise Park("routing.override is set by --family, not declared by a template")
     if set((data.get("dual_family") or {}).get("lenses") or []) - set(LENS_ORDER):
         raise Park("dual_family names an unknown lens")
     bounds = data.get("bounds") or {}
@@ -115,6 +130,64 @@ def active_lenses(plan: dict[str, Any]) -> tuple[str, ...]:
     return tuple(
         lens for lens in LENS_ORDER if plan["lenses"][lens].get("enabled", True) is not False
     )
+
+
+def model_for(plan: dict[str, Any], label: str, spec: dict[str, Any], family: str) -> str:
+    """The model a lens or role runs when it is routed onto `family`.
+
+    Its own `models` map first, because a lens moved onto a verifier-grade model is a
+    quieter lens, which is the opposite of why it was moved. The verifier's map is the
+    declared fallback. There is no third fallback: keeping the previous family's model
+    would launch, say, gpt-5.6-sol on the gemini adapter, and a family swap must never
+    silently ask a lane for a model it has never heard of.
+    """
+    model = (spec.get("models") or {}).get(family) or plan["roles"]["verifier"]["models"].get(
+        family
+    )
+    if not model:
+        raise Park(
+            f"{label} has no model for family {family}: declare one in its own "
+            "`models` map or in roles.verifier.models"
+        )
+    return str(model)
+
+
+def override_family(plan: dict[str, Any], family: str) -> dict[str, Any]:
+    """Route every producing session of one run onto a single declared family.
+
+    Swapping lanes used to mean authoring another near-copy of stages.yaml -
+    stages-fast.yaml and stages-opencode.yaml are two of them, and each differs from
+    production in its routing alone. With this, a lane costs a `families:` entry plus a
+    verifier model, and the whole run swaps from the command line.
+
+    Verification is deliberately NOT swapped: a finding is verified by a family other
+    than the one that produced it, and verify.opposite() still chooses that family. The
+    author-opposite reroute and the dual-family second opinion are switched off, because
+    both exist to introduce a second family and this asked for one.
+    """
+    if family not in plan["families"]:
+        raise Park(
+            f"--family {family} is not declared by this template "
+            f"(declared: {', '.join(sorted(plan['families']))})"
+        )
+    plan = copy.deepcopy(plan)
+    for lens in active_lenses(plan):
+        spec = plan["lenses"][lens]
+        forbidden = spec.get("forbid_families") or []
+        if family in forbidden:
+            raise Park(f"lens {lens} must never run on {family}: {forbidden}")
+        if spec["family"] != family:
+            spec["model"] = model_for(plan, f"lens {lens}", spec, family)
+            spec["family"] = family
+    claims = plan["roles"]["claims"]
+    if claims["family"] != family:
+        claims["model"] = model_for(plan, "role claims", claims, family)
+        claims["family"] = family
+    routing = plan.setdefault("routing", {})
+    routing["reroute_lenses"] = []
+    routing["override"] = family
+    plan["dual_family"] = {"lenses": [], "enabled": False}
+    return plan
 
 
 def _bounds(label: str, spec: dict[str, Any]) -> None:
@@ -143,14 +216,7 @@ def lens_spec(plan: dict[str, Any], lens: str, *, family: str | None = None) -> 
     if chosen not in plan["families"]:
         raise Park(f"lens {lens} routed to an undeclared family: {chosen}")
     if chosen != spec["family"]:
-        # A rerouted lens keeps its bounds. It takes the lens's own model for that
-        # family when one is declared, because a lens rerouted onto a verifier-grade
-        # model is a quieter lens, which is the opposite of why it was rerouted.
-        spec["model"] = (
-            (spec.get("models") or {}).get(chosen)
-            or plan["roles"]["verifier"]["models"].get(chosen)
-            or spec["model"]
-        )
+        spec["model"] = model_for(plan, f"lens {lens}", spec, chosen)
     spec["family"] = chosen
     spec.pop("models", None)
     return {**spec, **plan["families"][chosen]}

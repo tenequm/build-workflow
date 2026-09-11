@@ -18,8 +18,21 @@ lane): 13/14, floor 8/8; the one bar miss was a scorer artifact - the finding
 recovered the planted defect exactly but carried a must_mention keyword only
 in its proven suggestion text - so the scorer now scans the suggestion too
 (c34c985) and the rescored run-6 corpus is 14/14 RECOVERED, 0 MISFILED,
-0 MISSED, 7 extra findings across 14 cases. The corpus gate is green; Wave 4
-is in flight.
+0 MISSED, 7 extra findings across 14 cases. The corpus gate is green. Wave 4
+ran and settled: the milestone review of bernstein#5791 (full stages.yaml,
+API lane, pond-captured) recovered 3 of the hand review's 4 comments at head
+1713ccc1 - the missed one is the colon-anchoring nit its own author declined
+to request a change for - plus 14 findings the hand review did not have, 18
+total (15 CONFIRMED / 2 PLAUSIBLE), recommendation comment-only. Two boundary
+defects the run surfaced are fixed with tests: an explicit null claim expect
+parked the run (560e824), and the gate turned an environment refusal
+("Network is unreachable" building the venv) into a CONFIRMED
+validation-fails finding - the could-not-run detector is now shared between
+gate and claims (c3f6e53). Operator directive (2026-09-11): gemini leaves the
+test lanes - stages-fast runs every lens and claims on claude-sonnet-5 with a
+codex gpt-5.6-sol verifier (213b24f), stages-opencode verifies on sonnet
+(a810de5); production stages.yaml is the only remaining gemini spend, pending
+the free/cheap swap.
 
 Driver rule: the driver does as little as possible - it launches lanes (gemini
 acpx, model gemini-3.7-flash-medium) and subagents (opus, NEVER fable), reads

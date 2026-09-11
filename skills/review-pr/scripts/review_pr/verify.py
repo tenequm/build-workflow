@@ -23,16 +23,28 @@ from .runner import Task
 VERDICTS = ("CONFIRMED", "PLAUSIBLE", "DROPPED")
 
 
-def opposite(plan: dict[str, Any], producer: str) -> str:
-    """A judge is more than 50% likelier to pass its own model's output."""
+def opposite(plan: dict[str, Any], producer: str) -> tuple[str, str]:
+    """The family that verifies a `producer` finding, and why that one.
+
+    A judge is more than 50% likelier to pass its own model's output, so the answer is
+    never the producer. The template's declared table decides it where the operator has
+    measured a direction worth pinning; otherwise any other family with a verifier model
+    will do, and the choice is made by name order so that two runs of the same template
+    route the same finding to the same family. The reason travels into the session's
+    receipt: with more than two families registered, which one judged is a fact about
+    the run that a routing table alone no longer explains.
+    """
     table = plan.get("routing", {}).get("opposite", {})
     chosen = table.get(producer)
     if chosen and chosen != producer:
-        return chosen
+        return chosen, f"the template routes a {producer} finding to {chosen}"
     other = [name for name in sorted(plan["roles"]["verifier"]["models"]) if name != producer]
     if not other:
         raise Park(f"no family available to verify a {producer} finding")
-    return other[0]
+    return other[0], (
+        f"no opposite is declared for {producer}; the first other family with a verifier "
+        f"model, in name order, is {other[0]} (of {', '.join(other)})"
+    )
 
 
 def second_reading(finding: dict[str, Any]) -> bool:
@@ -306,7 +318,7 @@ def verify(
     queued, unqueued = select(candidates, observed, cap=cap)
     tasks: list[Task] = []
     for finding in queued:
-        family = opposite(plan, finding["producer"])
+        family, why = opposite(plan, finding["producer"])
         spec = config.role_spec(plan, "verifier", family=family)
         brief, report, witness = briefs.verifier(finding, sidecar, paths)
         tasks.append(
@@ -319,7 +331,11 @@ def verify(
                 spec=spec,
                 lens=finding["lens"],
                 family=family,
-                meta={"finding": finding["id"], "producer": finding["producer"]},
+                meta={
+                    "finding": finding["id"],
+                    "producer": finding["producer"],
+                    "verifier_reason": why,
+                },
             )
         )
     receipts = launch(tasks) if tasks else {}

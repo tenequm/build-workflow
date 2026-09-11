@@ -28,7 +28,11 @@ from typing import Any
 from .proc import command, env_overlay
 
 PINNED = (0, 17, 2)
-# family (stages.yaml) -> the pond adapter that ingests that harness's sessions.
+# family (stages.yaml) -> the pond adapter that ingests that harness's sessions. A
+# family whose name is not one of these declares `pond_adapter` in the template and is
+# captured without a line of Python: a new lane is usually a new model on a harness
+# pond already reads. A family that is neither is captured as nothing, which `resolve`
+# then reports as a missing session rather than hiding.
 ADAPTERS = {
     "claude": "claude-code",
     "codex": "codex-cli",
@@ -137,7 +141,7 @@ def _sources(receipts: dict[str, dict[str, Any]], ledger_dir: Path) -> dict[str,
     agy_worktrees: set[str] = set()
     for operation, receipt in receipts.items():
         family = receipt.get("family")
-        adapter = ADAPTERS.get(str(family))
+        adapter = receipt.get("pond_adapter") or ADAPTERS.get(str(family))
         if adapter is None:
             continue
         directory = ledger_dir / "sessions" / receipt.get("operation", operation)

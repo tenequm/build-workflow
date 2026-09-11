@@ -54,7 +54,12 @@ def lens_families(plan: dict[str, Any], lens: str, author: dict[str, Any]) -> li
     default = plan["lenses"][lens]["family"]
     chosen: list[tuple[str, str]] = []
     family = default
-    reason = "the template's default family"
+    override = routing.get("override")
+    reason = (
+        f"the whole-run --family {override} override"
+        if override
+        else "the template's default family"
+    )
     if lens in (routing.get("reroute_lenses") or []) and author.get("family") not in (
         None,
         "unknown",

@@ -19,7 +19,12 @@ no planning stage. What varies per pull request is routing, and routing lives in
 `templates/stages.yaml`, where swapping a model, or parking and re-admitting a lens,
 is one line. `templates/stages-fast.yaml` is that same plan on one cheap family with no
 second opinion, for measuring a routing or brief change before a milestone run pays for
-it; pass either with `--stages`.
+it; pass either with `--stages`. To run a template's existing plan on one of the
+families it already declares, pass `--family <name>` instead of writing a fourth
+template: every lens and the claims role move to that family, the author-opposite
+reroute and the dual-family second opinion switch off, and verification still goes to a
+different family. A family the template does not declare, or one a lens forbids, is
+refused before anything spawns.
 
 Use absolute paths in commands. `<python>` below is an interpreter with `pyyaml` and
 `psutil` (the one in the installed Bernstein uv tool environment is the usual choice:

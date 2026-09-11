@@ -54,8 +54,11 @@ class Task:
     report: str
     witness: str
     spec: dict[str, Any]
+    # No default: this is what the receipt records, what capture routes on, and what
+    # the precision ledger buckets by. A default family is a wrong answer on any run
+    # that is not the one the default was written for.
+    family: str
     lens: str | None = None
-    family: str = "claude"
     # Per-task input files, written under `<workspace>/inputs/<key>/`. The key is
     # stable across retries; the operation is not, and a brief that named the
     # operation's directory would break the moment a session was retried.
@@ -329,6 +332,8 @@ def _settle(
         "operation": operation,
         "lens": task.lens,
         "family": task.family,
+        # Declared by a family whose name pond does not already know as a harness.
+        "pond_adapter": task.spec.get("pond_adapter"),
         "model": task.spec["model"],
         "signal": task.signal,
         "ok": not problems,

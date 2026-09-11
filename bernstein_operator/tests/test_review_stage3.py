@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from operator_driver.storage import Park
-from review_pr import claims, config, dualfamily, findings, verify
+from review_pr import claims, config, dualfamily, findings, readiness, verify
 
 
 def finding(**over):
@@ -45,11 +45,71 @@ def session(**over):
     }
 
 
+def _with_families(plan, *names):
+    """The same plan with extra registered families, as a new lane would add them."""
+    for name in names:
+        plan["families"][name] = {"transport": "acp", "adapter_argv": ["adapter", name]}
+        plan["roles"]["verifier"]["models"][name] = f"{name}-model"
+    return plan
+
+
 class TestRouting:
     def test_a_verifier_is_never_the_producing_family(self):
         plan = config.load()
         for producer in ("claude", "codex", "gemini"):
-            assert verify.opposite(plan, producer) != producer
+            assert verify.opposite(plan, producer)[0] != producer
+
+    def test_a_family_beyond_the_declared_table_still_gets_a_different_verifier(self):
+        """The law is cross-family verification, not a two-family flip. A lane added to
+        the registry with no entry in routing.opposite must still be verified by
+        someone else, and by the same someone else on every run."""
+        plan = _with_families(config.load(), "pi", "zeta")
+        for producer in sorted(plan["roles"]["verifier"]["models"]):
+            family, reason = verify.opposite(plan, producer)
+            assert family != producer
+            assert family in plan["roles"]["verifier"]["models"]
+            assert verify.opposite(plan, producer) == (family, reason), "not deterministic"
+        assert verify.opposite(plan, "pi")[0] == "claude"
+        assert verify.opposite(plan, "claude")[0] == "codex", "a declared opposite still wins"
+
+    def test_the_reason_a_verifier_family_was_chosen_reaches_the_receipt(self):
+        """With more than two families registered, which one judged is a fact about the
+        run that the routing table alone no longer explains."""
+        plan = _with_families(config.load(), "pi")
+        row = finding(producer="pi", category="correctness")
+        seen = {}
+
+        def launch(tasks):
+            seen.update({task.operation: task for task in tasks})
+            return {
+                task.operation: session(
+                    operation=task.operation,
+                    family=task.family,
+                    ok=False,
+                    problems=["no provider in this test"],
+                )
+                for task in tasks
+            }
+
+        verify.verify(
+            [row],
+            {"base_tree": "beef"},
+            plan,
+            _ledger(),
+            {"diff": Path("/tmp/diff.patch")},
+            tier="none",
+            launch=launch,
+        )
+        task = seen[f"verify-{row['id']}"]
+        assert task.family == "claude" and task.meta["producer"] == "pi"
+        assert "no opposite is declared for pi" in task.meta["verifier_reason"]
+
+    def test_a_template_with_one_verifiable_family_parks_rather_than_self_verifies(self):
+        plan = config.load()
+        plan["roles"]["verifier"]["models"] = {"gemini": "gemini-3.7-flash-medium"}
+        plan["routing"]["opposite"] = {}
+        with pytest.raises(Park, match="no family available to verify"):
+            verify.opposite(plan, "gemini")
 
     def test_correctness_and_impact_take_the_budget_first(self):
         rows = [
@@ -770,6 +830,94 @@ class TestAgreementSettles:
             "agreement": ["claude", "codex"],
         }
         assert verify.priority(alone) < verify.priority(both)
+
+
+class TestFamilySwap:
+    """One knob moves a whole run onto one declared family.
+
+    Swapping used to mean authoring another near-copy of stages.yaml. The law that does
+    not move with it: a finding is verified by a family other than its producer's.
+    """
+
+    def test_the_override_reroutes_every_lens_and_the_claims_role(self):
+        from review_pr import pipeline
+
+        plan = config.override_family(config.load(), "gemini")
+        for lens in config.active_lenses(plan):
+            spec = config.lens_spec(plan, lens)
+            assert spec["family"] == "gemini"
+            assert spec["model"].startswith("gemini-"), "a swapped lens must not keep the old model"
+            assert pipeline.lens_families(plan, lens, {"family": "codex"}) == [
+                ("gemini", "the whole-run --family gemini override")
+            ]
+        assert config.role_spec(plan, "claims")["family"] == "gemini"
+        assert plan["dual_family"]["enabled"] is False
+        assert plan["routing"]["reroute_lenses"] == []
+
+    def test_the_swapped_run_is_still_verified_by_another_family(self):
+        plan = config.override_family(config.load(), "gemini")
+        family, _ = verify.opposite(plan, "gemini")
+        assert family != "gemini"
+        assert config.role_spec(plan, "verifier", family=family)["family"] == family
+
+    def test_a_family_the_registry_alone_declares_can_run_the_whole_review(self):
+        """The acceptance test for a new lane: a `families:` entry plus a verifier
+        model, and nothing else - no fourth template, no Python."""
+        plan = config.load()
+        plan["families"]["pi"] = {"transport": "acp", "adapter_argv": ["pi-acp-server"]}
+        plan["roles"]["verifier"]["models"]["pi"] = "pi-1"
+        swapped = config.override_family(plan, "pi")
+        for lens in config.active_lenses(swapped):
+            spec = config.lens_spec(swapped, lens)
+            assert (spec["family"], spec["model"]) == ("pi", "pi-1")
+            assert spec["adapter_argv"] == ["pi-acp-server"]
+        assert verify.opposite(swapped, "pi")[0] != "pi"
+        assert "pi" in readiness.routed(swapped), "its adapter must block readiness now"
+
+    def test_a_family_with_no_model_declared_parks_before_anything_spawns(self):
+        """Never the previous family's model: that launches gpt-5.6-sol on the gemini
+        adapter, which is a silent wrong answer rather than a refusal."""
+        plan = config.load()
+        plan["families"]["pi"] = {"transport": "acp", "adapter_argv": ["pi-acp-server"]}
+        with pytest.raises(Park, match="no model for family pi"):
+            config.override_family(plan, "pi")
+        with pytest.raises(Park, match="no model for family pi"):
+            config.lens_spec(plan, "design", family="pi")
+
+    def test_the_override_refuses_a_family_a_lens_forbids(self):
+        with pytest.raises(Park, match="must never run on codex"):
+            config.override_family(config.load(), "codex")
+
+    def test_the_override_refuses_an_undeclared_family(self):
+        with pytest.raises(Park, match="not declared by this template"):
+            config.override_family(config.load(), "pi")
+
+    def test_a_verifier_only_family_still_blocks_readiness(self):
+        """A one-family template declares its verifier on a family no lens names. An
+        unresolvable adapter there is otherwise found after every lens has been paid."""
+        plan = config.load(config.TEMPLATES / "stages-fast.yaml")
+        assert {plan["lenses"][lens]["family"] for lens in config.active_lenses(plan)} == {"claude"}
+        assert readiness.routed(plan) == {"claude", "codex"}
+
+    @pytest.mark.parametrize(
+        "mutate,message",
+        [
+            (lambda d: d["routing"].update(opposite={"claude": "claude"}), "with claude itself"),
+            (lambda d: d["routing"].update(opposite={"claude": "pi"}), "undeclared family"),
+            (lambda d: d["roles"]["verifier"]["models"].pop("codex"), "which has no model"),
+        ],
+    )
+    def test_a_routing_table_that_cannot_be_honoured_parks_at_load(self, tmp_path, mutate, message):
+        """These used to pass validation and fail a whole stage later, inside the
+        session launcher, with a KeyError."""
+        import yaml
+
+        data = config.load()
+        mutate(data)
+        path = tmp_path / "stages.yaml"
+        path.write_text(yaml.safe_dump(data))
+        with pytest.raises(Park, match=message):
+            config.load(path)
 
 
 class TestActiveLenses:

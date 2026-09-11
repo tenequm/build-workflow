@@ -48,9 +48,23 @@ def tools() -> list[dict[str, Any]]:
     return results
 
 
+def routed(plan: dict[str, Any]) -> set[str]:
+    """Every family this run can launch a session on, lenses and roles alike.
+
+    Lens routing alone is not the answer: a one-family template declares its verifier
+    on a second family that no lens names, and an unresolvable adapter there is found
+    only after every lens session has been paid for.
+    """
+    used = {plan["lenses"][lens]["family"] for lens in config.active_lenses(plan)}
+    used |= set(plan["roles"]["verifier"].get("models") or {})
+    used.add(plan["roles"]["claims"]["family"])
+    return used
+
+
 def adapters(plan: dict[str, Any]) -> list[dict[str, Any]]:
     """A family whose adapter cannot be resolved must not be routed to."""
     results = []
+    reachable = routed(plan)
     for name, family in sorted(plan["families"].items()):
         head = family["adapter_argv"][0]
         resolved = shutil.which(head) or (head if Path(head).is_file() else None)
@@ -59,8 +73,8 @@ def adapters(plan: dict[str, Any]) -> list[dict[str, Any]]:
                 f"adapter:{name}",
                 resolved is not None,
                 f"{head} -> {resolved}" if resolved else f"{head} is neither on PATH nor a file",
-                # A family nothing routes to is advisory; one a lens uses is not.
-                blocking=name in {spec["family"] for spec in plan["lenses"].values()},
+                # A family nothing routes to is advisory; one this run can spawn is not.
+                blocking=name in reachable,
             )
         )
     return results

@@ -35,7 +35,9 @@ from review_pr.proc import command  # noqa: E402
 
 
 def _plan(args: argparse.Namespace) -> dict:
-    return config.load(Path(args.stages) if getattr(args, "stages", None) else None)
+    plan = config.load(Path(args.stages) if getattr(args, "stages", None) else None)
+    family = getattr(args, "family", None)
+    return config.override_family(plan, family) if family else plan
 
 
 def cmd_ready(args: argparse.Namespace) -> int:
@@ -378,6 +380,10 @@ def main() -> int:
     # flag is the shape that makes `review-pr ready --no-pond` fail for no good reason.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--stages", help="an alternative stage template")
+    common.add_argument(
+        "--family",
+        help="run every lens on one family the template declares (verifiers still differ)",
+    )
     common.add_argument(
         "--tier", choices=("container", "userns", "none"), help="override the sandbox tier"
     )
