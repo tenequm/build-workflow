@@ -67,7 +67,11 @@ def normalize(raw: object) -> list[dict[str, Any]]:
         kind = entry.get("kind")
         if kind not in KINDS:
             raise Park(f"claim kind must be one of {KINDS}")
-        expect = entry.get("expect", "exit_zero")
+        # An explicit null means "no expectation stated" (the brief allows run: null
+        # claims and says nothing about expect there), so it takes the default too.
+        expect = entry.get("expect")
+        if expect is None:
+            expect = "exit_zero"
         if expect not in EXPECTATIONS:
             raise Park(f"claim expect must be one of {EXPECTATIONS}")
         quote = entry.get("quote")
@@ -101,7 +105,14 @@ def load(path: Path) -> list[dict[str, Any]]:
         raise Park(f"unreadable claims report {path.name}: {exc}") from exc
 
 
-NOT_EXECUTABLE = re.compile(r"command not found|No such file or directory|not recognized", re.I)
+# The network signatures are measured (2026-09-11, sandboxed `uv run` against a
+# blocked egress): dependency download failures kill the command before the claimed
+# check ever runs, which is environment, not the author disagreeing with reality.
+NOT_EXECUTABLE = re.compile(
+    r"command not found|No such file or directory|not recognized"
+    r"|Network is unreachable|Failed to download|Temporary failure in name resolution",
+    re.I,
+)
 
 
 def _executable(result: dict[str, Any]) -> bool:

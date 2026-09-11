@@ -469,10 +469,48 @@ class TestClaims:
     def test_a_claim_report_is_validated_at_the_boundary(self):
         with pytest.raises(Park, match="kind must be"):
             claims.normalize({"claims": [{"quote": "x", "kind": "vibes"}]})
+        with pytest.raises(Park, match="expect must be"):
+            claims.normalize(
+                {"claims": [{"quote": "x", "kind": "command", "run": "x", "expect": "hoping"}]}
+            )
         with pytest.raises(Park, match="must quote the body"):
             claims.normalize({"claims": [{"kind": "command", "run": "x"}]})
         with pytest.raises(Park, match="not a list"):
             claims.normalize({"claims": "everything passes"})
+
+    def test_an_explicit_null_expect_takes_the_default(self):
+        """Measured 2026-09-11 on the milestone run: the extractor filled every schema
+        field, so its run-less number claims carried expect: null - and the boundary
+        parked the whole run over a field nothing downstream could execute."""
+        rows = claims.normalize(
+            {
+                "claims": [
+                    {"quote": "four failures fixed", "kind": "number", "run": None, "expect": None},
+                    {"quote": "$ x passes", "kind": "command", "run": "x", "expect": None},
+                ]
+            }
+        )
+        assert [row["expect"] for row in rows] == ["exit_zero", "exit_zero"]
+
+    def test_a_blocked_network_refutes_nothing(self, tmp_path):
+        """Measured 2026-09-11: sandboxed `uv run` dies downloading dependencies before
+        the claimed check runs; that exit is environment, not the author over-claiming."""
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        rows = [
+            {
+                "id": "c1",
+                "quote": "tests pass",
+                "kind": "command",
+                "run": "sh -c 'echo Network is unreachable >&2; exit 2'",
+                "expect": "exit_zero",
+                "contains": None,
+                "claimed_output": None,
+            }
+        ]
+        result = claims.check(rows, {"tree": str(tree)}, tier="none")
+        assert result["mismatched"] == 0 and result["unchecked"] == 1
+        assert result["claims"][0]["matched"] is None
 
     def test_a_body_whose_evidence_does_not_reproduce_is_a_finding(self, tmp_path):
         tree = tmp_path / "tree"
