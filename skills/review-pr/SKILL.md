@@ -27,8 +27,8 @@ are the only place `gh` runs.
 
 ## Invocation
 
-From a checkout of the target repository (clone it under `~/pjv/<owner>/<repo>`
-if needed), with the BASE commit of the pull request checked out:
+In a THROWAWAY checkout of the target repository with the BASE commit of the
+pull request checked out, and with no remote on it:
 
     cd <checkout>
     printf '.bernstein-pr.diff\n.bernstein-pr.md\n' >> .git/info/exclude
@@ -36,6 +36,7 @@ if needed), with the BASE commit of the pull request checked out:
     gh pr view <N> --json title,body --template '# {{.title}}
 
     {{.body}}' > .bernstein-pr.md
+    git remote remove origin          # after the two gh reads, before the engine
     shims=$(mktemp -d)
     command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -nc -na "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
     command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --strict-mcp-config --setting-sources user "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
@@ -57,6 +58,14 @@ Notes that cost time to learn:
 - The two `.bernstein-pr.*` files are untracked, and agents work in worktrees
   cut from the base commit where untracked files are invisible; the seed's
   `worktree_setup.copy_files` is what carries them in.
+- The remote is removed because the engine pushes on its own: on every agent
+  merge it runs `git push origin`, and on salvage it pushes the
+  `salvage/<session>` branch. That is the engine's build workflow leaking into
+  a review, and against a reviewed repository it is a write attempt at someone
+  else's project. A checkout with no remote has nowhere to push; the absence of
+  a credential is not a substitute, because it fails by luck rather than by
+  design. Use a throwaway checkout so a long-lived clone under `~/pjv/` keeps
+  its remote.
 - An aborted `bernstein run` is not dead: the orchestrator double-forks away
   from the CLI and keeps spawning workers after it exits. To stop a run early,
   scan `/proc/*/cwd` for processes inside the checkout, TERM them, then KILL

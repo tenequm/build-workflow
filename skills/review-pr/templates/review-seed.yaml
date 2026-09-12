@@ -1,4 +1,5 @@
-# /review-pr path A seed: stock bernstein over the local pi lane.
+# /review-pr path A seed: stock bernstein, one subscription manager over free
+# local pi lenses.
 # The goal text arrives via --goal (see SKILL.md); this file never carries it.
 # The goal line below is a parser-required placeholder - the orchestrator
 # re-parses this file for adapter config and refuses a seed without a goal
@@ -19,16 +20,24 @@ internal_llm_provider: none
 # orchestrator keeps it instead of falling back to the default registry.
 catalogs: []
 
-# Local LiteLLM gateway (~/.pi/agent/models.json): $0, no rate limits, prompts
-# never leave the machine. qwen3.8-flash-next leads the local set on
-# instruction-following and tool-use evals; qwen3.8-27b-nvfp4 is the dense
-# fallback. Subscription quality mix if a run warrants it: claude-sonnet-5
-# manager with agy gemini-3.7-flash-medium workers.
+# The lenses run on the local LiteLLM gateway (~/.pi/agent/models.json): $0, no
+# rate limits, prompts never leave the machine. qwen3.8-flash-next leads the
+# local set on instruction-following and tool-use evals; qwen3.8-27b-nvfp4 is
+# the dense fallback.
 # The pi adapter drops `effort:` silently; thinking level rides the model id
 # suffix instead (qwen3.8's own default is xhigh, which measurably hurts
 # tool-call accuracy and can return empty completions - pin medium).
+#
+# The manager is the one role the local model cannot hold. Measured 2026-09-12:
+# a 53 KB prompt on qwen3.8-flash-next:medium answered in 100s and ignored the
+# single explicit instruction it carried, and four manager agents in a row spent
+# 16 minutes each without creating one task - the run failed 36 planning-task
+# attempts and produced nothing. The manager's prompt is larger than that probe
+# and its job is exact tool discipline (curl POSTs against the task server),
+# which is above the local floor. A lens prompt is smaller and its job is
+# reading, which is not. So one subscription-backed manager drives free workers.
 role_model_policy:
-  manager:  { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
+  manager:  { cli: claude, model: claude-sonnet-5 }
   reviewer: { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
   security: { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
   qa:       { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
@@ -49,6 +58,15 @@ worktree_setup:
 tuning:
   orchestrator:
     max_agent_runtime_s: 2400
+    # A pi agent writes nothing to a redirected stdout until its turn ends, so
+    # an agent that is alive and working is indistinguishable from a hung one
+    # for as long as that turn runs. The stale-claim reaper defaults to 900s and
+    # fails the task under a live agent at that mark; on 2026-09-12 that reaped
+    # four healthy managers in a row and quarantined the only task in the run.
+    # It is raised to the same floor as the rest, and the engine's own ordering
+    # is kept: stale-claim fires first, and still inside the CLI's 3600s wait.
+    stale_claim_timeout_s: 2400
+    stalled_run_grace_s: 3000
   agent:
     heartbeat_stale_s: 2400
     escalation_sigterm_s: 2400

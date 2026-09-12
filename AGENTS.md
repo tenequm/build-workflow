@@ -32,12 +32,14 @@ the target repository, then reads back `review-report.md`. The skill ships no Py
 
 The fence is public repositories and this repository's eval corpus only, with no
 GitHub token in play: the two `gh` commands that fetch the diff and the pull request
-body run before the engine starts, and no model session is ever handed a token. Two
-lanes exist. The local-first lane routes every role through the `pi` CLI against a
-local LiteLLM gateway - `litellm/qwen3.8-flash-next`, `litellm/qwen3.8-27b-nvfp4`,
-`litellm/qwen3.6-35b-a3b-nvfp4` - which costs nothing, has no rate limits, and keeps
-prompts on the machine. The quality lane is subscription-backed: a `claude-sonnet-5`
-manager over `agy gemini-3.7-flash-medium` workers. The other load-bearing rule is
+body run before the engine starts, and no model session is ever handed a token. The
+lane is mixed, and the split is a measured capability floor rather than a budget
+choice: the five lenses run through the `pi` CLI against a local LiteLLM gateway
+(`litellm/qwen3.8-flash-next`, `litellm/qwen3.8-27b-nvfp4`,
+`litellm/qwen3.6-35b-a3b-nvfp4`) at no cost and with prompts never leaving the
+machine, while the manager runs on subscription-backed `claude-sonnet-5` because the
+local model could not hold that role - it spent four 16-minute turns without creating
+a single task, and ignored an explicit instruction outright at a 53 KB prompt. The other load-bearing rule is
 that any validation, lint or test command a reviewing agent runs is read from the
 BASE branch and never from the pull request's own tree. That rule, and never-commit,
 live as constraints in `review-seed.yaml` and in the goal text - they survive only
