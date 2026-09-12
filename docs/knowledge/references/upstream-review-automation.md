@@ -5,7 +5,7 @@ description: Upstream review is five CI layers, not a human workflow - a quorum 
 tags: [bernstein, upstream, review, governance, ci]
 status: stable
 stale_after: "2026-12-11T00:00:00Z"
-generated: { by: claude-code/fable-5, at: "2026-09-11T00:00:00Z" }
+generated: { by: claude-code/fable-5, at: "2026-09-11T21:20:00Z" }
 sources:
   - id: prreview
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/main/.github/workflows/bernstein-pr-review.yml
@@ -83,13 +83,17 @@ this round, in e4b88a001").[^pr5737] External reviewers batch similarly
 
 # Why this matters to this repo
 
-The `/review-pr` plan (docs/plans/2609-11-review-v1.md) targets exactly
-the gap this stack leaves: nothing in it verifies what an executor
-actually did - the quorum script checks who approved, the deep review is
-advisory prose, and PR-body claims become permanent history unexecuted
-(squash-merge). A review whose findings carry executable rubrics and
-whose claims are re-run competes on the one axis upstream has not
-covered. Operationally: expect review requests from the CODEOWNERS `*`
+`/review-pr` (docs/plans/2609-11-review-v3.md, path A: a stock bernstein
+run over a free-text goal) targets exactly the gap this stack leaves:
+nothing in it verifies what an executor actually did - the quorum script
+checks who approved, the deep review is advisory prose, and PR-body
+claims become permanent history unexecuted (squash-merge). The goal text
+requires each finding to quote its evidence and, where possible, state
+the mechanical check that settles it, which competes on the one axis
+upstream has not covered. (An earlier design executed rubrics and re-ran claims
+itself; it was retired - see
+/references/retired-driver-owned-review-design.md.)
+Operationally: expect review requests from the CODEOWNERS `*`
 line on every PR, expect the fragment/hygiene bots to act before any
 human, and read a `quorum` failure table as the charter speaking, not a
 flaky check.

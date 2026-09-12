@@ -19,11 +19,6 @@ engine installation or make paid model calls.
 | ACP judge ceremony | Real `acpx` talks through the budget/model/turn bridge to a recording ACP server, and the bridgeless transport is checked for the turn, tool and empty-MCP bounds it asks acpx for instead. Separate ceremony tests stage real Git trees, bind the review range, reject application/ref mutation, reap processes and recover immutable receipts. No Claude provider invocation is used by the suite. |
 | Evidence preservation | Native archives survive more than twenty later journals. Delivery uses native merge events or exact scored second-parent ancestry. Paired WAL claims are sealed only after proof. Close tests verify archive hashes, portable Git objects and refusal on code drift. |
 | Independent skills | Vendored helper and template comparisons run locally, and `scripts/skill_isolation.py` greps every skill for a reference to a sibling's directory. Each skill has its own scripts and templates; runtime code never reads a sibling skill. Hook capture/restoration is checked and refuses unrelated configuration changes. |
-| /review-pr deterministic spine | `test_review_contract.py` pins the findings schema (an unexecutable rubric is refused, a rubricless finding is capped at a suggestion, a credential is named and never reproduced), the diff index, and the verdict table's every row. `test_review_stage0.py` runs the house rules against real checkouts, including a pull request that edits the validation command and a test that passes with its change reverted. |
-| /review-pr anchors | A finding outside a hunk, one on a file absent from the diff and one on a deleted file are all caught before a payload exists, because GitHub rejects a whole review atomically on one bad anchor. |
-| /review-pr execution | `test_review_execution.py` executes rather than mocks: each rubric kind, a hunk-scoped revert, the gold gate's three outcomes, the cold-cache gate, and a suggestion applied and gated for real. It also asserts the sandbox blocks network and that the credential allowlist keeps a token out of an untrusted command. |
-| /review-pr sessions | `test_review_sessions.py` drives real `acpx` against a recording ACP agent: a witnessed report succeeds, a clean exit with no report is retried once and then recorded as failed, a report that does not witness itself fails, a session that writes outside its allowlist parks the stage, an over-budget session parks, and a batch overlaps rather than queues. No provider is called. |
-| /review-pr end to end | `test_review_fixture.py` materialises the seeded fixture and runs stages 0 to 4, asserting every planted defect, the injection reported without being obeyed, the re-executed claim mismatch, the dual-family agreement counts, the proven and the downgraded suggestion, and one append-only ledger row per finding. |
 
 The source checkout used for real builds needs four prerequisite patches:
 plugin-aware seed parsing, an effective semantic-cache disable switch,
@@ -53,13 +48,14 @@ agent wandered off its brief, wrote its report outside the declared path and
 exited without committing - so executor model capability, not sandboxing, is
 what that lane needs.
 
-`/review-pr` is covered by the recording-agent layer only. Its model stages run as
-driver-owned ACP sessions rather than engine runs, so no phase boundary, scorer or
-merge contract applies to it; what a recording agent cannot reach is whether a real
-model writes a rubric worth executing, which is what the precision ledger measures
-over real pull requests. The two acceptance items that need paid runs - the #5737
-ground-truth replay and a real weekly batch - are recorded as not yet run in
-[the plan](plans/2609-11-review-v1.md).
+`/review-pr` has no acceptance row here, because it owns no code to accept: it hands
+a goal and a seed to a stock `bernstein run` and the engine's own contracts apply.
+What it is measured against instead is the frozen corpus in `fixtures/review-pr-cases/`
+- pull requests with known defects, scored by `harness.py` (`just eval`) on recovered,
+missed and misfiled findings, with one appended row per run in
+`docs/review-ledger/evals.jsonl`. That ledger, not a test suite, is the regression
+signal for a change to the goal text or the seed; see
+[the plan](plans/2609-11-review-v3.md).
 
 The driver parks uncertain effects; it does not promise automatic recovery from
 every interrupted filesystem write. Tests inject interruption at durable-effect

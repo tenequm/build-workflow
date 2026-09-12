@@ -1,11 +1,11 @@
 ---
 type: Finding
 title: On a non-Claude ACP agent, acpx applies --model only if the agent advertises its models
-description: acpx refuses a session with "Cannot apply --model" unless a non-Claude ACP agent advertises models in its session/new result; a configOptions entry for the same thing is not accepted by acpx 0.15.1, so any locally built ACP agent - a recording agent in a test, or a wrapper around a real server - must return the legacy models metadata or every acp-transport session dies before its first turn.
-tags: [acpx, acp, review-pr, testing]
+description: acpx refuses a session with "Cannot apply --model" unless a non-Claude ACP agent advertises models in its session/new result; a configOptions entry for the same thing is not accepted by acpx 0.15.1, so any locally built ACP agent - a stub in a test, or a wrapper around a real server - must return the legacy models metadata or every session on /build-run's acp transport dies before its first turn.
+tags: [acpx, acp, build-run, testing]
 status: stable
-stale_after: "2026-03-11T00:00:00Z"
-generated: { by: claude-code/opus-5, at: "2026-09-11T03:40:00Z" }
+stale_after: "2027-03-11T00:00:00Z"
+generated: { by: claude-code/opus-5, at: "2026-09-11T19:40:00Z" }
 sources:
   - id: measured
     resource: "Measured 2026-09-11 against acpx 0.15.1 on this workspace: three candidate advertisement shapes driven through a stub ACP agent"
@@ -13,12 +13,15 @@ sources:
   - id: acpxdoc
     resource: "acpx --skill show acpx, Prompting flags and Model selection sections (acpx 0.15.1)"
     title: "--model <id>: non-Claude agents must advertise a model config option or legacy `models` metadata"
-  - id: agent
-    resource: ../../../fixtures/review-pr/recording_agent.py
-    title: The recording agent that has to satisfy this, and the comment recording why
   - id: acp
     resource: ../../../skills/build-run/scripts/operator_driver/acp.py
-    title: judge_argv - the acp transport passes --model to acpx rather than through the Claude bridge
+    title: "judge_argv (acp.py:26); the acp transport passes --model to acpx at acp.py:60-61 rather than through the Claude bridge"
+  - id: judgetest
+    resource: ../../../bernstein_operator/tests/test_acp_judge.py
+    title: "test_acp_judge.py:69 - the acp-transport argv built for an agy adapter (/bin/agy-acp)"
+  - id: ceremony
+    resource: ../../../skills/build-run/SKILL.md
+    title: "Judge and fix ceremony - on the acp transport the model is asked for through acpx; malformed or missing output means one fresh ceremony, then park"
 ---
 
 # What happens
@@ -33,11 +36,11 @@ advertised that model, and an agent that has not fails the whole session after
     support through a session config option or legacy models metadata, and the adapter
     does not support a startup model flag.
 
-The session exits 1 having produced nothing. Under a workflow that enforces a
-report-witness law this surfaces honestly - a missing report, retried once, then
-recorded - but the failure text lives in the ACP transcript, not in the workflow's own
-error, so the symptom presented is "this family never produces a report" for every
-`acp`-transport lens at once.
+The session exits 1 having produced nothing. To the judge ceremony that launched it this
+presents as a missing report, which buys one fresh ceremony and then a park[^ceremony] -
+the failure text lives in the ACP transcript, not in the driver's own error, so the
+symptom presented is "this family never produces output" for every `acp`-transport
+session at once.
 
 # What acpx accepts
 
@@ -55,11 +58,12 @@ so the config-option path is presumably for a shape this stub did not guess; the
 
 # Who this bites
 
-Not a real Codex or Antigravity server - both advertise. It bites anything locally
-built that sits on the `acp` transport: a recording agent standing in for a provider in
-a test, a wrapper script around a signed server, or a new family added to a stage
-template. The fix is to return the `models` object from `session/new` and to answer
-`session/set_model` and `session/set_config_option` with `{}`.[^agent]
+Not a real Codex or Antigravity server - both advertise, and the agy judge reached
+through the `acp` transport[^judgetest] works for that reason. It bites anything locally
+built that sits on that transport: a stub agent standing in for a provider in a test, a
+wrapper script around a signed server, or a new judge family added to the ceremony spec.
+The fix is to return the `models` object from `session/new` and to answer
+`session/set_model` and `session/set_config_option` with `{}`.
 
 Marked with a review date because it is a property of an external tool at a version: a
 later acpx may accept the config-option shape, and the table above should be re-measured

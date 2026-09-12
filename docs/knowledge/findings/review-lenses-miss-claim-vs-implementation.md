@@ -16,8 +16,8 @@ sources:
     resource: ../../plans/2609-11-review-v1.md
     title: The /review-pr plan, whose acceptance bar was to recover the correctness findings and the applied design findings
   - id: lenses
-    resource: ../../../skills/review-pr/templates/
-    title: The four vendored lens briefs
+    resource: ../../../skills/review-pr/templates/review-goal.md
+    title: The review goal text, which is where the lens doctrine measured here now lives
 ---
 
 # What was measured

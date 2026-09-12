@@ -7,9 +7,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills/build-run/scripts"))
-# After build-run, deliberately: both skills vendor `operator_driver`, the copies are
-# byte-identical (sync-skill-code --check enforces it), and build-run's is the superset.
-sys.path.append(str(ROOT / "skills/review-pr/scripts"))
 
 from test_delivery import delivered  # noqa: F401 -- register native merge fixture
 from test_plan_compiler import authored  # noqa: F401 -- register complete plan fixture

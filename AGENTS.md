@@ -22,37 +22,37 @@ or slash command and never reads a file from a sibling skill's directory. Each s
 install the skills one at a time, and a skill that reaches outside itself
 breaks for them. `scripts/skill_isolation.py` enforces this (pre-commit); shared
 Python is vendored by `bernstein_operator/scripts/sync-skill-code.py`, whose
-`--check` requires the copies to stay byte-identical.
+`--check` requires the copies to stay byte-identical (build-plan is the only skill
+that vendors any).
 
-`/review-pr` reviews someone else's pull request and runs no task engine: its model
-stages are driver-owned one-shot ACP sessions, for the reasons in
-[the decision record](docs/knowledge/decisions/review-sessions-are-driver-owned-ceremonies.md).
-Two rules there are load-bearing and easy to weaken by accident - the validation
-command is read from the BASE branch and never from the pull request tree, and no
-model session ever receives a credential or a GitHub token.
+`/review-pr` reviews someone else's pull request and owns no orchestrator: it hands
+one free-text review goal (`skills/review-pr/templates/review-goal.md`) and a model
+seed (`templates/review-seed.yaml`) to a stock `bernstein run` inside a checkout of
+the target repository, then reads back `review-report.md`. The skill ships no Python.
 
-Three rules apply to anything added to it, each learned by being burned:
+The fence is public repositories and this repository's eval corpus only, with no
+GitHub token in play: the two `gh` commands that fetch the diff and the pull request
+body run before the engine starts, and no model session is ever handed a token. Two
+lanes exist. The local-first lane routes every role through the `pi` CLI against a
+local LiteLLM gateway - `litellm/qwen3.8-flash-next`, `litellm/qwen3.8-27b-nvfp4`,
+`litellm/qwen3.6-35b-a3b-nvfp4` - which costs nothing, has no rate limits, and keeps
+prompts on the machine. The quality lane is subscription-backed: a `claude-sonnet-5`
+manager over `agy gemini-3.7-flash-medium` workers. The other load-bearing rule is
+that any validation, lint or test command a reviewing agent runs is read from the
+BASE branch and never from the pull request's own tree. That rule, and never-commit,
+live as constraints in `review-seed.yaml` and in the goal text - they survive only
+there, so weaken them there or not at all.
 
-- A new boundary that parses model output is strict only on fields a later stage reads
-  to decide something; a purely descriptive field is dropped and recorded, never fatal
-  ([why](docs/knowledge/decisions/strict-on-deciding-fields-tolerant-on-describing-ones.md)).
-- A new executable check runs a control leg first and reports inconclusive when the
-  command could not run. An exit code alone is an observation, not a finding
-  ([why](docs/knowledge/findings/a-check-that-cannot-run-refutes-nothing.md)).
-- The fixture (`fixtures/review-pr/setup.py --recorded`) runs the whole pipeline over
-  the real acpx transport for no provider spend, but it stands in for a model's
-  judgment and NOT for its obedience: a recording agent derives its own output path and
-  never reads the brief, so nothing a brief says about where to write, what to avoid or
-  which of several names to pick is covered by it
-  ([why](docs/knowledge/findings/recorded-agents-hide-brief-defects.md)). Put that class
-  of constraint in code that runs before the session.
+Two rules apply to anything added to it:
 
 - Cost figures are observability, never control flow: no new bound may read a dollar
-  amount, and every dollar figure is derived from pond after the run and labeled a
-  floor ([why](docs/knowledge/decisions/cost-is-observability-never-control-flow.md)).
-- Session capture goes through the run's own pond store with the pinned binary; the
-  host corpus is only ever a fold target
-  ([why](docs/knowledge/decisions/per-run-pond-store-for-capture.md)).
+  amount. The dollar-reading ceilings inside /build-run's judge ceremony are the
+  deliberate, non-extensible exception
+  ([why](docs/knowledge/decisions/cost-is-observability-never-control-flow.md)).
+- A change to the goal text or the seed is proven against the frozen corpus in
+  `fixtures/review-pr-cases/` (`just eval`), scored on recovered, missed and misfiled
+  findings and appended as one row to `docs/review-ledger/evals.jsonl`. There is no
+  test suite for /review-pr; that ledger is the regression signal.
 
 A retro item closes only as a check, a template field, or a test - never as
 another skill sentence.

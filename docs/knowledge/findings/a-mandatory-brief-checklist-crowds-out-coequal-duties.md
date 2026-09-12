@@ -10,8 +10,8 @@ sources:
     resource: "Synthetic-corpus eval run of 2026-09-11 (ledger rows in docs/review-ledger/evals.jsonl): bar tier 6/6 found, floor tier 3/8"
     title: The run that measured both effects at once
   - id: lens
-    resource: ../../../skills/review-pr/templates/lens-implementation.md
-    title: The lens template carrying the two-phase audit
+    resource: ../../../skills/review-pr/templates/review-goal.md
+    title: The review goal carrying the two-phase authority audit, and the restatement of what stays coequal
 ---
 
 # What happened

@@ -81,13 +81,14 @@ lines of anti-sleep prompting failed, and the conclusion was structural -
 
 # What this bundle already holds against it
 
-[Review sessions as driver-owned ceremonies](/decisions/review-sessions-are-driver-owned-ceremonies.md)
-and [the phase boundary between engine runs](/decisions/phase-boundary-between-engine-runs.md)
-are applications of principles 1 and 6.
+[The phase boundary between engine runs](/decisions/phase-boundary-between-engine-runs.md)
+is an application of principles 1 and 6.
 [Engine bookkeeping is not delivery proof](/findings/engine-bookkeeping-is-not-delivery-proof.md)
-is principle 6 learned independently. Where /review-pr still falls short of
-principles 3 and 4 - stage products held in one process's memory, resume
-meaning re-execution - is an open gap, not a disagreement.
+is principle 6 learned independently. /review-pr used to be the bundle's
+counter-example on principles 3 and 4 - stage products held in one process's
+memory, resume meaning re-execution - and that gap closed by deletion rather than
+by repair: it now runs on this engine like everything else
+([what it was](/references/retired-driver-owned-review-design.md)).
 
 [^why]: WHY_DETERMINISTIC - the rag_challenge evidence and the boundary
 [^adr11]: ADR-011, model drafts / human signs
