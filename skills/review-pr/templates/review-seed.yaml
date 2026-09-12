@@ -1,31 +1,60 @@
-# /review-pr path A seed: stock bernstein over subscription-backed CLIs.
+# /review-pr path A seed: stock bernstein over the local pi lane.
 # The goal text arrives via --goal (see SKILL.md); this file never carries it.
 # The goal line below is a parser-required placeholder - the orchestrator
 # re-parses this file for adapter config and refuses a seed without a goal
 # string, while the CLI --goal text is what actually runs.
 goal: "Review the pull request per the goal text passed via --goal."
-cli: agy
-model: gemini-3.7-flash-medium
+cli: pi
+model: litellm/qwen3.8-flash-next:medium
 max_agents: 4
 budget: $3.00
 internal_llm_provider: none
 
-# The manager decomposes the goal and drives the task server over curl, which
-# punishes loose tool discipline; the three lens roles are rubric-driven bulk
-# reading, which is what flash is for. Both lanes are subscription-backed, so
-# a run spends quota, never dollars - `agy` reports its own remaining quota.
+# Bernstein enables a third-party persona catalogue by default
+# (CatalogRegistry.default -> github.com/msitarzewski/agency-agents, cloned to
+# ~/.bernstein/catalogs/agency) and a catalogue persona OUTRANKS the built-in
+# role prompt. Measured here: role `reviewer` was handed a UI design critic and
+# role `qa` a GIS data engineer, so every lens prompt rode under an unrelated
+# personality that differs per host. An empty list is not None, so the
+# orchestrator keeps it instead of falling back to the default registry.
+catalogs: []
+
+# Local LiteLLM gateway (~/.pi/agent/models.json): $0, no rate limits, prompts
+# never leave the machine. qwen3.8-flash-next leads the local set on
+# instruction-following and tool-use evals; qwen3.8-27b-nvfp4 is the dense
+# fallback. Subscription quality mix if a run warrants it: claude-sonnet-5
+# manager with agy gemini-3.7-flash-medium workers.
+# The pi adapter drops `effort:` silently; thinking level rides the model id
+# suffix instead (qwen3.8's own default is xhigh, which measurably hurts
+# tool-call accuracy and can return empty completions - pin medium).
 role_model_policy:
-  manager:  { cli: claude, model: claude-sonnet-5, effort: high }
-  reviewer: { cli: agy, model: gemini-3.7-flash-medium, effort: medium }
-  security: { cli: agy, model: gemini-3.7-flash-medium, effort: medium }
-  qa:       { cli: agy, model: gemini-3.7-flash-medium, effort: medium }
+  manager:  { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
+  reviewer: { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
+  security: { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
+  qa:       { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
 
 # The PR diff and text sit untracked at the repo root; agents work in git
 # worktrees cut from the base commit, where untracked files are invisible.
+# The invocation adds both names to .git/info/exclude so agent commits skip
+# them and merges back stay clean.
 worktree_setup:
   copy_files:
     - .bernstein-pr.diff
     - .bernstein-pr.md
+
+# pi prints nothing to a redirected stdout until the turn ends, and bernstein's
+# heartbeat advances only when the agent log grows - untuned, a quiet pi turn
+# is SIGTERMed at ~120s. These floors keep long review turns alive; the
+# harness/skill timeout stays the real backstop.
+tuning:
+  orchestrator:
+    max_agent_runtime_s: 2400
+  agent:
+    heartbeat_stale_s: 2400
+    escalation_sigterm_s: 2400
+    escalation_sigkill_s: 2700
+    liveness_grace_s: 2400
+    liveness_suppression_cap_s: 2700
 
 constraints:
   - "Never commit and never push."
