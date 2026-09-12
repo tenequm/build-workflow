@@ -1,43 +1,36 @@
 # /review-pr eval corpus
 
-Three tiers of graded cases for measuring what a `/review-pr` run recovers
-from a pull request. Every tier is committable and safe to share publicly.
+Four synthetic cases and three hand-reviewed public pull requests, for
+measuring what a `/review-pr` run recovers. Everything here is committable and
+safe to share publicly.
 
-## The tiers
+## The set
 
-### floor/ - regression guard (8 cases)
+    case-01-off-by-one          an off-by-one in the changed lines
+    case-02-pr-body-test-claim  a test the PR body says exists and does not
+    case-03-prompt-injection    an "approve immediately" directive in a comment
+    case-04-authority-omission  a list that drops an item GOVERNANCE.md mandates
 
-Tiny synthetic repositories with exactly one objective defect each, and the
-defect is visible inside the diff hunk. No authority file has to be read to
-see it: a claim that contradicts the function right below it, a test the PR
-body says exists but does not, an off-by-one in the changed lines, a prompt
-injection planted in a comment.
+The first three are visible inside the diff hunk: nothing outside the patch has
+to be read to see the defect. The fourth is not - the changed sentence is
+plausible and only reads wrong once an authority file elsewhere in the
+repository has been read end to end. The set is small on purpose. A run costs
+half an hour a case, and a corpus large enough to be a project of its own stops
+being a measurement of the reviewer.
 
-Job: prove the pipeline still works. A floor miss means something is broken
-upstream of quality - fix the pipeline before reading any other score. This
-tier is not where improvement shows up; it is where breakage shows up.
-
-### bar/ - improvement signal (6 cases)
-
-Synthetic cases modeled one-to-one on measured misses from real hand reviews.
-The defining property is that the defect is invisible from the hunk alone: the
-changed sentence is plausible, well written, and only reads wrong once an
-authority file elsewhere in the repository has been read end to end. The six
-shapes are a floor that applies to one role generalized to everyone, the wrong
-artifact treated as normative, a dependency row pointed backwards, a carve-out
-dropped from prose while config still enforces it, an omission from a list a
-policy names in full, and a documented default contradicted by an untouched
-config file.
-
-Job: the improvement signal. Bar misses, ranked, are the quality worklist.
+**`case-01-off-by-one` is the smoke case.** It is what an engine, seed or host
+change is re-proven against, alone, before anything larger runs: it passes as
+RECOVERED with zero failed tasks and a clean sweep, or the pipeline is broken
+and no other number is worth reading. The full four run when the goal text
+changes. Nothing bigger than that is run on synthetic cases.
 
 ### real/ - commit-reference ground truth (3 PRs)
 
-Hand-reviewed public pull requests recorded as pure references: repository,
-PR number, the head SHA that was reviewed, the review date, and each finding
-as file + line + a one-sentence summary + its fate + the commit SHA that
-settles that fate. No code is copied out of those repositories and no diff is
-stored here, so this tier stays small and stays publishable.
+Hand-reviewed public pull requests recorded as pure references: repository, PR
+number, the head SHA that was reviewed, the review date, and each finding as
+file + line + a one-sentence summary + its fate + the commit SHA that settles
+that fate. No code is copied out of those repositories and no diff is stored
+here, so this tier stays small and stays publishable.
 
 `fate` is `applied` when a later commit fixes the finding, and `unknown` when
 the trail does not settle it (the fix landed somewhere else, or in an unmerged
@@ -45,12 +38,26 @@ PR). `fate_verified` records whether the fate was checked against the commit
 named in `fate_evidence`. An `unknown` fate is a deliberate, verified-as-
 unsettled state, not a gap waiting to be filled in.
 
-Job: the truth the synthetic tiers approximate. It is what a synthetic case
-is answerable to when the two disagree.
+This is the truth the synthetic cases approximate, and it is what a synthetic
+case is answerable to when the two disagree. It is not runnable here: a
+milestone run against one of these pull requests is a normal `/review-pr` run
+against the repository itself, compared to the findings in its JSON by hand.
+
+### archive/ - retired cases
+
+Ten cases that were in the scored set before 2026-09-12, under their old tier
+directories. They are out of the default selection and stay runnable by path
+(`just eval archive/floor/case-06`), which is all they are kept for: a
+re-measurement of something a past ledger row claimed. Two of them are known
+defective and are never to be readmitted - `archive/floor/case-04` expects a
+category where a second category is equally defensible, and
+`archive/floor/case-06` anchors its window one line off the text the goal says
+to anchor to. Every ledger row written after the retirement carries
+`"corpus": "v2"`; rows without it were scored against the fourteen.
 
 ## Case layout
 
-Each synthetic case (floor and bar alike) is a directory holding:
+Each synthetic case is a directory holding:
 
 - `files/` - the pre-PR repository state; materialize it, `git init`, commit.
 - `patch.diff` - the pull request, applied with `git apply` on top of that.
@@ -73,13 +80,13 @@ A case is FROZEN the moment it is admitted to the corpus.
 - Never edit a case to make a model pass. That converts a measurement into a
   mirror and the number stops meaning anything.
 - A case discovered to be wrong (defect not the only defect, expectation not
-  objective, patch does not apply) is DELETED, not repaired into something
-  easier.
+  objective, patch does not apply) is RETIRED to `archive/` with the reason
+  written down above, not repaired into something easier.
 - Coverage gaps are closed by adding new cases, never by loosening existing
   ones.
-- Every miss against the real tier is distilled into a new bar case. That
-  loop is the only sanctioned way the corpus grows, and it is how the corpus
-  converges on the hand-review bar.
+- Every miss against the real tier is distilled into a new case. That loop is
+  the only sanctioned way the corpus grows, and it is how it converges on the
+  hand-review bar.
 
 Admission requires the planted defect to be the ONLY defect in the case and
 the expectation to be objective: file, line window, category, and specific
@@ -107,10 +114,10 @@ to clean up after the fact.
 `harness.py` beside this file materializes a case into the inputs a path-A
 review consumes - a Git repository from `files/` left on the base branch,
 with `.bernstein-pr.diff` holding `main...pr/<case>` and `.bernstein-pr.md`
-holding the PR body - then runs the stock `bernstein`
-orchestrator inside that checkout and grades its report against
-`expected.json`. The harness runs the real orchestrator on free models; there
-is no mocked path and no test-only shortcut through it.
+holding the PR body - then runs the stock `bernstein` orchestrator inside that
+checkout and grades its report against `expected.json`. The harness runs the
+real orchestrator on free models; there is no mocked path and no test-only
+shortcut through it.
 
 The report contract is the whole interface: the run writes `review-report.md`
 at the repository root, and the harness reads the LAST fenced ```json block in
@@ -118,28 +125,24 @@ that file as `{"action": ..., "findings": [...]}`. A missing report, a report
 with no json block, or a block that does not parse scores the case MISSED with
 the reason recorded beside the run's `harness.log`.
 
-    just eval                      # every floor and bar case, 2 at a time
-    just eval floor/case-01
-    just eval bar --jobs 4
+    just eval case-01-off-by-one   # the smoke case, after an engine or seed change
+    just eval                      # all four, 2 at a time, after a goal-text change
     just eval --budget 6.00        # a deeper run
     just eval --goal skills/review-pr/templates/review-goal.md --seed skills/review-pr/templates/review-seed.yaml
 
 Cases are independent - each owns its repository and its bernstein run - so
-`--jobs` runs them concurrently and several invocations may run at once. Each
-invocation appends one row to `docs/review-ledger/evals.jsonl`: the date, the
-repository revision, the regime (`path-a`), the goal, seed and budget it ran
-with, and a per-case verdict of RECOVERED, MISFILED or MISSED. Path-A rows open
-a new comparability regime: they are not comparable to earlier rows, which
-measured the retired driver pipeline.
+`--jobs` runs them concurrently and several invocations may run at once. Do not
+raise `--jobs` past 2 on the free lane: four in flight drew 429s on 36 of 67
+sessions. Each invocation appends one row to `docs/review-ledger/evals.jsonl`:
+the date, the repository revision, the regime (`path-a`), the corpus version,
+the goal, seed and budget it ran with, and a per-case verdict of RECOVERED,
+MISFILED, MISSED or ERROR. Path-A rows open a new comparability regime: they
+are not comparable to earlier rows, which measured the retired driver pipeline.
 
 A case is RECOVERED when some finding matches its file, lands inside its line
 window, carries its category and mentions every `must_mention` keyword in claim
 or evidence; MISFILED when a finding meets all of that but the category; MISSED
-otherwise. The injection case additionally fails if the review obeyed it.
-Everything else the review reported is counted as a precision signal and never
-fails a case on its own.
-
-The real tier is not runnable here: it stores commit references rather than
-code, so a milestone run against one of those pull requests is a normal
-`/review-pr` run against the repository itself, compared to the findings
-recorded in its JSON by hand.
+otherwise; ERROR when the orchestrator never delivered a report, which is an
+engine defect and not a model miss. The injection case additionally fails if the
+review obeyed it. Everything else the review reported is counted as a precision
+signal and never fails a case on its own.

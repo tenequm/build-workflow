@@ -3,13 +3,20 @@
 
     harness.py [CASE ...] [--jobs 2] [--goal <template>] [--seed <config>] [--budget 3.00]
 
-A case name is `floor/case-01`, a bare `case-01`, or a tier (`floor`, `bar`); with no
-argument every floor and bar case runs. Each case is materialised into the inputs the
+A case name is a case directory beside this file (`case-01-off-by-one`); with no argument
+every `case-*` directory runs, in name order. Each case is materialised into the inputs the
 path-A invocation consumes - a Git repository built from `files/` with the BASE branch
 checked out, `.bernstein-pr.diff` holding the pull request's diff and `.bernstein-pr.md`
 its body - and then reviewed by running the stock `bernstein` orchestrator in that
 checkout. There is no test-only path: what runs here is the same orchestrator, goal and
 seed that run against a real pull request.
+
+`case-01-off-by-one` is the smoke case by position: the one case a change to the engine,
+the seed or the host is re-proven against before anything larger is run. The full set is
+for a change to the goal text. Retired cases keep their contents under `archive/` and are
+still runnable by path (`archive/floor/case-06`); they are out of the scored set, and the
+ledger's `"corpus": "v2"` is what separates rows scored against this set from rows scored
+against the fourteen tiered cases that preceded it.
 
 Scoring is mechanical, per the plan: a finding recovers a case's planted defect when its
 file matches, its line falls inside the case's window, its category matches, and every
@@ -55,7 +62,6 @@ GOAL = ROOT / "skills/review-pr/templates/review-goal.md"
 SEED = ROOT / "skills/review-pr/templates/review-seed.yaml"
 BUDGET = 3.00
 LEDGER = ROOT / "docs/review-ledger/evals.jsonl"
-TIERS = ("floor", "bar")
 VERDICTS = ("RECOVERED", "MISFILED", "MISSED", "ERROR")
 REPORT = "review-report.md"
 WAIT_CEILING = 3600
@@ -107,27 +113,20 @@ WHITESPACE = re.compile(r"\s+")
 def cases(names: list[str]) -> list[Path]:
     """Resolve case arguments to case directories, in corpus order."""
     if not names:
-        return [
-            path for tier in TIERS for path in sorted((CORPUS / tier).iterdir()) if path.is_dir()
-        ]
+        return sorted(path for path in CORPUS.glob("case-*") if (path / "expected.json").is_file())
     found: list[Path] = []
     for name in names:
+        # A path reaches an archived case as readily as a live one; only the default
+        # selection is narrowed to the scored set.
         candidate = CORPUS / name
-        if candidate.is_dir() and (candidate / "expected.json").is_file():
-            found.append(candidate)
-            continue
-        if candidate.is_dir():
-            found.extend(path for path in sorted(candidate.iterdir()) if path.is_dir())
-            continue
-        matches = [CORPUS / tier / name for tier in TIERS if (CORPUS / tier / name).is_dir()]
-        if not matches:
+        if not (candidate / "expected.json").is_file():
             raise SystemExit(f"no such case: {name}")
-        found.extend(matches)
+        found.append(candidate)
     return found
 
 
 def label(case: Path) -> str:
-    return f"{case.parent.name}/{case.name}"
+    return case.name
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -646,7 +645,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("cases", nargs="*", help="case names, tier names, or nothing for all")
+    parser.add_argument("cases", nargs="*", help="case directory names, or nothing for all")
     parser.add_argument("--jobs", type=int, default=2, help="cases reviewed concurrently")
     parser.add_argument("--goal", default=str(GOAL), help="the review goal text handed to --goal")
     parser.add_argument("--seed", default=str(SEED), help="the bernstein seed config")
@@ -669,10 +668,7 @@ def main() -> int:
     print(f"budget:    ${options.budget:.2f} per case")
     print(f"workspaces: {work}\n")
     with ThreadPoolExecutor(max_workers=max(1, options.jobs)) as pool:
-        futures = {
-            pool.submit(review, case, work / case.parent.name / case.name, options): case
-            for case in selected
-        }
+        futures = {pool.submit(review, case, work / case.name, options): case for case in selected}
         rows = []
         # As they finish, not as they were submitted: on a parallel run the operator
         # wants the first result at the first result, not after the slowest case.
@@ -680,7 +676,7 @@ def main() -> int:
             rows.append(future.result())
             row = rows[-1]
             print(
-                f"{row['verdict']:10} {row['case']:16} {row.get('wall_s', 0):7.1f}s "
+                f"{row['verdict']:10} {row['case']:28} {row.get('wall_s', 0):7.1f}s "
                 f"{row.get('extra_findings', 0)} extra"
                 + (f"  {row['error']}" if row.get("error") else "")
             )
@@ -699,6 +695,7 @@ def main() -> int:
         "rev": git(ROOT, "rev-parse", "HEAD"),
         "dirty": bool(git(ROOT, "status", "--porcelain")),
         "regime": "path-a",
+        "corpus": "v2",
         "config": {
             "goal": config_id(options.goal),
             "seed": config_id(options.seed),

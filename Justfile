@@ -14,9 +14,10 @@ check:
     just --justfile bernstein_operator/Justfile check
     echo "check: clean"
 
-# Score the /review-pr eval corpus. No argument runs every floor and bar case through a
-# stock bernstein review, two at a time; pass case or tier names and any harness flag
-# (--jobs N, --goal <template>, --seed <config>, --budget N) to narrow or re-route it.
+# Score the /review-pr eval corpus. No argument runs all four cases through a stock
+# bernstein review, two at a time; `just eval case-01-off-by-one` is the smoke case run
+# after an engine or seed change. Any harness flag (--jobs N, --goal <template>,
+# --seed <config>, --budget N) passes straight through.
 eval *ARGS:
     python3 fixtures/review-pr-cases/harness.py {{ARGS}}
 

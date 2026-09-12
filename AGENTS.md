@@ -49,10 +49,13 @@ Two rules apply to anything added to it:
   amount. The dollar-reading ceilings inside /build-run's judge ceremony are the
   deliberate, non-extensible exception
   ([why](docs/knowledge/decisions/cost-is-observability-never-control-flow.md)).
-- A change to the goal text or the seed is proven against the frozen corpus in
-  `fixtures/review-pr-cases/` (`just eval`), scored on recovered, missed and misfiled
-  findings and appended as one row to `docs/review-ledger/evals.jsonl`. There is no
-  test suite for /review-pr; that ledger is the regression signal.
+- A change is proven against the frozen corpus in `fixtures/review-pr-cases/` before it
+  is believed, and the size of the proof follows what changed: an engine, seed or host
+  change re-runs the smoke case alone (`just eval case-01-off-by-one`, ~30 min, passes
+  only as RECOVERED with zero failed tasks and a clean sweep); a change to the goal text
+  runs all four (`just eval`). Each invocation appends one row to
+  `docs/review-ledger/evals.jsonl`. There is no test suite for /review-pr; that ledger is
+  the regression signal.
 
 A retro item closes only as a check, a template field, or a test - never as
 another skill sentence.
