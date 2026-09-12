@@ -6,11 +6,11 @@ supervises; native Bernstein executors write application code. Each phase gets i
 own engine run. A detached ACP reviewer judges the cumulative result between runs,
 and actionable findings trigger a pinned fix mini-run.
 
-`/review-pr` is the review half: it points a lens fan-out at a pull request and
-returns findings that were proved by execution rather than asserted - an executable
-rubric per finding, a proof of concept before any correctness claim confirms, the
-pull request body's own claims re-run, and suggestions applied and gated before they
-are offered. It runs no task engine and never posts without your word.
+`/review-pr` is the review half, and it owns no orchestrator of its own: it hands
+one free-text review goal and a model seed to a stock `bernstein run` inside a
+checkout of the target repository. Bernstein spawns the agents, routes the models
+and holds the budget; the skill supplies only the doctrine the review follows and
+reads back the report. Public repositories only, and nothing is ever posted.
 
 ## Install
 
@@ -22,7 +22,7 @@ existing upstream clone. Replace the example checkout paths with your own.
 ```sh
 git clone https://github.com/tenequm/build-workflow.git "$HOME/pj/build-workflow"
 git clone https://github.com/sipyourdrink-ltd/bernstein.git "$HOME/pj/bernstein-operator-engine"
-git -C "$HOME/pj/bernstein-operator-engine" checkout --detach 0a6bf9f2d69daae4ad468a9ba6a2713f79d67fdf
+git -C "$HOME/pj/bernstein-operator-engine" checkout --detach ebad8f5b3612c117a6909684f4913962362fae63
 python3 "$HOME/pj/build-workflow/skills/build-run/scripts/prepare-engine.py" "$HOME/pj/bernstein-operator-engine"
 # --no-sources is required: the scorer package pins the engine by git revision
 # for its own development lock, which conflicts with this patched local checkout.
@@ -36,12 +36,15 @@ npx -y skills add tenequm/build-workflow -y \
   --skill build-plan --skill build-run --skill build-close --skill review-pr
 ```
 
-`/review-pr` needs less than the build skills do: an interpreter with `pyyaml` and
-`psutil`, `acpx`, `gh`, `git` and `rg`, plus an ACP adapter for each family a lens
-routes to. It runs no task engine, so it needs neither the patched engine checkout
-nor the scorer plugin. Session capture into pond needs `pond >= 0.17.2`, which is
-where agy sessions start being ingested; `review-pr ready` checks all of this and
-refuses before anything is spent.
+`/review-pr` needs a `bernstein` on PATH, `gh`, `git`, and, for the local-first
+lane, a `pi` CLI configured against a local LiteLLM gateway in
+`~/.pi/agent/models.json`, serving `qwen3.8-flash-next`, `qwen3.8-27b-nvfp4` and
+`qwen3.6-35b-a3b-nvfp4` (the seed writes the ids as `litellm/<id>`). That lane costs
+nothing, has no rate limits and keeps prompts on the machine. The alternative mix is the subscription lane: an
+authenticated `claude` CLI for the manager and `agy` for the worker roles. Either
+way the skill needs no patched engine checkout, no scorer plugin and no readiness
+command; it ships no Python at all, and it stays fenced to public repositories and
+this repository's own eval corpus, with no GitHub token in reach of a model session.
 
 The native Codex adapter passes only `-m`, so Codex effort comes from
 `~/.codex/config.toml`. Readiness requires every codex role's declared `effort`
@@ -54,13 +57,21 @@ Find the execution interpreter using `uv tool dir`: use the resulting
 share that environment. Do not use the package's development environment for
 a paid build: its locked upstream source is patched only in the test harness.
 
-`prepare-engine.py` applies only four exact changes and fails on unfamiliar
+The pinned commit is upstream main of 2026-09-11; all six prerequisite patches
+were verified to apply to it that day, and the engine actually installed on a
+machine may be an older snapshot until it is rebuilt from this pin.
+
+`prepare-engine.py` applies only six exact changes and fails on unfamiliar
 source: seed validation consults the installed gate registry; the orchestrator
 honors `BERNSTEIN_RESPONSE_CACHE=0`; merge-back skips fetch, rebase and push when
-`BERNSTEIN_OPERATOR_LOCAL_ONLY=1`; and the orchestrator's quiescence self-stop
+`BERNSTEIN_OPERATOR_LOCAL_ONLY=1`; the orchestrator's quiescence self-stop
 counts a merged task, which the store archives as `closed` - without it a run
 whose every task merged never stops and never journals the phase boundary this
-workflow waits for. Rebuild after patching. Readiness checks the
+workflow waits for; a quarantined task is failed rather than skipped while still
+`open`, which otherwise leaves the raw open count above zero and wedges the run
+forever; and the host-local Agency persona cache loads only when the seed's
+`catalogs:` registry actually enables it, so a role's system prompt stops
+depending on what happens to sit under `$HOME`. Rebuild after patching. Readiness checks the
 installed code and exercises the real parser. Upstream replacements require a
 new verified source pin and acceptance run, not removal of admission checks.
 
@@ -74,10 +85,12 @@ new verified source pin and acceptance run, not removal of admission checks.
 3. `/build-close <plan dir>`: authorized merge/release, outcome report, verified
    evidence preservation, then workspace cleanup.
 
-Separately, `/review-pr <number>` reviews a pull request: mechanical house rules,
-the base-pinned validation command, four review lenses in parallel, per-finding
-verification by a different model family, then a computed verdict and a payload
-whose every anchor has been checked. It ends at "post it?" and waits.
+Separately, `/review-pr <number>` reviews a public pull request: fetch the diff and
+the pull request body into the checkout, then one `bernstein run` carrying the
+skill's review goal and seed. The doctrine the goal carries - read authority files
+whole on the base branch, take any validation command from the base branch, name the
+input that breaks a defect - is what the reviewing agents follow. The run writes
+`review-report.md` at the checkout root; you read it and decide.
 
 Each skill carries its own scripts and templates. A skill never reads another
 skill's installed directory. The repository's sync check verifies shared copies.
@@ -94,8 +107,7 @@ existing user authorization or an explicit final decision.
 | Native analyst executors | agent worktrees | Claude claude-opus-5, high effort |
 | ACP judge | detached workflow-owned worktree | fresh blind cumulative review with model/turn/time/spend limits; `claude` binds them through its session bridge, `acp` asks acpx for them |
 | Installed scorer plugin | executor worktree at both native gate call sites | observed diff, ownership, validation, report checks and immutable receipts |
-| Review sessions (`/review-pr`) | one detached worktree per session, no engine | four lenses, one blinded verifier per finding, claim extraction, review body; allowlist-checked afterwards |
-| Review rubrics and repros (`/review-pr`) | the sandbox tier readiness resolved | every mechanical check, the gold gate and each suggestion's proof run here, with the environment cut to a credential allowlist |
+| Review run (`/review-pr`) | a stock `bernstein run` in a checkout of the reviewed repository | bernstein owns spawning, worktrees, model routing and the budget; the skill owns only the goal text and the seed |
 
 The Python package installs only the scorer entry point. Coordination lives in
 `skills/build-run/scripts/`, admission copies in build-plan, and preservation in
@@ -116,15 +128,17 @@ Run from the workspace using the installed Bernstein interpreter:
 <python> <build-close-skill>/scripts/preserve-evidence.py --root <workspace> --run <run-dir> --dest <primary-run-dir>
 ```
 
-`/review-pr` is separate and needs no workspace:
+`/review-pr` is separate, ships no scripts, and runs from a checkout of the
+reviewed repository with its BASE commit checked out:
 
 ```text
-<python> <review-pr-skill>/scripts/review-pr.py ready
-<python> <review-pr-skill>/scripts/review-pr.py setup --dest <dir> --pr <n> [-R owner/repo]
-<python> <review-pr-skill>/scripts/review-pr.py run   --dest <dir>
-<python> <review-pr-skill>/scripts/review-pr.py post  --dest <dir> --confirm <action>
-<python> <review-pr-skill>/scripts/review-pr.py batch --dest <root> --label <label> -R owner/repo
-<python> <review-pr-skill>/scripts/review-pr.py ledger [--fate <finding-id> <fate>]
+gh pr diff <n> > .bernstein-pr.diff
+gh pr view <n> --json title,body --template '# {{.title}}
+
+{{.body}}' > .bernstein-pr.md
+bernstein run --seed <review-pr-skill>/templates/review-seed.yaml \
+  --goal "$(cat <review-pr-skill>/templates/review-goal.md)" \
+  --budget '$3.00' --auto-approve --quiet --wait 3000
 ```
 
 The driver starts the server alone, POSTs full task payloads, verifies admission,

@@ -64,6 +64,26 @@ PATCHES = (
             '            raise SeedError(f"quality_gates.pipeline[{index}].name is unsupported: {name!r}")'
         ),
     ),
+    (
+        "src/bernstein/core/tasks/task_lifecycle.py",
+        '                if action == "decompose" and len(batch) == 1 and getattr(orch._config, "auto_decompose", False):\n                    auto_decompose_task(\n                        task,\n                        client=orch._client,\n                        server_url=base,\n                        decomposed_task_ids=orch._decomposed_task_ids,\n                        workdir=orch._workdir,\n                    )\n            continue',
+        (
+            '                if action == "decompose" and len(batch) == 1 and getattr(orch._config, "auto_decompose", False):\n                    auto_decompose_task(\n                        task,\n                        client=orch._client,\n                        server_url=base,\n                        decomposed_task_ids=orch._decomposed_task_ids,\n                        workdir=orch._workdir,\n                    )\n                else:\n                    # Operator: a skipped quarantined task is never claimed and never\n                    # leaves `open`, and 8b quiescence needs a zero RAW open count, so\n                    # the run ticks forever. Fail it, as the permanent-spawn-failure\n                    # path above already does for the same reason.\n                    with contextlib.suppress(Exception):\n                        fail_task(\n                            orch._client,\n                            base,\n                            task.id,\n                            "Quarantined across runs: skipped without being claimed",\n                        )\n            continue'
+        ),
+    ),
+    (
+        "src/bernstein/core/orchestration/orchestrator.py",
+        "        agency_cache_path = _AgencyProvider.default_cache_path()\n        if agency_cache_path.exists():",
+        (
+            "        agency_cache_path = _AgencyProvider.default_cache_path()\n"
+            "        # Operator: this block loaded the host-local Agency persona cache\n"
+            "        # unconditionally, so a seed's `catalogs:` could not switch it off and a\n"
+            "        # role's system prompt varied by machine - here role `reviewer` drew a UI\n"
+            "        # design critic and `qa` a GIS data engineer, each replacing the built-in\n"
+            "        # role prompt. Honour the configured registry instead.\n"
+            '        if any(e.type == "agency" for e in catalog_registry.entries) and agency_cache_path.exists():'
+        ),
+    ),
 )
 
 

@@ -5,7 +5,7 @@ description: The orchestrator self-stops only when a refetch shows a done or fai
 tags: [bernstein, orchestration, quiescence, phase-boundary, acceptance]
 status: stable
 stale_after: "2027-03-10T00:00:00Z"
-generated: { by: claude-code/opus-5, at: "2026-09-10T17:05:00Z" }
+generated: { by: claude-code/opus-5, at: "2026-09-11T22:35:00Z" }
 sources:
   - id: close
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/0a6bf9f2d/src/bernstein/core/tasks/task_store_core.py
@@ -22,6 +22,15 @@ sources:
   - id: measured
     resource: The first real operator build (textkit.slugify fixture), 2026-09-10
     title: One merged task, 22 quiescent ticks logging "done 0->0, failed 0->0", no self-stop
+  - id: installed
+    resource: the build installed at ~/.local/share/uv/tools/bernstein (dist-info says 3.19.1; a file-by-file comparison shows a main snapshot of ~2026-09-08 plus three local patches), core/orchestration/orchestrator.py:2492-2499
+    title: the patch is present in the installed build, carrying the "Operator:" comment
+  - id: mainline
+    resource: upstream main at ebad8f5b3 (2026-09-11T16:25:23Z, version 3.19.2), src/bernstein/core/orchestration/orchestrator.py:2489
+    title: "upstream still reads `bool(refreshed_tasks_by_status[\"done\"] or refreshed_tasks_by_status[\"failed\"])`"
+  - id: notthis
+    resource: "/findings/an-unclaimable-open-task-wedges-a-run.md"
+    title: the stalls measured on 2026-09-11 came from a different conjunct of the same gate
 ---
 
 # Finding
@@ -62,8 +71,28 @@ branch. Admission refuses an engine without it, because the failure mode is a
 silent hang rather than an error. Upstream enabler #8 in the operator plan
 tracks the permanent fix.
 
+# Where the patch stands, 2026-09-11
+
+The build this project runs carries the patch, comment and all.[^installed]
+Upstream main at `ebad8f5b3` (version 3.19.2) does not: the line there is still
+the two-status read, and `git log -S` finds no equivalent anywhere in its
+history.[^mainline] The installed engine is not stock in a second way either -
+its dist-info says 3.19.1, but file-by-file it is a main snapshot of about
+2026-09-08 carrying three local patches, of which this is one.[^installed] So
+any upgrade must re-apply all three before it is trusted: the failure this one
+prevents is a silent hang, which no exit code reports.
+
+Because the patch is in place, this finding does **not** explain the
+`open=0 agents=0` stall measured on 2026-09-11. That one came from the same
+step-8b gate's other conjunct, the raw open-task count, and is recorded
+separately.[^notthis] The two share a lesson worth stating once: the self-stop
+is a conjunction of several counts, and each conjunct is its own way to hang.
+
 [^close]: The store archives a verified, merged task to CLOSED
 [^selfstop]: The self-stop's terminal check reads only done/failed
 [^fetch]: fetch_all_tasks omits closed by default
 [^deps]: Dependency release already counts closed as terminal
 [^measured]: First real operator build, 2026-09-10
+[^installed]: The installed build is a main snapshot carrying the patch
+[^mainline]: Upstream main still reads only done/failed
+[^notthis]: The 2026-09-11 stalls came from the raw-open conjunct
