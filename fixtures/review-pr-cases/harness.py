@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the eval corpus through a stock bernstein review and score it deterministically.
 
-    harness.py [CASE ...] [--jobs 2] [--goal <template>] [--seed <config>] [--budget 3.00]
+    harness.py [CASE ...] [--jobs 4] [--goal <template>] [--seed <config>] [--budget 3.00]
 
 A case name is a case directory beside this file (`case-01-off-by-one`); with no argument
 every `case-*` directory runs, in name order. Each case is materialised into the inputs the
@@ -893,11 +893,14 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("cases", nargs="*", help="case directory names, or nothing for all")
-    parser.add_argument("--jobs", type=int, default=2, help="cases reviewed concurrently")
+    parser.add_argument("--jobs", type=int, default=4, help="cases reviewed concurrently")
     parser.add_argument("--goal", default=str(GOAL), help="the review goal text handed to --goal")
     parser.add_argument("--seed", default=str(SEED), help="the bernstein seed config")
     parser.add_argument("--budget", type=float, default=BUDGET, help="USD cap per case")
-    parser.add_argument("--work", help="where workspaces are built (default: a fresh temp dir)")
+    parser.add_argument(
+        "--work",
+        help="where workspaces and worker scratch live (default: ~/.cache/review-eval/<stamp>)",
+    )
     parser.add_argument("--ledger", default=str(LEDGER))
     parser.add_argument("--no-ledger", action="store_true")
     parser.add_argument("--timeout", type=float, default=14400, help="seconds per case")
@@ -906,21 +909,35 @@ def main() -> int:
     if not selected:
         raise SystemExit("no cases selected")
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    work = (
-        Path(options.work) if options.work else Path(tempfile.gettempdir()) / f"review-eval-{stamp}"
-    )
+    # Not `tempfile.gettempdir()`: /tmp is the small filesystem on the hosts this runs on,
+    # and the floor below is per concurrent case, so defaulting there caps concurrency at
+    # whatever rootfs happens to be. $HOME is where the big filesystem is; a host where it
+    # is not still gets a refusal from the floor rather than a run that dies mid-flight.
+    work = Path(options.work) if options.work else Path.home() / ".cache/review-eval" / stamp
     # Refuse the lane rather than discover the floor mid-run. A reviewing agent may run
     # the case repository's own build, and `disk_exhausted` explains why losing that race
     # is unrecoverable: quarantine is terminal, so there is no partial credit to salvage.
     # The floor is per concurrent case because that is how many builds can be in flight.
     #
-    # BOTH filesystems are checked, and /tmp is the one that actually bit. A sandboxed
-    # worker is handed a hardcoded `TMPDIR=/tmp` and never sees the one exported here, so
-    # a lens that copies the repository into its own `mktemp -d` and builds there spends
-    # /tmp no matter where the workspace lives. Exporting TMPDIR still moves the parent
-    # process's own scratch; it does not move the workers', which is where the 6.3 GB of
-    # pond#237 went.
+    # A worker's own scratch is the other half of the bill: a lens that copies the
+    # repository into its own `mktemp -d` and builds there spends whatever TMPDIR names,
+    # which is where 6.3 GB of pond#237 went. So the harness names it rather than
+    # inheriting it - `TMPDIR` is on bernstein's env passthrough allowlist
+    # (`adapters/env_isolation.py`) and codex grants `$TMPDIR` as a writable root under
+    # `workspace-write` even when it sits outside the workspace, both measured against
+    # codex-cli 0.154.0. Setting it here puts worker scratch on the same filesystem as
+    # the workspace, so one floor governs instead of two.
+    #
+    # Both are still checked. They are the same filesystem by default and the second
+    # check costs nothing, but `--work` can separate them and a stray inherited TMPDIR
+    # must not silently reintroduce the split.
     work.parent.mkdir(parents=True, exist_ok=True)
+    scratch = work / "tmp"
+    scratch.mkdir(parents=True, exist_ok=True)
+    os.environ["TMPDIR"] = str(scratch)
+    # `gettempdir` memoises its first answer, so the module-level default is pinned here
+    # too: the checks below and every child must be reading the same directory.
+    tempfile.tempdir = str(scratch)
     needed_gb = DISK_FLOOR_GB * max(1, options.jobs)
     for where in {work.parent, Path(tempfile.gettempdir())}:
         free_gb = shutil.disk_usage(where).free / 1024**3
@@ -928,8 +945,8 @@ def main() -> int:
             raise SystemExit(
                 f"refusing the lane: {where} has {free_gb:.1f} GB free, "
                 f"need {needed_gb:.0f} GB for {options.jobs} concurrent case(s). "
-                f"Workers are pinned to {tempfile.gettempdir()} regardless of TMPDIR, "
-                f"so both it and the workspace need the headroom."
+                f"Worker scratch is TMPDIR ({tempfile.gettempdir()}) and the workspace "
+                f"is {work}; both need the headroom."
             )
     print(f"{len(selected)} case(s), {options.jobs} at a time")
     print(f"goal:      {options.goal}")
