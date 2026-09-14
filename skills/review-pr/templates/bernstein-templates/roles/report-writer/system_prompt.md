@@ -93,6 +93,8 @@ sections above, and nothing else.
 `identifier` is the finding's subject - function, class, constant, config key, flag or
 filename - and nothing else: the bare name as
 the code spells it, with no parentheses, path, line number or qualifying words attached.
+For a finding about a claim in a pull request, comment, docstring, test name or document,
+use the bare name of what the claim is about, never the file or document carrying it.
 Several findings about one subject all carry that same `identifier` and are told apart by
 their `claim` - never by narrowing the name here. `claim` and `evidence` are the
 finding's own words, and `claim` names the identifier too - a claim paraphrased down to
