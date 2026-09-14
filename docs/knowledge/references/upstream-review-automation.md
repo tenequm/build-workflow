@@ -5,7 +5,7 @@ description: Upstream review is five CI layers, not a human workflow - a quorum 
 tags: [bernstein, upstream, review, governance, ci]
 status: stable
 stale_after: "2026-12-11T00:00:00Z"
-generated: { by: claude-code/fable-5, at: "2026-09-11T21:20:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:58:00Z" }
 sources:
   - id: prreview
     resource: https://github.com/sipyourdrink-ltd/bernstein/blob/main/.github/workflows/bernstein-pr-review.yml
@@ -34,6 +34,9 @@ sources:
   - id: rulesets
     resource: "GitHub ruleset audit of 2026-09-09 and the maintainer's same-day confirmation; session record in pond (c31e4433)"
     title: Ruleset timeline (no durable public link)
+  - id: lenscontract
+    resource: "The five current files under /skills/review-pr/templates/bernstein-templates/roles/lens-*/system_prompt.md: every lens requires quoted evidence and prefers a mechanical check where one exists"
+    title: The current review evidence contract
 ---
 
 # The stack, verified 2026-09-11 against the live repo
@@ -87,9 +90,9 @@ this round, in e4b88a001").[^pr5737] External reviewers batch similarly
 run over a free-text goal) targets exactly the gap this stack leaves:
 nothing in it verifies what an executor actually did - the quorum script
 checks who approved, the deep review is advisory prose, and PR-body
-claims become permanent history unexecuted (squash-merge). The goal text
-requires each finding to quote its evidence and, where possible, state
-the mechanical check that settles it, which competes on the one axis
+claims become permanent history unexecuted (squash-merge). The lens role templates
+require each finding to quote its evidence and prefer the mechanical check that
+settles it where one exists,[^lenscontract] which competes on the one axis
 upstream has not covered. (An earlier design executed rubrics and re-ran claims
 itself; it was retired - see
 /references/retired-driver-owned-review-design.md.)
@@ -106,3 +109,4 @@ flaky check.
 [^charter]: Review charter sections 1-3 and 6
 [^rulesets]: Ruleset timeline (no durable public link)
 [^pr5737]: PR 5737 review API record
+[^lenscontract]: the current lens evidence contract

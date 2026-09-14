@@ -33,17 +33,15 @@ the target repository, then reads back `review-report.md`. The skill ships no Py
 The fence is public repositories and this repository's eval corpus only, with no
 GitHub token in play: the two `gh` commands that fetch the diff and the pull request
 body run before the engine starts, and no model session is ever handed a token. The
-lane is mixed, and the split is a measured capability floor rather than a budget
-choice: the five lenses run through the `pi` CLI against a local LiteLLM gateway
-(`litellm/qwen3.8-flash-next`, `litellm/qwen3.8-27b-nvfp4`,
-`litellm/qwen3.6-35b-a3b-nvfp4`) at no cost and with prompts never leaving the
-machine, while the manager runs on subscription-backed `claude-sonnet-5` because the
-local model could not hold that role - it spent four 16-minute turns without creating
-a single task, and ignored an explicit instruction outright at a 53 KB prompt. The other load-bearing rule is
-that any validation, lint or test command a reviewing agent runs is read from the
-BASE branch and never from the pull request's own tree. That rule, and never-commit,
-live as constraints in `review-seed.yaml` and in the goal text - they survive only
-there, so weaken them there or not at all.
+mutable role-to-model map is host/operator configuration in `review-seed.yaml`,
+which is the sole authority for production routing; model IDs and lane machinery
+never enter manager, lens or report prompts. Alternative-model comparisons are
+out-of-band Pond experiments over the same lens text, never extra roles, routes,
+prompts, dependencies or report inputs. The other load-bearing rule is that any
+validation, lint or test command a reviewing agent runs is read from the BASE branch
+and never from the pull request's own tree. That rule and never-commit live in seed
+constraints and in the relevant worker templates, so weaken every carrier or not at
+all.
 
 Two rules apply to anything added to it:
 

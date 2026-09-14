@@ -5,7 +5,7 @@ description: "`codex exec` has no dedicated effort flag, which is why the effort
 tags: [codex, bernstein, adapters, sandbox, review-pr, build-run]
 status: stable
 stale_after: "2027-03-14T00:00:00Z"
-generated: { by: claude-code/opus-5, at: "2026-09-14T14:12:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:58:00Z" }
 sources:
   - id: codex
     resource: "codex-cli 0.154.0 `codex --help` and `codex exec --help`: `-c, --config <key=value>  Override a configuration value that would otherwise be loaded from ~/.codex/config.toml. ... The value portion is parsed as TOML.` No --reasoning-effort or --effort flag appears in either output, and no alternate-config-path flag exists."
@@ -18,7 +18,7 @@ sources:
     title: why the engine cannot carry it
   - id: shim
     resource: /skills/review-pr/SKILL.md
-    title: where the shim is built, beside the pi and claude shims
+    title: where the current effort, network and isolation flags are carried
   - id: network
     resource: "measured 2026-09-14: a codex manager under `--sandbox workspace-write` reported CODEX_SANDBOX_NETWORK_DISABLED and `curl: (7) Failed to connect to 127.0.0.1:38867`, created no tasks, and failed the run after 530,230 input tokens; `codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true` then printed `sandbox: workspace-write [workdir, /tmp, $TMPDIR] (network access enabled)` and a loopback curl returned 200"
     title: the sandbox failure and its fix, both measured
@@ -54,10 +54,13 @@ budget maths in the claude and goose adapters consume it.
 
 A PATH shim is therefore the only carrier. `PATH` survives the allowlist and the
 worker resolves a bare `cmd[0]` through `shutil.which`, so a `codex` wrapper on
-PATH reaches every spawned worker.[^adapter] /review-pr already builds a shim
-directory for `pi` and `claude`;[^shim] this is one more entry in it, and unlike
-those two it adds no isolation - codex still reads the reviewed tree's own
-`.codex/` and AGENTS.md.
+PATH reaches every spawned worker.[^adapter] /review-pr's current wrapper carries
+this effort pin and the network override together with `--ignore-user-config`,
+`--ignore-rules`, `--ephemeral` and feature disables.[^shim] Those switches isolate
+measured operator config, rule and session surfaces; they do not prove that the
+reviewed tree's project-local `.codex/config.toml` is excluded. That narrower
+remaining boundary is recorded in
+[A reviewed tree can reconfigure its own reviewer](a-reviewed-tree-can-reconfigure-its-reviewer.md).
 
 ## The value must be a literal
 
@@ -88,5 +91,5 @@ so it belongs only where the surrounding fence already tolerates that.
 [^codex]: the CLI's own help, at the installed version
 [^measured]: measured, including the negative case
 [^adapter]: why the engine cannot carry it
-[^shim]: where the shim is built, beside the pi and claude shims
+[^shim]: the current effort, network and isolation wrapper
 [^network]: the sandbox failure and its fix, both measured
