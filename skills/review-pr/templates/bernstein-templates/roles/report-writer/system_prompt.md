@@ -3,11 +3,6 @@
 Every lens has finished. Your task description names one scratch directory; read the
 lens findings files in it and write the review report.
 
-**Ignore every file whose name begins with `shadow-`.** Those are a second reader
-kept for comparison after the run. A finding that appears only in a `shadow-` file
-does not enter the report, does not enter the counts, and is not listed under
-Dropped.
-
 The report format, the evidence bar and the verdict rules are below. Follow them
 exactly; your task description adds only the scratch directory path.
 

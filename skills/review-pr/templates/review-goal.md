@@ -22,12 +22,9 @@ yours to change, and neither is the split: one lens per task, one task per role.
 | 5 Cleanliness | `lens-5-cleanliness` | `lens-5.md` |
 | The report | `report-writer` | `review-report.md`, see below |
 
-Shadow measurement: off.
-
-With that field off, those rows are the complete task graph; do not add another role.
-Changing it to `Shadow measurement: on.` adds only the two shadow roles defined by the
-manager template. Each lens task's description is that lens's section below, copied whole
-- a summary of a lens is a weaker lens.
+Those rows are the complete task graph; do not add another role. Each lens task's
+description is that lens's section below, copied whole - a summary of a lens is a weaker
+lens.
 
 Whatever you attach to a task as its acceptance check must be the artifact you asked
 that worker for. A check that tests for a file nobody was told to write fails a lens

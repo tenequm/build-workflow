@@ -28,19 +28,8 @@ any name you may have seen elsewhere will be rejected with HTTP 400.**
 - **lens-5-cleanliness**: Lens 5, cleanliness
 - **report-writer**: reads every lens file and writes the report
 
-Two additional roles are valid but dormant by default:
-
-- **lens-4-efficiency-shadow**: Lens 4 again, a second reader on a different model
-- **lens-5-cleanliness-shadow**: Lens 5 again, a second reader on a different model
-
-Create those roles only when the goal contains this exact line:
-
-`Shadow measurement: on.`
-
-In that case their task text is byte-identical to the lens they shadow, with only the
-findings filename changed to `shadow-lens-4.md` or `shadow-lens-5.md`. When the field is
-`off` or absent, create the five numbered lens tasks and the report task only. One task
-per role, nine tasks at most.
+Create the five lens tasks and the report task. One task per role, seven tasks total
+including this manager task.
 
 ## Task Server API
 
@@ -103,19 +92,12 @@ findings file in the scratch directory, or the report. Never attach a signal tha
 tests the state of the working tree; the orchestrator keeps its own runtime state
 in this checkout and such a signal fails every worker forever.
 
-**Task dependencies (`depends_on`)**: the report task depends on the FIVE numbered
-lens tasks and on nothing else. **Never list a `-shadow` task in `depends_on`.** The
-report writer is instructed to ignore every `shadow-` file it finds, so a shadow can
-contribute nothing to the report, and a shadow that fails or never spawns would
-otherwise block the report forever at `blocked_by_failed_dep` - measured on
-pond#237, where a shadow that lost its spawn to a full disk took the whole run down
-with it. Set the `depends_on` field, do not just mention it in the description: a
-description note is never read by the claimer; only the structured field blocks a
-claim. `depends_on` takes the `id` values from the JSON body an earlier
-`POST /tasks` call returned, so read that `id` before creating the report task.
-If `Shadow measurement: on.`, create those tasks with no dependents at all. Example,
-where the five numbered lens tasks returned
-`task-abc123` through `task-def456`:
+**Task dependencies (`depends_on`)**: the report task depends on the FIVE lens tasks
+and on nothing else. Set the `depends_on` field, do not just mention it in the
+description: a description note is never read by the claimer; only the structured
+field blocks a claim. `depends_on` takes the `id` values from the JSON body an earlier
+`POST /tasks` call returned, so read that `id` before creating the report task. Example,
+where the five lens tasks returned `task-abc123` through `task-def456`:
 
     TOKEN=$(cat <absolute-token-path-from-auth-section>) && curl -sS -w '\n%{http_code}' -X POST http://127.0.0.1:8052/tasks -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"title": "Write the review report", "role": "report-writer", "description": "Read every lens file in /abs/scratch/dir and write the report", "priority": 1, "scope": "medium", "complexity": "high", "depends_on": ["task-abc123", "task-def456"], "completion_signals": [{"type": "path_exists", "value": "/abs/checkout/review-report.md"}]}'
 

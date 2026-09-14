@@ -51,9 +51,7 @@ role_model_policy:
   lens-2-side-effects:       { cli: codex, model: gpt-5.6-sol }
   lens-3-design:             { cli: codex, model: gpt-5.6-sol }
   lens-4-efficiency:         { cli: pi,    model: 'litellm/qwen3.8-flash-next:medium' }
-  lens-4-efficiency-shadow:  { cli: agy,   model: gemini-3.7-flash-medium }
   lens-5-cleanliness:        { cli: pi,    model: 'litellm/qwen3.8-flash-next:medium' }
-  lens-5-cleanliness-shadow: { cli: agy,   model: gemini-3.7-flash-medium }
   report-writer:             { cli: codex, model: gpt-5.6-sol }
 
 # Codex effort does not come from this file. `effort:` is an accepted
@@ -70,10 +68,6 @@ role_model_policy:
 # own default is xhigh, which measurably hurts tool-call accuracy and can return
 # empty completions - pin medium).
 #
-# The `-shadow` routes stay available for explicit comparison runs but are dormant
-# under the shipped goal. When requested, they take task text byte-identical to the
-# lens they shadow; their `shadow-*` files remain excluded from the review itself.
-
 # The PR diff and text sit untracked at the repo root; agents work in git
 # worktrees cut from the base commit, where untracked files are invisible.
 # The invocation adds both names to .git/info/exclude so agent commits skip

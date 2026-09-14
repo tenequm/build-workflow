@@ -72,10 +72,6 @@ The report is `review-report.md` at the checkout root; it ends with a fenced
 json block of the findings. Read it, relay it. Nothing is ever posted to
 GitHub by this skill.
 
-The shipped goal sets `Shadow measurement: off.` and runs the five numbered lenses.
-For an explicit model-comparison run, copy the goal, change that field to `on`, and
-pass the copy to `--goal`; the dormant shadow routes and role templates stay bundled.
-
 Notes that cost time to learn:
 
 - **A review needs tens of gigabytes of disk, and running out of it kills the run
