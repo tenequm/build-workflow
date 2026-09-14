@@ -19,9 +19,9 @@ otherwise reconfigure its own reviewer: stock bernstein strips no
 project-local CLI config from the tree it checks out, so a committed
 `.pi/mcp.json`, `.pi/extensions/`, `.mcp.json`, `.claude/settings*.json`,
 AGENTS.md or CLAUDE.md would all reach the session. The PATH shims below
-close every one of those by measurement, for `pi` and `claude` only - any
-other family bernstein spawns (`agy` and its `.agy/`) is unshimmed and
-still reads the tree. Never point this at a private repo, and never hand a
+close every one of those by measurement, for `pi` and `claude` only. The
+`codex` shim below pins reasoning effort and adds no isolation, so `codex`
+and its `.codex/`, and `agy` and its `.agy/`, still read the reviewed tree. Never point this at a private repo, and never hand a
 model session a credential or a GitHub token - the two fetch commands below
 are the only place `gh` runs.
 
@@ -42,6 +42,7 @@ pull request checked out, and with no remote on it:
     shims=$(mktemp -d)
     command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -nc -na "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
     command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --strict-mcp-config --setting-sources user "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
+    command -v codex >/dev/null && printf '#!/usr/bin/env bash\nexec %s -c model_reasoning_effort=high "$@"\n' "$(command -v codex)" > "$shims/codex" && chmod +x "$shims/codex"
     PATH="$shims:$PATH" bernstein run --seed <skill>/templates/review-seed.yaml \
       --goal "$(cat <skill>/templates/review-goal.md)" \
       --budget '$3.00' --auto-approve --quiet --wait 3000
@@ -52,6 +53,15 @@ GitHub by this skill.
 
 Notes that cost time to learn:
 
+- **The `codex` shim pins reasoning effort to the run, not to the host.** It is
+  the one shim that is not about isolation. `codex exec` reads
+  `model_reasoning_effort` from `~/.codex/config.toml` and takes no dedicated
+  effort flag, but it does take `-c key=value` (verified codex-cli 0.154.0), and
+  bernstein's codex adapter builds its argv with no hook - it reads neither that
+  file nor `role_model_policy.<role>.effort`, which the seed parser accepts and
+  then drops. PATH is the only way in. Keep the value a literal: codex accepts a
+  misspelled effort and reports it back as the effort, even under
+  `--strict-config`, so an interpolated typo would downgrade the lane silently.
 - **The templates copy is what keeps the built-in role vocabulary out of every
   agent's context, and it is not optional.** `get_templates_dir` prefers
   `<workdir>/.bernstein/templates` over the engine's bundled defaults, and

@@ -56,10 +56,13 @@ role_model_policy:
   lens-5-cleanliness-shadow: { cli: agy,   model: gemini-3.7-flash-medium }
   report-writer:             { cli: codex, model: gpt-5.6-sol }
 
-# Codex effort is not a flag and not an adapter setting: `codex exec` reads
-# `model_reasoning_effort` from ~/.codex/config.toml. This lane assumes `high`
-# there; bernstein_herdr/src/bernstein_herdr/ready.py hard-fails a run when it
-# is missing.
+# Codex effort does not come from this file. `effort:` is an accepted
+# role_model_policy key and ModelConfig carries it, but the codex adapter never
+# reads it - the key parses and is dropped. The adapter also builds its argv with
+# no extra-args hook, so the only way in is PATH: the invocation's `codex` shim
+# adds `-c model_reasoning_effort=high` (verified codex-cli 0.154.0), which pins
+# the effort to the run instead of to whatever ~/.codex/config.toml happens to
+# say. See SKILL.md.
 #
 # The two qwen lenses run on the local LiteLLM gateway (~/.pi/agent/models.json):
 # $0, no rate limits, prompts never leave the machine. The pi adapter drops

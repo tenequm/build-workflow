@@ -332,11 +332,29 @@ def shim_path(work: Path) -> str:
                                      and `.claude/agents`; `--mcp-config` and
                                      `--agents` are command line, so they survive.
 
+      codex  -c model_reasoning_effort=high
+                  Not an isolation switch: it pins the lane's reasoning effort to
+                  the run instead of to the host. `codex exec` otherwise reads
+                  `model_reasoning_effort` from ~/.codex/config.toml, so the effort
+                  a review ran at would be whatever that file happened to say, it
+                  would differ between two concurrent runs, and setting it would
+                  change every other codex session on the machine. The value is
+                  never validated - codex accepts a misspelling and reports it
+                  back as the effort, even under --strict-config - so it is a
+                  literal here and must never be interpolated.
+                  (verified codex-cli 0.154.0; bernstein's codex adapter reads
+                  neither this nor `role_model_policy.<role>.effort`, which parses
+                  and is then dropped, so PATH is the only way in.)
+
     A missing binary is skipped: the shim never decides which CLIs a host has.
     """
     shims = work / "shims"
     shims.mkdir(parents=True, exist_ok=True)
-    flags = (("pi", "-ne -nc -na"), ("claude", "--strict-mcp-config --setting-sources user"))
+    flags = (
+        ("pi", "-ne -nc -na"),
+        ("claude", "--strict-mcp-config --setting-sources user"),
+        ("codex", "-c model_reasoning_effort=high"),
+    )
     for name, extra in flags:
         real = shutil.which(name)
         if not real:
