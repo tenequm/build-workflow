@@ -43,7 +43,8 @@ pull request checked out, and with no remote on it:
     command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -nc -na "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
     command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --strict-mcp-config --setting-sources user "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
     command -v codex >/dev/null && printf '#!/usr/bin/env bash\nexec %s -c model_reasoning_effort=high -c sandbox_workspace_write.network_access=true "$@"\n' "$(command -v codex)" > "$shims/codex" && chmod +x "$shims/codex"
-    PATH="$shims:$PATH" bernstein run --seed <skill>/templates/review-seed.yaml \
+    BERNSTEIN_SEED_PATH=<skill>/templates/review-seed.yaml \
+      PATH="$shims:$PATH" bernstein run --seed <skill>/templates/review-seed.yaml \
       --goal "$(cat <skill>/templates/review-goal.md)" \
       --budget '$3.00' --auto-approve --quiet --wait 3000
 
@@ -83,9 +84,21 @@ Notes that cost time to learn:
   and assigns names the task server answers with a 400.
 - `bernstein run` blocks only with `--quiet` and `--wait`; `--headless` on the
   root group is a parsed no-op.
+- **`BERNSTEIN_SEED_PATH` is not optional, and leaving it out fails in six
+  seconds with a message that names the wrong problem.** `--seed` reaches the
+  CLI, but the CLI hands off to a detached orchestrator that re-resolves the seed
+  by itself, and its only other source is `<workdir>/bernstein.yaml`. With the
+  seed living in the skill directory that file does not exist, so the orchestrator
+  starts with no `role_model_policy` at all and dies on `FATAL: no adapter
+  configured` - which reads like a missing CLI and is actually a seed that never
+  arrived. It retries about six times, roughly five seconds apart, then the run
+  ends with one declared task and no agents. Measured 2026-09-14 on pond#237;
+  `.sdd/runtime/orchestrator-debug.log` is where the real cause appears, never the
+  run log.
 - The seed file must carry a `goal:` string even though `--goal` supplies the
   real one - the detached orchestrator re-parses the seed and refuses one
-  without it.
+  without it. That re-parse is the same hop `BERNSTEIN_SEED_PATH` exists to
+  survive.
 - The two `.bernstein-pr.*` files are untracked, and agents work in worktrees
   cut from the base commit where untracked files are invisible; the seed's
   `worktree_setup.copy_files` is what carries them in.
