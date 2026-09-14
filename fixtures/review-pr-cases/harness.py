@@ -24,8 +24,8 @@ file matches, its line falls inside the case's window, its category matches, its
 its claim and evidence. Everything else the review reported is counted as a precision
 signal and never fails a case on its own.
 
-Scoring happens only for a report whose json block honours the contract the goal text
-states. A block that omits a required field, or files a finding under a category outside
+Scoring happens only for a report whose json block honours the contract the
+`report-writer` role template states. A block that omits a required field, or files a finding under a category outside
 the pipeline's five, is MALFORMED - it is not MISSED, because the reviewer may well have
 found the defect and written it somewhere the grader does not read, and filing that as a
 model failure is the one thing the ledger must not say. The row keeps `would_be` so the
