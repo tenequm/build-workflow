@@ -7,6 +7,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills/build-run/scripts"))
+sys.path.insert(0, str(ROOT / "fixtures/review-pr-cases"))
 
 from test_delivery import delivered  # noqa: F401 -- register native merge fixture
 from test_plan_compiler import authored  # noqa: F401 -- register complete plan fixture
