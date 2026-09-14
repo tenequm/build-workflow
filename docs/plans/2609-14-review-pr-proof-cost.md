@@ -3,11 +3,13 @@
 A record of a decided plan, not direction to a future agent. It is written to be
 picked up cold.
 
+Status (2026-09-14): WP1, WP2 and WP4 are complete. WP3 remains pending.
+
 ## The problem this solves
 
-`/review-pr` has no test suite. The four-case corpus run is its only regression
-signal, so every change pays the same 15-20 minutes regardless of size - including
-changes that alter no model judgment at all.
+At planning time, `/review-pr` had no grader test suite. The four-case corpus run
+was its only regression signal, so every change paid the same 15-20 minutes
+regardless of size - including changes that altered no model judgment at all.
 
 That price is misallocated. Across four corpus rounds the planted defect was
 detected in **16 of 16 case-runs**. Every failure was the json block disagreeing
@@ -32,7 +34,7 @@ Do not start until all three hold:
 
 Work the packages in order. WP2 is what makes WP3's cheap proof legitimate.
 
-## WP1 - a model-free grader test
+## WP1 - a model-free grader test - DONE (`5b4a8aa`)
 
 **Highest value, and it needs no corpus run to be believed: it changes nothing the
 pipeline reads.**
@@ -77,12 +79,17 @@ directory: if it can be inlined, inline it.
 **Proof:** `just --justfile bernstein_operator/Justfile test` green, then the full
 `check`. No corpus run.
 
-## WP2 - a third proof tier
+**Outcome:** twelve model-free tests now cover `score`, `violations`, `anchored`,
+`names` and `adapt`, including every historical report/grader contract failure. The
+suite runs in milliseconds and the full check passed when it landed.
 
-`CLAUDE.md` today has two tiers: an engine, seed or host change re-runs the smoke
-case alone; a change to the goal text runs all four. Nothing covers a change that
-moves a rule between files without altering what any model judges - and that is
-what `67ea13b` was, which paid the four-case price for a transmission change.
+## WP2 - a third proof tier - DONE (`32c41c1`)
+
+At planning time, the project instructions had two tiers: an engine, seed or host
+change re-ran the smoke case alone; a change to the goal text ran all four. Nothing
+covered a change that moved a rule between files without altering what any model
+judged - and that is what `67ea13b` was, which paid the four-case price for a
+transmission change.
 
 Add the third tier to the corpus paragraph in `CLAUDE.md`. Shape it as a rule with
 a test, not a sentence of advice: a transmission-only change is one where the
@@ -95,6 +102,10 @@ weakening: the four-case run stops being the only guard against a contract
 regression.
 
 **Proof:** documentation only, no model reads it. `check` green.
+
+**Outcome:** `AGENTS.md` now defines the transmission-only tier by prompt-text
+identity, requires the four-case tier when that identity cannot be shown, and names
+WP1's grader tests as the contract guard. The full check passed when it landed.
 
 ## WP3 - shadows opt-in
 
@@ -128,26 +139,21 @@ shadow comparison is the reason they exist.
 not transmission-only: `just eval case-01-off-by-one`, which passes only as
 RECOVERED with zero failed tasks and a clean sweep. One case, not four.
 
-## WP4 - jobs, blocked on disk. Do not attempt.
+## WP4 - four concurrent eval jobs - DONE (`a303b5f`, `52e5589`, `beedc54`)
 
-`harness.py:924` computes `needed_gb = DISK_FLOOR_GB * jobs` with
-`DISK_FLOOR_GB = 10` (line 79). `jobs=4` needs 40 GB and `jobs=3` needs 30 GB.
+The original blocker was based on a false premise: `TMPDIR` does reach workers. It
+is passed through Bernstein's environment allowlist, and codex grants it as a writable
+root under `workspace-write`, including when it is outside the workspace.
 
-**The binding filesystem is `/tmp`, not the workspace** - the guard loops over both
-because a worker is handed a hardcoded `TMPDIR=/tmp` and builds there no matter where
-the workspace lives. `/tmp` is on rootfs, which is **32 GB total**, so `jobs=3` is
-refused even on an empty box and `jobs=4` can never pass without a larger rootfs or a
-`/tmp` moved onto `/home`. This was mis-read once already: freeing 140 GB on `/home`
-on 2026-09-14 (four `cargo clean`s) took it from 26 GB to 166 GB free and changed
-nothing about this blocker, because `/home` was never the constraint.
+The harness now creates its default workspace under
+`~/.cache/review-eval/<stamp>`, creates `<work>/tmp`, and exports that directory as
+`TMPDIR`. Workspace and worker scratch therefore use the same large filesystem. It
+keeps the 10 GB per concurrent case floor and checks both locations, so an explicit
+`--work` split still fails safely when either side lacks headroom.
 
-Raising concurrency would cut a four-case run from about 20 minutes to about 13. At
-`jobs=2` the guard wants 20 GB and rootfs offers 23, so the current setting already
-runs close to the line.
-
-Do not lower `DISK_FLOOR_GB` to make the number fit. That floor exists because run
-1 of the pond#237 evaluation died when `/` reached 0.3 GB free and every starved
-task quarantined permanently. Report the blocker; do not route around it.
+The default is now `--jobs 4`. A four-case run completed at that concurrency and was
+recorded in the ledger by `52e5589` with no ERROR or MALFORMED result. The later
+`beedc54` cleanup corrected the remaining copies of the old hardcoded-`/tmp` claim.
 
 ## Tooling - load the `python-dev` skill before writing WP1
 

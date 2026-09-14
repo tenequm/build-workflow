@@ -19,20 +19,15 @@ yours to change, and neither is the split: one lens per task, one task per role.
 | 2 Side-effect gating | `lens-2-side-effects` | `lens-2.md` |
 | 3 Design and reuse | `lens-3-design` | `lens-3.md` |
 | 4 Efficiency | `lens-4-efficiency` | `lens-4.md` |
-| 4 Efficiency, second reader | `lens-4-efficiency-shadow` | `shadow-lens-4.md` |
 | 5 Cleanliness | `lens-5-cleanliness` | `lens-5.md` |
-| 5 Cleanliness, second reader | `lens-5-cleanliness-shadow` | `shadow-lens-5.md` |
 | The report | `report-writer` | `review-report.md`, see below |
 
-Those role names are the only ones the task server accepts; it answers any other with a
-400 that lists them. Each lens task's description is that lens's section below, copied
-whole - a summary of a lens is a weaker lens.
+Shadow measurement: off.
 
-The two `-shadow` tasks are a measurement riding along. Each takes the task text of the
-lens it shadows **byte for byte**, with only the findings filename changed, so that any
-difference in what comes back is attributable to the model and to nothing else. Do not
-improve, shorten or re-word a shadow task, and do not tell a shadow worker that it is
-one.
+With that field off, those rows are the complete task graph; do not add another role.
+Changing it to `Shadow measurement: on.` adds only the two shadow roles defined by the
+manager template. Each lens task's description is that lens's section below, copied whole
+- a summary of a lens is a weaker lens.
 
 Whatever you attach to a task as its acceptance check must be the artifact you asked
 that worker for. A check that tests for a file nobody was told to write fails a lens

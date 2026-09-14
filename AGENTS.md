@@ -55,7 +55,10 @@ Two rules apply to anything added to it:
   is believed, and the size of the proof follows what changed. An engine, seed or host
   change re-runs the smoke case alone (`just eval case-01-off-by-one`, passes only as
   RECOVERED with zero failed tasks and a clean sweep); a change to the goal text runs all
-  four (`just eval`, ~20 min). The carve-out from that second tier is a
+  four (`just eval`, ~20 min). A manager or lens role-template change also runs all four.
+  A report-writer-only change runs the smoke case plus every case whose `expected.json`
+  declares the scored field being changed; if that affected set cannot be established
+  mechanically, it runs all four. The carve-out from that second tier is a
   **transmission-only** change - one that moves a rule between files without altering
   what any model judges - and it proves on the smoke case alone. The test is textual, not
   a judgement call: assemble the before and after text of every model-facing prompt and

@@ -15,7 +15,7 @@ check:
     echo "check: clean"
 
 # Score the /review-pr eval corpus. No argument runs all four cases through a stock
-# bernstein review, two at a time; `just eval case-01-off-by-one` is the smoke case run
+# bernstein review, four at a time; `just eval case-01-off-by-one` is the smoke case run
 # after an engine or seed change. Any harness flag (--jobs N, --goal <template>,
 # --seed <config>, --budget N) passes straight through.
 eval *ARGS:

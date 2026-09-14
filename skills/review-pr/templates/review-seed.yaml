@@ -70,11 +70,9 @@ role_model_policy:
 # own default is xhigh, which measurably hurts tool-call accuracy and can return
 # empty completions - pin medium).
 #
-# The `-shadow` roles are the experiment riding along: they take task text
-# byte-identical to the lens they shadow, so any difference in output is
-# attributable to the model alone. Their findings files are named `shadow-*` and
-# the goal tells the report writer to ignore them, so they cost nothing in the
-# review itself.
+# The `-shadow` routes stay available for explicit comparison runs but are dormant
+# under the shipped goal. When requested, they take task text byte-identical to the
+# lens they shadow; their `shadow-*` files remain excluded from the review itself.
 
 # The PR diff and text sit untracked at the repo root; agents work in git
 # worktrees cut from the base commit, where untracked files are invisible.
