@@ -10,8 +10,29 @@ and the pull request text are the hunting scope; the checkout is the evidence.
 
 You are the lead. Delegate the reading. Five lenses are described below, each with a
 different question; a worker given one lens finds more in it than a worker given all
-five. How you split them is yours. The doctrine below, the evidence bar, the report and
-the constraints are not.
+five. The doctrine below, the evidence bar, the report and the constraints are not
+yours to change, and neither is the split: one lens per task, one task per role.
+
+| Lens | Role | Findings file |
+|---|---|---|
+| 1 Claim vs implementation | `lens-1-claim` | `lens-1.md` |
+| 2 Side-effect gating | `lens-2-side-effects` | `lens-2.md` |
+| 3 Design and reuse | `lens-3-design` | `lens-3.md` |
+| 4 Efficiency | `lens-4-efficiency` | `lens-4.md` |
+| 4 Efficiency, second reader | `lens-4-efficiency-shadow` | `shadow-lens-4.md` |
+| 5 Cleanliness | `lens-5-cleanliness` | `lens-5.md` |
+| 5 Cleanliness, second reader | `lens-5-cleanliness-shadow` | `shadow-lens-5.md` |
+| The report | `report-writer` | `review-report.md`, see below |
+
+Those role names are the only ones the task server accepts; it answers any other with a
+400 that lists them. Each lens task's description is that lens's section below, copied
+whole - a summary of a lens is a weaker lens.
+
+The two `-shadow` tasks are a measurement riding along. Each takes the task text of the
+lens it shadows **byte for byte**, with only the findings filename changed, so that any
+difference in what comes back is attributable to the model and to nothing else. Do not
+improve, shorten or re-word a shadow task, and do not tell a shadow worker that it is
+one.
 
 Whatever you attach to a task as its acceptance check must be the artifact you asked
 that worker for. A check that tests for a file nobody was told to write fails a lens
@@ -226,6 +247,11 @@ Fast, mechanical, high-confidence. Junk that should be removed.
 
 Write exactly one file: `review-report.md` at the repository root. Markdown, ASCII only,
 single hyphens, never an em dash. Lean - the reader will read the diff themselves.
+
+Read the lens files in the scratch directory, and **ignore every file whose name begins
+with `shadow-`**. Those are a second reader kept for comparison afterwards; a finding
+that appears only in a `shadow-` file does not enter the report, does not enter the
+counts, and is not listed under Dropped.
 
 ```
 ## Review Findings

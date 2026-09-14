@@ -1,5 +1,4 @@
-# /review-pr path A seed: stock bernstein, one subscription manager over free
-# local pi lenses.
+# /review-pr path A seed: stock bernstein, one role per review lens.
 # The goal text arrives via --goal (see SKILL.md); this file never carries it.
 # The goal line below is a parser-required placeholder - the orchestrator
 # re-parses this file for adapter config and refuses a seed without a goal
@@ -20,27 +19,59 @@ internal_llm_provider: none
 # orchestrator keeps it instead of falling back to the default registry.
 catalogs: []
 
-# The lenses run on the local LiteLLM gateway (~/.pi/agent/models.json): $0, no
-# rate limits, prompts never leave the machine. qwen3.8-flash-next leads the
-# local set on instruction-following and tool-use evals; qwen3.8-27b-nvfp4 is
-# the dense fallback.
-# The pi adapter drops `effort:` silently; thinking level rides the model id
-# suffix instead (qwen3.8's own default is xhigh, which measurably hurts
-# tool-call accuracy and can return empty completions - pin medium).
+# ROLE IS A MODEL SLOT, AND EVERY ROLE HERE IS OURS.
 #
-# The manager is the one role the local model cannot hold. Measured 2026-09-12:
-# a 53 KB prompt on qwen3.8-flash-next:medium answered in 100s and ignored the
-# single explicit instruction it carried, and four manager agents in a row spent
-# 16 minutes each without creating one task - the run failed 36 planning-task
-# attempts and produced nothing. The manager's prompt is larger than that probe
-# and its job is exact tool discipline (curl POSTs against the task server),
-# which is above the local floor. A lens prompt is smaller and its job is
-# reading, which is not. So one subscription-backed manager drives free workers.
+# Routing is per role, not per task, so a role is the only lever that puts a
+# named lens on a named model. The built-in vocabulary cannot express that: it
+# has one `analyst` and one `qa`, so two lenses sharing a role must share a
+# model. These names are custom on purpose - one per lens, which also makes the
+# run legible in the TUI and in the ledger.
+#
+# Custom names are accepted because the route we use validates against THIS
+# mapping and nothing else: core/routes/task_crud.py rejects a role that is not
+# a key here with a 400 that names the valid ones. `KNOWN_ROLES` gates the MCP
+# `bernstein_create_subtask` tool and the plan-step schema; the manager reaches
+# the task server by curl and touches neither.
+#
+# `manager` is the one name we do not choose. The engine keys behaviour off the
+# literal string - the specialists section, the consensus relay and three
+# SECTION_RULES entries all test `role == "manager"`.
+#
+# The built-in role vocabulary must not reach an agent's context, or the manager
+# reads it and assigns roles the server will reject. Shipping
+# `.bernstein/templates/roles/manager/system_prompt.md` and NO `skills/`
+# directory is what closes it: with no skill pack the resolver falls through to
+# our legacy template for the manager and to the bare
+# "You are a <role> specialist." stub for every lens. See SKILL.md for the copy
+# step - the seed cannot do it, because the templates dir is resolved from the
+# run's workdir.
 role_model_policy:
-  manager:  { cli: claude, model: claude-sonnet-5 }
-  reviewer: { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
-  security: { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
-  qa:       { cli: pi, model: 'litellm/qwen3.8-flash-next:medium' }
+  manager:                   { cli: codex, model: gpt-5.6-sol }
+  lens-1-claim:              { cli: codex, model: gpt-5.6-sol }
+  lens-2-side-effects:       { cli: codex, model: gpt-5.6-sol }
+  lens-3-design:             { cli: codex, model: gpt-5.6-sol }
+  lens-4-efficiency:         { cli: pi,    model: 'litellm/qwen3.8-flash-next:medium' }
+  lens-4-efficiency-shadow:  { cli: agy,   model: gemini-3.7-flash-medium }
+  lens-5-cleanliness:        { cli: pi,    model: 'litellm/qwen3.8-flash-next:medium' }
+  lens-5-cleanliness-shadow: { cli: agy,   model: gemini-3.7-flash-medium }
+  report-writer:             { cli: codex, model: gpt-5.6-sol }
+
+# Codex effort is not a flag and not an adapter setting: `codex exec` reads
+# `model_reasoning_effort` from ~/.codex/config.toml. This lane assumes `high`
+# there; bernstein_herdr/src/bernstein_herdr/ready.py hard-fails a run when it
+# is missing.
+#
+# The two qwen lenses run on the local LiteLLM gateway (~/.pi/agent/models.json):
+# $0, no rate limits, prompts never leave the machine. The pi adapter drops
+# `effort:` silently; thinking level rides the model id suffix instead (qwen3.8's
+# own default is xhigh, which measurably hurts tool-call accuracy and can return
+# empty completions - pin medium).
+#
+# The `-shadow` roles are the experiment riding along: they take task text
+# byte-identical to the lens they shadow, so any difference in output is
+# attributable to the model alone. Their findings files are named `shadow-*` and
+# the goal tells the report writer to ignore them, so they cost nothing in the
+# review itself.
 
 # The PR diff and text sit untracked at the repo root; agents work in git
 # worktrees cut from the base commit, where untracked files are invisible.

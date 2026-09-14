@@ -37,6 +37,8 @@ pull request checked out, and with no remote on it:
 
     {{.body}}' > .bernstein-pr.md
     git remote remove origin          # after the two gh reads, before the engine
+    mkdir -p .bernstein/templates
+    cp -r <skill>/templates/bernstein-templates/roles .bernstein/templates/
     shims=$(mktemp -d)
     command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -nc -na "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
     command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --strict-mcp-config --setting-sources user "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
@@ -50,6 +52,15 @@ GitHub by this skill.
 
 Notes that cost time to learn:
 
+- **The templates copy is what keeps the built-in role vocabulary out of every
+  agent's context, and it is not optional.** `get_templates_dir` prefers
+  `<workdir>/.bernstein/templates` over the engine's bundled defaults, and
+  `role_resolver.resolve_role_prompt` tries a skill pack, then a legacy role
+  template, then the bare `"You are a <role> specialist."` stub. Copying
+  `roles/` and deliberately NOT copying a `skills/` directory puts the manager
+  on our own template - which names only this seed's roles - and every lens on
+  the stub. Left out, the manager is handed the engine's list of built-in roles
+  and assigns names the task server answers with a 400.
 - `bernstein run` blocks only with `--quiet` and `--wait`; `--headless` on the
   root group is a parsed no-op.
 - The seed file must carry a `goal:` string even though `--goal` supplies the

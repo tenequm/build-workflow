@@ -60,6 +60,7 @@ CORPUS = Path(__file__).resolve().parent
 ROOT = CORPUS.parents[1]
 GOAL = ROOT / "skills/review-pr/templates/review-goal.md"
 SEED = ROOT / "skills/review-pr/templates/review-seed.yaml"
+BERNSTEIN_TEMPLATES = ROOT / "skills/review-pr/templates/bernstein-templates"
 BUDGET = 3.00
 LEDGER = ROOT / "docs/review-ledger/evals.jsonl"
 VERDICTS = ("RECOVERED", "MISFILED", "MISSED", "ERROR")
@@ -178,6 +179,14 @@ def materialise(case: Path, work: Path) -> dict[str, Any]:
     exclude = repo / ".git" / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
     exclude.write_text(".bernstein-pr.diff\n.bernstein-pr.md\n")
+    # `get_templates_dir` prefers <workdir>/.bernstein/templates over the engine's
+    # bundled defaults, and the role resolver falls back to a bare "You are a <role>
+    # specialist." stub for a role it has no template for. Copying `roles/` and
+    # deliberately not copying a `skills/` directory is what keeps the engine's own
+    # role vocabulary out of every agent's context: the manager gets our template,
+    # which names only this seed's roles, and each lens gets the stub. The skill's
+    # own invocation does the same copy - keep the two in step.
+    shutil.copytree(BERNSTEIN_TEMPLATES / "roles", repo / ".bernstein" / "templates" / "roles")
     return {"repo": repo, "head": head, "branch": branch}
 
 
