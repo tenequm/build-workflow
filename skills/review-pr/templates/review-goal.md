@@ -81,9 +81,11 @@ a deliberate decision as an accident. It is not evidence that the code does what
   `file:line` is an address, not an identification: it goes stale on the next commit,
   and a reader holding a different checkout cannot resolve it at all. "The ceiling
   calculation is wrong at line 22" and "`page_count()` adds a phantom page on exact
-  multiples" are the same claim, and only the second one survives being moved. Where
-  the subject genuinely has no name - a bare expression, a literal in a list - name its
-  nearest enclosing one and say where inside it.
+  multiples" are the same claim, and only the second one survives being moved. The name
+  is the bare name and nothing else - never qualified, never described, never narrowed.
+  Where the subject genuinely has no name of its own - a bare expression, a literal in a
+  list, a comment, a line of prose - name its nearest enclosing one and say where inside
+  it **in the claim**, leaving the name itself untouched.
 - **Which category.** `correctness` is what the change gets wrong about the world. That
   includes behaviour, and it also includes any claim the repository makes about itself -
   in a comment, a docstring, a document or the pull request body - that says what the
@@ -346,8 +348,10 @@ documentation or comment line making the false claim - never at the implementati
 that falls short of it; the implementation is quoted in `evidence`. `category`
 is exactly one of `correctness`, `design`, `efficiency`, `cleanliness` - the four
 sections above, and nothing else.
-`identifier` is the name from **Name the thing** above, spelled as the code spells it and
-with no parentheses, path or line number attached. `claim` and `evidence` are the
+`identifier` is the name from **Name the thing** above and nothing else: the bare name as
+the code spells it, with no parentheses, path, line number or qualifying words attached.
+Several findings about one subject all carry that same `identifier` and are told apart by
+their `claim` - never by narrowing the name here. `claim` and `evidence` are the
 finding's own words, and `claim` names the identifier too - a claim paraphrased down to
 its shortest true sentence usually drops the name, and that is the sentence a human
 reads. `file`, `line`, `category`, `identifier`, `claim` and `evidence` are all required
