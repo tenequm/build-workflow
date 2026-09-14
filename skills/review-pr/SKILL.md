@@ -34,7 +34,7 @@ not assume the default `/tmp` qualifies:
 
     work=<big-filesystem>/review-<repo>-<N>
     mkdir -p "$work/tmp" && export TMPDIR="$work/tmp"
-    for fs in "$work" /tmp; do   # workers ignore TMPDIR and always scratch in /tmp
+    for fs in "$work" /tmp; do   # the export above moves worker scratch; /tmp is granted anyway
       free=$(df -BG --output=avail "$fs" | tail -1 | tr -dc '0-9')
       [ "${free:-0}" -ge 10 ] || { echo "refusing: $fs has ${free}G free, need 10G"; exit 1; }
     done
@@ -85,14 +85,18 @@ Notes that cost time to learn:
   budget, then its retry budget, then lands in quarantine at `fail_count=3,
   action=skip`. Quarantine is terminal: freeing the disk afterwards recovers
   nothing, and any task depending on a quarantined one is stuck at
-  `blocked_by_failed_dep` forever. **`TMPDIR` does not reach the workers**, so
-  exporting it is not sufficient on its own: a sandboxed agent is handed a
-  hardcoded `TMPDIR=/tmp` and a lens that copies the repository into its own
-  `mktemp -d` builds there whatever the parent exported - measured in run 2,
-  where the manager's shared findings directory landed in `/tmp` while the export
-  was in force. The export still moves the parent's own scratch, including the
-  shims; `/tmp` needing its own headroom is why the guard above checks both
-  filesystems. Both limits appear only in
+  `blocked_by_failed_dep` forever. **`TMPDIR` does reach the workers**, which is
+  why the export above is the fix and not a comfort: `TMPDIR` is on bernstein's
+  env passthrough allowlist (`adapters/env_isolation.py`), and codex-cli 0.154.0
+  grants `$TMPDIR` as a writable root under `workspace-write` even when it points
+  entirely outside the workspace - both measured 2026-09-14, and confirmed in a
+  four-case corpus run where `/tmp` free never moved while worker scratch
+  accumulated under the exported path
+  ([the finding](../../docs/knowledge/findings/worker-scratch-follows-tmpdir.md)).
+  `/tmp` keeps its own floor regardless, because the sandbox grants it
+  unconditionally and run 2 put the manager's shared findings directory there
+  under an export that was in force - unexplained, and not worth removing a free
+  check to find out. Both limits appear only in
   `.sdd/runtime/orchestrator-debug.log`, never in the run log.
 - **A codex worker cannot write the report to the checkout root unless the root is
   granted, and `/tmp` hides this.** `--sandbox workspace-write` grants the worker's

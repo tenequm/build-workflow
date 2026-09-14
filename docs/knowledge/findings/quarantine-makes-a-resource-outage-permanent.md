@@ -4,7 +4,7 @@ title: A resource outage becomes a permanent run failure, and a shadow dependenc
 description: Bernstein turns a transient host shortage into an unrecoverable run - a task that cannot spawn burns its respawn budget, then its retry budget, then quarantines, and quarantine survives the resource returning. Anything listed in that task's dependents is blocked forever, so a dependency on an agent whose output is contractually ignored can end a run that was otherwise complete.
 tags: [review-pr, bernstein, orchestration, reliability]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-14T17:05:00Z" }
+generated: { by: claude-code/opus-5, at: "2026-09-14T19:45:00Z" }
 sources:
   - id: run
     resource: /docs/evals/2609-14-pond-237/run-1-aborted/failure-lines.log
@@ -18,6 +18,9 @@ sources:
   - id: manager
     resource: /skills/review-pr/templates/bernstein-templates/roles/manager/system_prompt.md
     title: The manager role template that sets depends_on
+  - id: tmpdir
+    resource: /docs/knowledge/findings/worker-scratch-follows-tmpdir.md
+    title: The measurement that corrected this concept's TMPDIR claim, 2026-09-14
 ---
 
 # Finding
@@ -69,17 +72,22 @@ Prose in a skill cannot close either half, because both failures happen before
 any model reads anything. Both are now checks:
 
 - The invocation refuses to start when **either** the working filesystem or `/tmp`
-  is below a floor. Both are needed, and the second is the one that bit: a
-  sandboxed worker is handed a hardcoded `TMPDIR=/tmp` and never sees an exported
-  one, so a lens that copies the repository into its own `mktemp -d` and builds
-  there spends `/tmp` whatever the parent set. Exporting `TMPDIR` still moves the
-  parent's own scratch and is worth doing; it is not a substitute for checking the
-  filesystem the workers are pinned to.
+  is below a floor. The second is the one that bit here, because a lens that copies
+  the repository into its own `mktemp -d` and builds there spent `/tmp`.
 
-  The general shape: **an environment variable that configures a child process is
-  a control only where the child actually inherits it.** A sandbox boundary that
-  rewrites the environment turns such a setting into a comforting no-op, and what
-  catches it is measuring where files landed, not confirming the export was set.
+  This paragraph asserted for a week that a sandboxed worker is handed a hardcoded
+  `TMPDIR=/tmp` and never sees an exported one, so that exporting `TMPDIR` moved
+  only the parent's own scratch. **That is false**, measured 2026-09-14 and
+  recorded in [worker scratch follows TMPDIR](worker-scratch-follows-tmpdir.md):
+  the variable is on bernstein's passthrough allowlist and codex grants it as a
+  writable root, so naming it moves the workers too. Both floors are still
+  checked - they are one filesystem once the export is in force, and the second
+  check costs nothing - but the reason is redundancy, not a pin.
+
+  The general shape that survives: **a guard's comment outlives the measurement it
+  came from.** The claim was written from where files landed in one aborted run and
+  then carried into three more files as settled fact; what caught it was measuring
+  again rather than re-reading it.
 - The corpus harness refuses the lane on the same floor, scaled by concurrency,
   and gained a `disk_exhausted` detector beside `lane_down` so a starved run
   scores ERROR rather than MISSED. Scoring it MISSED would file a host outage as
