@@ -91,11 +91,26 @@ Steps 1 and 2 are **done** and committed (`aafffe3`, `9dd5038`, `0352f6f`).
    workdir by both `SKILL.md` and `harness.py`; and a `codex` PATH shim carrying
    `-c model_reasoning_effort=high`. **Done.**
 3. **Proof on the corpus.** The goal text changed, so the standing rule is the
-   full four cases - but the smoke case runs first and alone, because a broken
-   goal does not fail fast: the ledger records case-01 ERRORing at 4699s and
-   6742s before a 1205s green run. Smoke on the real seed, then cases 02-04
+   full four cases - but the smoke runs first, because a broken goal does not fail
+   fast: the ledger records case-01 ERRORing at 4699s and 6742s before a 1205s
+   green run. Run the cheap proofs with `REVIEW_CODEX_EFFORT=low`, which pins the
+   shim's effort down for a plumbing test; a verdict scored at `low` is not
+   comparable to one at `high` and is never a ledger claim. Then cases 02 and 04
    alongside the pond run at `--jobs 1`, which keeps two bernstein runs in flight
    and no more.
+
+   **Mechanism is proven, on the real lane** (2026-09-14, case-01 at low effort,
+   575.3s - the fastest path-A run on record): nine tasks under the nine custom
+   roles, codex as manager, codex lenses and report writer, both gemini shadows
+   writing `shadow-*` files, the report at the contract path, the trailing json
+   block parsing, zero ERROR. Two failures were found and fixed getting there -
+   a partial templates override that made every lens role unreassignable, and the
+   codex sandbox denying loopback - and one rule was found missing, that a finding
+   must name its identifier.
+
+   Shadow exclusion is mechanically untested: both gemini shadows returned "No
+   findings" on a 22-line case, so the report writer's filter never had anything
+   to exclude. pond#237 is where that gets exercised.
 4. **Run pond#237** per `skills/review-pr/SKILL.md`: throwaway checkout at the PR
    base, the two `gh` reads first, then `git remote remove origin`, then the
    templates copy, then the PATH shims, then `bernstein run`.
@@ -110,6 +125,13 @@ missed / novel against the union of A and B; **the Pi `sqlite_path` blocking
 finding is the single most important cell**; novel findings are judged true /
 false / unfalsifiable and a false one costs more than a missed cleanliness item;
 every miss the operator would have acted on becomes a new corpus case.
+
+"Compare by substance, not by anchor" is what forced the goal text to require
+every finding to name its identifier: C reads a checkout at the base and A and B
+read the head tree, so no line number is shared and the name is the only thing
+left to match on. The reasoning, and why the corpus case was left frozen rather
+than edited, is
+[in the knowledge base](../../knowledge/decisions/findings-name-identifiers.md).
 
 ## Facts that cost time to learn
 
