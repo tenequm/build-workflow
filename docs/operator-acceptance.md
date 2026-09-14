@@ -1,7 +1,6 @@
 # Operator acceptance
 
-Run `just --justfile bernstein_operator/Justfile check` and
-`just --justfile bernstein_operator/Justfile test -q` from the repository.
+Run `just operator-check` and `just test -q` from the repository.
 CI is intentionally deferred. The acceptance runner copies the locked native
 source to a temporary directory, applies the exact prerequisites, and loads the
 installed scorer entry point against that copy. It does not patch an existing

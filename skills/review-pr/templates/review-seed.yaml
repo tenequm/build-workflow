@@ -10,41 +10,11 @@ max_agents: 4
 budget: $3.00
 internal_llm_provider: none
 
-# Bernstein enables a third-party persona catalogue by default
-# (CatalogRegistry.default -> github.com/msitarzewski/agency-agents, cloned to
-# ~/.bernstein/catalogs/agency) and a catalogue persona OUTRANKS the built-in
-# role prompt. Measured here: role `reviewer` was handed a UI design critic and
-# role `qa` a GIS data engineer, so every lens prompt rode under an unrelated
-# personality that differs per host. An empty list is not None, so the
-# orchestrator keeps it instead of falling back to the default registry.
+# Disable the host's optional persona catalogue; this skill supplies every role prompt.
 catalogs: []
 
-# ROLE IS A MODEL SLOT, AND EVERY ROLE HERE IS OURS.
-#
-# Routing is per role, not per task, so a role is the only lever that puts a
-# named lens on a named model. The built-in vocabulary cannot express that: it
-# has one `analyst` and one `qa`, so two lenses sharing a role must share a
-# model. These names are custom on purpose - one per lens, which also makes the
-# run legible in the TUI and in the ledger.
-#
-# Custom names are accepted because the route we use validates against THIS
-# mapping and nothing else: core/routes/task_crud.py rejects a role that is not
-# a key here with a 400 that names the valid ones. `KNOWN_ROLES` gates the MCP
-# `bernstein_create_subtask` tool and the plan-step schema; the manager reaches
-# the task server by curl and touches neither.
-#
-# `manager` is the one name we do not choose. The engine keys behaviour off the
-# literal string - the specialists section, the consensus relay and three
-# SECTION_RULES entries all test `role == "manager"`.
-#
-# The built-in role vocabulary must not reach an agent's context, or the manager
-# reads it and assigns roles the server will reject. Shipping
-# `.bernstein/templates/roles/manager/system_prompt.md` and NO `skills/`
-# directory is what closes it: with no skill pack the resolver falls through to
-# our legacy template for the manager and to the bare
-# "You are a <role> specialist." stub for every lens. See SKILL.md for the copy
-# step - the seed cannot do it, because the templates dir is resolved from the
-# run's workdir.
+# Host-side routing only. Role names are task-server keys; model assignments are not
+# inserted into role prompts.
 role_model_policy:
   manager:                   { cli: codex, model: gpt-5.6-sol }
   lens-1-claim:              { cli: codex, model: gpt-5.6-sol }
@@ -54,24 +24,7 @@ role_model_policy:
   lens-5-cleanliness:        { cli: pi,    model: 'litellm/qwen3.8-flash-next:medium' }
   report-writer:             { cli: codex, model: gpt-5.6-sol }
 
-# Codex effort does not come from this file. `effort:` is an accepted
-# role_model_policy key and ModelConfig carries it, but the codex adapter never
-# reads it - the key parses and is dropped. The adapter also builds its argv with
-# no extra-args hook, so the only way in is PATH: the invocation's `codex` shim
-# adds `-c model_reasoning_effort=high` (verified codex-cli 0.154.0), which pins
-# the effort to the run instead of to whatever ~/.codex/config.toml happens to
-# say. See SKILL.md.
-#
-# The two qwen lenses run on the local LiteLLM gateway (~/.pi/agent/models.json):
-# $0, no rate limits, prompts never leave the machine. The pi adapter drops
-# `effort:` silently; thinking level rides the model id suffix instead (qwen3.8's
-# own default is xhigh, which measurably hurts tool-call accuracy and can return
-# empty completions - pin medium).
-#
-# The PR diff and text sit untracked at the repo root; agents work in git
-# worktrees cut from the base commit, where untracked files are invisible.
-# The invocation adds both names to .git/info/exclude so agent commits skip
-# them and merges back stay clean.
+# Copy the two untracked review inputs into each worker worktree.
 worktree_setup:
   copy_files:
     - .bernstein-pr.diff
@@ -102,5 +55,4 @@ tuning:
 
 constraints:
   - "Never commit and never push."
-  - "Write exactly one file: review-report.md at the repository root. Modify nothing else."
   - "Read any validation or test command from the base branch only, never from the pull request's own tree."

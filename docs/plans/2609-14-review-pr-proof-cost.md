@@ -3,7 +3,8 @@
 A record of a decided plan, not direction to a future agent. It is written to be
 picked up cold.
 
-Status (2026-09-14): WP1, WP2 and WP4 are complete. WP3 remains pending.
+Status (2026-09-14): WP1, WP2 and WP4 are complete. WP3 is implemented and its
+final four-case proof is pending.
 
 ## The problem this solves
 
@@ -29,7 +30,7 @@ Do not start until all three hold:
    proof.
 2. The working tree is clean and the ledger row for the run that just finished is
    committed.
-3. `just --justfile bernstein_operator/Justfile check` passes before any edit, so a
+3. `just operator-check` passes before any edit, so a
    later failure is attributable.
 
 Work the packages in order. WP2 is what makes WP3's cheap proof legitimate.
@@ -76,7 +77,7 @@ Cover, at minimum, one frozen fixture per historical failure plus the happy path
 Build the fixtures as literal dicts in the test file. Do not add a fixtures
 directory: if it can be inlined, inline it.
 
-**Proof:** `just --justfile bernstein_operator/Justfile test` green, then the full
+**Proof:** `just test` green, then the full
 `check`. No corpus run.
 
 **Outcome:** twelve model-free tests now cover `score`, `violations`, `anchored`,
@@ -107,37 +108,35 @@ regression.
 identity, requires the four-case tier when that identity cannot be shown, and names
 WP1's grader tests as the contract guard. The full check passed when it landed.
 
-## WP3 - shadows opt-in
+## WP3 - measurements outside the reviewer
 
-Shadows are a measurement, not a verdict input: the goal text forbids a `shadow-`
-finding from entering the report, the counts, or Dropped. On a corpus case with a
-planted defect they contribute nothing and cost 8 of 36 agents per four-case run.
+The original package proposed keeping dormant shadow routes and role templates in
+the production skill. Implementation review rejected that design: a shadow is a
+measurement of the reviewer, not part of the reviewer. Even dormant model routes,
+role directories, report exclusions and re-enable instructions couple production
+workflow files to an experiment and make model-routing changes touch agents that do
+not need to know the experiment exists.
 
-They are still valuable on real pull requests - the pond#237 run is the evidence,
-where the gemini lens-5 shadow returned "No cleanliness defects found" against
-twelve findings from its primary. **So make them opt-in, never delete them.**
+That opt-in design is superseded. Production has exactly seven roles: one mechanical
+coordinator, five lens executors and one report writer. It contains no shadow role,
+route, task, dependency rule or model-facing shadow vocabulary. The Pond comparison
+remains useful evidence, but any future comparison runs out of band: invoke the
+candidate model separately over the same lens text and compare its artifact after the
+production review. It must not alter production tasks or report inputs.
 
-The cheap mechanism: the `roles:` map in `review-seed.yaml` is inert routing
-config, and a role nobody creates a task for costs nothing. What actually spawns a
-shadow is the role table and the shadow paragraph in
-`skills/review-pr/templates/review-goal.md`. Remove those two rows and that
-paragraph to turn shadows off; the seed entries and the two shadow role templates
-stay in the repository so turning them back on is restoring one table and one
-paragraph.
+The boundary is executable rather than advisory:
 
-Before editing, `rg -n 'shadow' skills/ fixtures/ docs/knowledge/ CLAUDE.md` and
-handle every hit deliberately. Two that must survive in some form: the
-report-writer still ignores `shadow-` files (harmless and correct when none exist),
-and `report-writer` must never list a `-shadow` task in `depends_on` - that rule is
-load-bearing and is why run 1 died
-([the quarantine finding](../knowledge/findings/quarantine-makes-a-resource-outage-permanent.md)).
+- `scripts/review_prompt_boundaries.py` requires exactly the seven production role
+  directories and seed routes, byte-identical generic lens executor prompts, and no
+  measurement or routing vocabulary in model-facing text.
 
-Record in the commit body how to re-enable them, and say plainly that the pond
-shadow comparison is the reason they exist.
+Commit `711f340` records the intermediate all-four run after in-band shadows were
+removed: all four cases RECOVERED with no failed task and the seven-role/five-edge
+shape observed in every workspace. Because the later cleanup changes model-facing
+prompts, that row is supporting evidence, not the final proof.
 
-**Proof:** this changes which agents the manager creates, so it is engine-shaped,
-not transmission-only: `just eval case-01-off-by-one`, which passes only as
-RECOVERED with zero failed tasks and a clean sweep. One case, not four.
+**Final proof:** `just eval` after the complete diff settles. All four cases must be
+RECOVERED with no failed task and every cleanup sweep must report zero survivors.
 
 ## WP4 - four concurrent eval jobs - DONE (`a303b5f`, `52e5589`, `beedc54`)
 
@@ -164,7 +163,7 @@ set up and nothing to migrate.
 What it means concretely here:
 
 - **Run everything through `uv run`.** Never a bare `pytest`, never a system
-  interpreter. `bernstein_operator/Justfile` already wraps it: `test` and `check`.
+  interpreter. The root `Justfile` wraps it with `test` and `operator-check`.
 - **pytest is already configured** in `bernstein_operator/pyproject.toml` with
   `testpaths = ["tests"]`, `python_files = ["test_*.py"]` and strict settings. Do not
   add a second pytest config, a `pytest.ini`, or a `setup.cfg`.
@@ -190,11 +189,11 @@ What it means concretely here:
   WP1 and WP2 land, they are doc and test changes and may push without shipping.
 - The harness is linted by `bernstein_operator`'s ruff config, not
   `bernstein_herdr`'s. The gate is
-  `just --justfile bernstein_operator/Justfile check`.
+  `just operator-check`.
 - `docs/knowledge/index.md` is generated: after any concept change run
   `python3 scripts/kb_index.py` and require `--check` to pass.
 - A retro item closes as a check, a template field, or a test - never as another
-  skill sentence. WP1 is a test, WP2 is a rule with a test behind it, WP3 is a
-  template field. None of them is advice.
+  skill sentence. WP1 is a test, WP2 is a rule with a test behind it, and WP3 is a
+  static production-role boundary check. None of them is advice.
 - Report what actually happened. A package that does not reach green is reported as
   not green, with the output.

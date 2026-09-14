@@ -130,14 +130,14 @@ with no json block, or a block that does not parse scores the case MISSED with
 the reason recorded beside the run's `harness.log`.
 
     just eval case-01-off-by-one   # the smoke case, after an engine or seed change
-    just eval                      # all four, 2 at a time, after a goal-text change
+    just eval                      # all four, 4 at a time, after a goal-text change
     just eval --budget 6.00        # a deeper run
     just eval --goal skills/review-pr/templates/review-goal.md --seed skills/review-pr/templates/review-seed.yaml
 
-Cases are independent - each owns its repository and its bernstein run - so
-`--jobs` runs them concurrently and several invocations may run at once. Do not
-raise `--jobs` past 2 on the free lane: four in flight drew 429s on 36 of 67
-sessions. Each invocation appends one row to `docs/review-ledger/evals.jsonl`:
+Cases are independent - each owns its repository, task-server port and scratch tree - so
+`--jobs` runs them concurrently. The default four-wide run is proven on the current
+local lane, and its disk admission floor scales with concurrency. Each invocation
+appends one row to `docs/review-ledger/evals.jsonl`:
 the date, the repository revision, the regime (`path-a`), the corpus version,
 the goal, seed and budget it ran with, and a per-case verdict of RECOVERED,
 MISFILED, MISSED, MALFORMED or ERROR. Path-A rows open a new comparability

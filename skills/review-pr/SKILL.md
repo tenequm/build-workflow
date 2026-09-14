@@ -15,15 +15,14 @@ its receipts under `.sdd/`; the review doctrine lives entirely in
 Review PUBLIC repositories and the eval corpus only. The lanes run on a
 local gateway or on personal subscription accounts whose data-use terms
 are settled at the account, not per run, and a reviewed tree would
-otherwise reconfigure its own reviewer: stock bernstein strips no
-project-local CLI config from the tree it checks out, so a committed
-`.pi/mcp.json`, `.pi/extensions/`, `.mcp.json`, `.claude/settings*.json`,
-AGENTS.md or CLAUDE.md would all reach the session. The PATH shims below
-close every one of those by measurement, for `pi` and `claude` only. The
-`codex` shim below pins reasoning effort and adds no isolation, so `codex`
-and its `.codex/`, and `agy` and its `.agy/`, still read the reviewed tree. Never point this at a private repo, and never hand a
-model session a credential or a GitHub token - the two fetch commands below
-are the only place `gh` runs.
+otherwise reconfigure its own reviewer. The PATH shims below suppress the
+measured Pi and Claude project surfaces. For Codex they suppress operator config,
+rules, apps, plugins and hooks, plus AGENTS files and rollout persistence. Codex
+0.154 still has no proven switch for a reviewed tree's `.codex/` directory, and
+still injects its product baseline and host skill catalogue; `agy` project config
+is also unclosed. Never point this at a private repo, and never hand a model session
+a credential or a GitHub token - the two fetch commands below are the only place
+`gh` runs.
 
 ## Invocation
 
@@ -39,22 +38,36 @@ not assume the default `/tmp` qualifies:
       [ "${free:-0}" -ge 10 ] || { echo "refusing: $fs has ${free}G free, need 10G"; exit 1; }
     done
     git clone <url> "$work/src" && cd "$work/src" && git checkout <base-sha>
-    printf '.bernstein-pr.diff\n.bernstein-pr.md\n' >> .git/info/exclude
+    printf '/.bernstein-pr.diff\n/.bernstein-pr.md\n/.bernstein/\n/.sdd/\n/review-report.md\n' >> .git/info/exclude
     gh pr diff <N> > .bernstein-pr.diff
     gh pr view <N> --json title,body --template '# {{.title}}
 
     {{.body}}' > .bernstein-pr.md
     git remote remove origin          # after the two gh reads, before the engine
-    mkdir -p .bernstein/templates
-    cp -r <skill>/templates/bernstein-templates/roles .bernstein/templates/
+    mkdir -p .bernstein
+    [ ! -e .bernstein/templates ] && [ ! -L .bernstein/templates ] || {
+      echo "refusing: reviewed tree already owns .bernstein/templates"; exit 1;
+    }
+    [ ! -e "$work/review-templates" ] || {
+      echo "refusing: $work/review-templates already exists"; exit 1;
+    }
+    cp -R <skill>/templates/bernstein-templates "$work/review-templates"
+    ln -s "$work/review-templates" .bernstein/templates
     shims=$(mktemp -d)
-    command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -nc -na "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
-    command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --strict-mcp-config --setting-sources user "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
+    command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -ns -np --no-themes -nc -na --no-session "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
+    command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --safe-mode --strict-mcp-config --no-session-persistence "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
     if command -v codex >/dev/null; then cat > "$shims/codex" <<EOF && chmod +x "$shims/codex"
 #!/usr/bin/env bash
-exec $(command -v codex) -c model_reasoning_effort=high \\
-  -c sandbox_workspace_write.network_access=true \\
-  -c 'sandbox_workspace_write.writable_roots=["$work/src"]' "\$@"
+if [ "\${1:-}" = exec ]; then
+  shift
+  exec $(command -v codex) exec --ignore-user-config --ignore-rules --ephemeral \\
+    --disable hooks --disable apps --disable plugins --disable plugin_sharing \\
+    --disable remote_plugin -c project_doc_max_bytes=0 \\
+    -c model_reasoning_effort=high \\
+    -c sandbox_workspace_write.network_access=true \\
+    -c 'sandbox_workspace_write.writable_roots=["$work/src"]' "\$@"
+fi
+exec $(command -v codex) "\$@"
 EOF
     fi
     mkdir -p "$work/src/.sdd/sandbox-probe"   # probe from a SUBDIR: the root grants itself
@@ -127,25 +140,33 @@ Notes that cost time to learn:
   real one, correctly refused to fake success, and failed the run after 530k
   input tokens spent diagnosing it. The override grants loopback and the open
   internet alike, which is inside this skill's fence (public repositories) and no
-  wider than codex already is here, since the shim adds no config isolation.
-- **The `codex` shim pins reasoning effort to the run, not to the host.** It is
-  the one shim that is not about isolation. `codex exec` reads
+  wider than the public-repository fence permits; the shim isolates configuration,
+  not network destinations.
+- **The `codex` shim isolates the worker from measured operator surfaces and pins
+  reasoning effort to the run.** `--ignore-user-config`, `--ignore-rules`, the
+  feature switches and `project_doc_max_bytes=0` prevent operator MCP servers,
+  plugins, apps, hooks and AGENTS files from entering a worker;
+  `--ephemeral` prevents the review from becoming operator session history.
+  Authentication still comes from `CODEX_HOME`. `codex exec` reads
   `model_reasoning_effort` from `~/.codex/config.toml` and takes no dedicated
   effort flag, but it does take `-c key=value` (verified codex-cli 0.154.0), and
   bernstein's codex adapter builds its argv with no hook - it reads neither that
   file nor `role_model_policy.<role>.effort`, which the seed parser accepts and
-  then drops. PATH is the only way in. Keep the value a literal: codex accepts a
+  then drops. PATH is the only way to supply these flags. Keep the effort a literal:
+  codex accepts a
   misspelled effort and reports it back as the effort, even under
   `--strict-config`, so an interpolated typo would downgrade the lane silently.
-- **The templates copy is what keeps the built-in role vocabulary out of every
+  Codex 0.154 still injects its product baseline and host skill catalogue; its
+  advertised discovery switch does not suppress them. No shipped template carries
+  that material, and this CLI version exposes no effective switch for it.
+- **The templates link is what keeps the built-in role vocabulary out of every
   agent's context, and it is not optional.** `get_templates_dir` prefers
-  `<workdir>/.bernstein/templates` over the engine's bundled defaults, and
-  `role_resolver.resolve_role_prompt` tries a skill pack, then a legacy role
-  template, then the bare `"You are a <role> specialist."` stub. Copying
-  `roles/` and deliberately NOT copying a `skills/` directory puts the manager
-  on our own template - which names only this seed's roles - and every lens on
-  the stub. Left out, the manager is handed the engine's list of built-in roles
-  and assigns names the task server answers with a 400.
+  `<workdir>/.bernstein/templates` over the engine's bundled defaults. The link points
+  to a per-run snapshot outside the reviewed checkout: Bernstein's code index cannot
+  feed the templates back to workers as RAG, and edits to the installed skill cannot
+  change prompts halfway through a run. This template tree has no `skills/` directory,
+  so the engine's built-in role catalogue is not appended to the coordinator prompt.
+  Left out, the coordinator is handed roles the task server rejects.
 - `bernstein run` blocks only with `--quiet` and `--wait`; `--headless` on the
   root group is a parsed no-op.
 - **`BERNSTEIN_SEED_PATH` is not optional, and leaving it out fails in six
@@ -182,12 +203,13 @@ Notes that cost time to learn:
   so a spawned agent otherwise boots the user's global MCP servers AND reads the
   reviewed tree's own agent config. Every flag closes a vector measured on this
   host: `pi -ne` stops `<cwd>/.pi/mcp.json` (an eager server there executes at
-  session start, no trust gate) and the user's own servers; `pi -nc` stops
+  session start, no trust gate) and the user's own servers; `-ns`, `-np` and
+  `--no-themes` stop the remaining user and project prompt surfaces; `pi -nc` stops
   `<cwd>/AGENTS.md` and `<cwd>/CLAUDE.md`, which load before pi's trust decision
   so nothing else suppresses them; `pi -na` stops `<cwd>/.pi/SYSTEM.md` replacing
-  the system prompt and `<cwd>/.pi/extensions/*.js` executing on a trusted host.
-  `claude --strict-mcp-config` keeps only what bernstein injects via
-  `--mcp-config`; `claude --setting-sources user` drops the tree's CLAUDE.md
-  (defeating the adapter's own `--add-dir <workdir>`), its settings hooks, and
-  its `.claude/skills` and `.claude/agents`, while `--mcp-config` and `--agents`
-  survive because they are command line, not a setting source.
+  the system prompt and `<cwd>/.pi/extensions/*.js` executing on a trusted host;
+  `--no-session` prevents global history writes.
+  `claude --safe-mode` disables CLAUDE.md, skills, plugins, hooks, settings, MCP
+  servers and custom agents from both the operator and reviewed tree;
+  `--strict-mcp-config` makes that boundary explicit, and
+  `--no-session-persistence` keeps the review out of operator history.

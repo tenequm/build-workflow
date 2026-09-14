@@ -10,9 +10,35 @@ check:
     shellcheck skills/build-plan/scripts/*.sh
     python3 scripts/kb_index.py --check
     python3 scripts/skill_isolation.py
+    python3 scripts/review_prompt_boundaries.py
     claude plugin validate . --strict
-    just --justfile bernstein_operator/Justfile check
+    just operator-check
     echo "check: clean"
+
+operator_python_paths := "src tests scripts ../scripts/review_prompt_boundaries.py ../skills/build-run/scripts ../skills/build-plan/scripts ../skills/build-close/scripts ../fixtures/review-pr-cases/harness.py"
+
+# Non-mutating Python/operator checks, also run by `just check` and the staged hook.
+operator-check:
+    cd bernstein_operator && uv run python scripts/sync-skill-code.py --check
+    cd bernstein_operator && uv run ty check src ../scripts/review_prompt_boundaries.py ../skills/build-run/scripts ../skills/build-plan/scripts/plan-check.py ../skills/build-close/scripts ../fixtures/review-pr-cases/harness.py
+    cd bernstein_operator && uv run ruff check --config pyproject.toml {{operator_python_paths}}
+    cd bernstein_operator && uv run ruff format --check --config pyproject.toml {{operator_python_paths}}
+
+# Exercise the installed plugin against an isolated, patched copy of the source engine.
+test *ARGS:
+    cd bernstein_operator && uv run python scripts/acceptance.py {{ARGS}}
+
+fix:
+    cd bernstein_operator && uv run ruff check --fix --config pyproject.toml {{operator_python_paths}}
+    cd bernstein_operator && uv run ruff format --config pyproject.toml {{operator_python_paths}}
+    cd bernstein_operator && uv run python scripts/sync-skill-code.py
+
+install:
+    cd bernstein_operator && uv sync --all-groups
+
+update:
+    cd bernstein_operator && uv lock --upgrade
+    cd bernstein_operator && uv sync --all-groups
 
 # Score the /review-pr eval corpus. No argument runs all four cases through a stock
 # bernstein review, four at a time; `just eval case-01-off-by-one` is the smoke case run

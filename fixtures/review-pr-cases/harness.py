@@ -40,9 +40,8 @@ Cases are independent: each owns its repository and its bernstein run, so `--job
 them concurrently and N separate invocations are equally safe. The only shared file is
 the evals ledger, appended once per invocation as a single O_APPEND line.
 
-The concurrency default is a provider limit, not a machine limit: free model ids smooth
-burst demand poorly, and 4 cases in flight drew 429s on 36 of 67 sessions in the first
-corpus run. Two cases at a time is what that window absorbs.
+The default is four cases at a time. Each case gets its own checkout, task-server port
+and scratch tree, and the disk admission floor scales with the requested concurrency.
 """
 
 from __future__ import annotations
@@ -201,15 +200,17 @@ def materialise(case: Path, work: Path) -> dict[str, Any]:
     # untracked here - every agent merge fails with "would be overwritten by merge".
     exclude = repo / ".git" / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
-    exclude.write_text(".bernstein-pr.diff\n.bernstein-pr.md\n")
-    # `get_templates_dir` prefers <workdir>/.bernstein/templates over the engine's
-    # bundled defaults, and the role resolver falls back to a bare "You are a <role>
-    # specialist." stub for a role it has no template for. Copying `roles/` and
-    # deliberately not copying a `skills/` directory is what keeps the engine's own
-    # role vocabulary out of every agent's context: the manager gets our template,
-    # which names only this seed's roles, and each lens gets the stub. The skill's
-    # own invocation does the same copy - keep the two in step.
-    shutil.copytree(BERNSTEIN_TEMPLATES / "roles", repo / ".bernstein" / "templates" / "roles")
+    exclude.write_text(
+        "/.bernstein-pr.diff\n/.bernstein-pr.md\n/.bernstein/\n/.sdd/\n/review-report.md\n"
+    )
+    # Keep role templates outside the checkout. Bernstein resolves a directory
+    # symlink, while its code index deliberately does not follow one; copying the
+    # templates here makes its RAG inject those prompts back into every worker.
+    template_snapshot = work / "review-templates"
+    shutil.copytree(BERNSTEIN_TEMPLATES, template_snapshot)
+    templates = repo / ".bernstein" / "templates"
+    templates.parent.mkdir(parents=True, exist_ok=True)
+    templates.symlink_to(template_snapshot, target_is_directory=True)
     return {"repo": repo, "head": head, "branch": branch}
 
 
@@ -408,71 +409,19 @@ def codex_effort() -> str:
 def shim_path(work: Path) -> str:
     """A PATH prefix that stops the reviewed tree from configuring its reviewer.
 
-    bernstein's adapters resolve `pi` and `claude` from PATH, spawn them with the
-    reviewed checkout as cwd, and pass no isolation switches - so every worker
-    reads that tree's agent config and the user's global MCP config. Each flag
-    below closes a vector measured on this host (2026-09-11, pi 0.85.1 /
-    claude 2.1.269):
+    Bernstein's adapters add no isolation flags. Pi therefore disables extensions,
+    skills, prompt templates, themes, project context and session persistence. Claude
+    uses safe mode, strict MCP configuration and no session persistence. Codex ignores
+    operator config and rules, disables hooks/apps/plugins, suppresses AGENTS files and
+    persists no rollout. Codex 0.154 still has no proven switch for a reviewed tree's
+    `.codex/` directory, and still injects its product baseline and host skill catalogue;
+    that residual surface is why the harness remains fenced to public repositories.
 
-      pi  -ne  `<cwd>/.pi/mcp.json` boots an eager stdio server at session start,
-               with no trust gate; also the only switch that stops it, and the
-               one that keeps the user's own servers (pond, glim) out.
-          -nc  `<cwd>/AGENTS.md` and `<cwd>/CLAUDE.md` load before the trust
-               decision, so nothing else suppresses them.
-          -na  `<cwd>/.pi/SYSTEM.md` replaces the system prompt and
-               `<cwd>/.pi/extensions/*.js` executes, once the project is trusted.
-
-      claude  --strict-mcp-config    `<cwd>/.mcp.json` boots its server with the
-                                     trust dialog skipped under `-p`.
-              --setting-sources user drops project CLAUDE.md (bernstein's
-                                     `--add-dir <workdir>` included), project and
-                                     local settings hooks, and `.claude/skills`
-                                     and `.claude/agents`; `--mcp-config` and
-                                     `--agents` are command line, so they survive.
-
-      codex  -c model_reasoning_effort=high
-                  Not an isolation switch: it pins the lane's reasoning effort to
-                  the run instead of to the host. `codex exec` otherwise reads
-                  `model_reasoning_effort` from ~/.codex/config.toml, so the effort
-                  a review ran at would be whatever that file happened to say, it
-                  would differ between two concurrent runs, and setting it would
-                  change every other codex session on the machine. The value is
-                  never validated - codex accepts a misspelling and reports it
-                  back as the effort, even under --strict-config - so it is a
-                  literal here and must never be interpolated.
-                  (verified codex-cli 0.154.0; bernstein's codex adapter reads
-                  neither this nor `role_model_policy.<role>.effort`, which parses
-                  and is then dropped, so PATH is the only way in.)
-
-             -c sandbox_workspace_write.network_access=true
-                  Without it the lane cannot run at all. The adapter spawns codex
-                  with `--sandbox workspace-write`, whose default denies network,
-                  and every bernstein worker reaches the task server over
-                  127.0.0.1 - the manager to create tasks, everyone to report
-                  completion. Measured: a codex manager set
-                  CODEX_SANDBOX_NETWORK_DISABLED, got `curl: (7) Failed to connect
-                  to 127.0.0.1` on both the documented port and the real one,
-                  correctly refused to fake success, and failed the run having
-                  spent 530k input tokens on the diagnosis. This grants loopback
-                  and the open internet alike; the fence is public repositories,
-                  and codex is unshimmed for config isolation either way.
-
-             -c sandbox_workspace_write.writable_roots=["<repo>"]
-                  Without it the report is never delivered anywhere but /tmp.
-                  `workspace-write` grants the worker's cwd subtree - its
-                  worktree - plus a fixed set of system roots that includes
-                  /tmp. It does NOT include the checkout root, which is where
-                  the goal text requires `review-report.md` to be written. A
-                  workspace under /tmp therefore passes by accident and one
-                  anywhere else fails: measured 2026-09-14 on pond#237, where
-                  a report writer on /home reported the checkout "mounted
-                  read-only", refused to fake success, and died after 1.95M
-                  input tokens - four times over, once per orchestrator retry.
-                  This is interpolated, unlike the effort above, because the
-                  path is per-run; a mistyped key fails closed with a denied
-                  write rather than silently downgrading, and `sandbox_probe`
-                  below is what turns that failure into a refusal before any
-                  model spawns.
+    The codex wrapper applies its flags only to `codex exec`. Bernstein also invokes
+    `codex sandbox` during the model-free write probe, which must pass through unchanged.
+    The wrapper also pins reasoning effort, enables the task-server connection and grants
+    the checkout root so a report writer in a nested worktree can deliver the report.
+    The last grant is verified before a model is spawned.
 
     A missing binary is skipped: the shim never decides which CLIs a host has.
     """
@@ -480,11 +429,14 @@ def shim_path(work: Path) -> str:
     shims.mkdir(parents=True, exist_ok=True)
     writable = shlex.quote(f'sandbox_workspace_write.writable_roots=["{work / "repo"}"]')
     flags = (
-        ("pi", "-ne -nc -na"),
-        ("claude", "--strict-mcp-config --setting-sources user"),
+        ("pi", "-ne -ns -np --no-themes -nc -na --no-session"),
+        ("claude", "--safe-mode --strict-mcp-config --no-session-persistence"),
         (
             "codex",
             (
+                "exec --ignore-user-config --ignore-rules --ephemeral "
+                "--disable hooks --disable apps --disable plugins --disable plugin_sharing "
+                "--disable remote_plugin -c project_doc_max_bytes=0 "
                 f"-c model_reasoning_effort={codex_effort()} "
                 f"-c sandbox_workspace_write.network_access=true -c {writable}"
             ),
@@ -495,7 +447,17 @@ def shim_path(work: Path) -> str:
         if not real:
             continue
         wrapper = shims / name
-        wrapper.write_text(f'#!/usr/bin/env bash\nexec {shlex.quote(real)} {extra} "$@"\n')
+        if name == "codex":
+            wrapper.write_text(
+                "#!/usr/bin/env bash\n"
+                'if [ "${1:-}" = exec ]; then\n'
+                "  shift\n"
+                f'  exec {shlex.quote(real)} {extra} "$@"\n'
+                "fi\n"
+                f'exec {shlex.quote(real)} "$@"\n'
+            )
+        else:
+            wrapper.write_text(f'#!/usr/bin/env bash\nexec {shlex.quote(real)} {extra} "$@"\n')
         wrapper.chmod(0o755)
     return str(shims)
 
