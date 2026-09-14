@@ -4,7 +4,7 @@ title: A sandbox's default grants make a checkout's location load-bearing, and t
 description: Codex's workspace-write sandbox grants the worker's cwd plus a fixed list of system roots that includes /tmp but not the checkout root, so /review-pr's report write succeeded only by accident while workspaces lived under /tmp. Moving the checkout off /tmp to satisfy the disk guard silently removed that accident, and the second guard was written without noticing it depended on the first guard's violation.
 tags: [review-pr, codex, sandbox, reliability]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-14T18:10:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: dlq
     resource: /docs/evals/2609-14-pond-237/run-2-undelivered/dlq.jsonl
@@ -29,9 +29,9 @@ codex worker runs from a worktree nested under it, so the write it is
 instructed to make is outside its writable set - unless the checkout happens to
 sit under `/tmp`, where a default grant covers it.
 
-Every corpus case lives under `/tmp`. Every corpus report therefore landed, and
-the delivery step was never actually exercised. The skill passed its own
-regression suite on an accident.
+At the time of this failure, every corpus case lived under `/tmp`. Every corpus
+report therefore landed, and the delivery step had not actually been exercised
+outside that default grant. The skill passed its regression suite on an accident.
 
 ## The two guards pulled against each other
 
@@ -51,13 +51,12 @@ satisfied the hidden precondition on every run. What surfaced it was a failure
 in production shape - a real repository, on a real filesystem, outside the one
 directory the suite ever used.
 
-This is the same shape as
-[TMPDIR never reaching a worker](quarantine-makes-a-resource-outage-permanent.md):
-a setting that appears to control a child process, and a boundary in between
-that quietly decides otherwise. The difference is the direction of the error.
-There, an export looked like a control and was inert. Here, a grant nobody
-configured was doing load-bearing work, so removing it broke something no one
-had connected to it.
+The first diagnosis grouped this with a supposed boundary that prevented
+`TMPDIR` reaching workers. Later measurement disproved that half: worker scratch
+does follow `TMPDIR`, as recorded in
+[worker scratch follows TMPDIR](worker-scratch-follows-tmpdir.md). The durable
+common lesson is narrower: filesystem placement and sandbox grants are child-process
+behaviour to measure, not infer from where one aborted run left its files.
 
 ## What closes it
 

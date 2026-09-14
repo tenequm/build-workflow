@@ -1,10 +1,10 @@
 ---
 type: Finding
 title: Concurrent bernstein runs collide on the task server port
-description: Every bernstein run binds --port 8052 by default; a second concurrent run crash-loops its server, mints a fresh auth token per restart, and locks its own waiter out - the signature is an endless 401 flood against /status. Allocating a port per run is the only fix, and it costs something - parts of the spawn prompt still hardcode 8052, so a manager on a non-default port can burn its whole first turn hunting for the real one.
+description: Every Bernstein run binds port 8052 by default, so concurrent runs require a port each. The operator engine now propagates that run-specific URL and the four-case harness has proved jobs=4; /review-pr also removed its historical literal-8052 examples, leaving the engine-appended authentication section as the sole authority for dynamic connection data.
 tags: [bernstein, review-pr, eval]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-11T22:35:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: help
     resource: bernstein run --help (3.19.1)
@@ -21,9 +21,18 @@ sources:
   - id: hardcoded
     resource: bernstein 3.19.1 as installed, core/agents/spawn_prompt.py:780, 1102, 1114, 1123, 1127 and _default_templates/prompts/{progress-report,team-awareness}.md
     title: completion, bulletin and channel curl examples are literal http://127.0.0.1:8052
-  - id: onecall
-    resource: bernstein 3.19.1 as installed - _resolve_task_server_url is referenced at spawner_core.py:655 and :707 only; spawn_prompt.py names no resolver
-    title: the resolver governs the auth section and nothing else
+  - id: operator
+    resource: bernstein 3.19.2 as installed on 2026-09-14 - core/orchestration/orchestrator.py exports args.port through BERNSTEIN_SERVER_URL, and core/agents/spawner_core.py resolves that URL for the authentication section
+    title: The operator propagates one run-specific task-server URL
+  - id: reviewhistorical
+    resource: "Git tree at 711f340: /skills/review-pr/templates/bernstein-templates/roles/manager/system_prompt.md repeated task-server auth and transport instructions with literal port 8052"
+    title: The historical review-manager duplication
+  - id: manager
+    resource: /skills/review-pr/templates/bernstein-templates/roles/manager/system_prompt.md
+    title: The current review manager prompt, which delegates dynamic connection data to the engine-appended authentication section
+  - id: proof
+    resource: "The four-case corpus row committed in 52e5589: jobs=4 with one free port per case, all cases completed and no result was ERROR or MALFORMED"
+    title: The current per-run-port concurrency proof
   - id: hunt
     resource: "preserved run at /tmp/review-eval-20260911T210735Z/floor/case-05/repo/.sdd/runtime/agent_logs/manager-9ae48550/manager-9ae48550.log, 2026-09-11 21:20-21:24Z"
     title: "the manager's own words - \"the actual server port is 50699 (from .sdd/runtime/server.port), not the 8052 placeholder in the instructions\""
@@ -42,7 +51,7 @@ The misdirection is the expensive part: the visible symptom (auth failure)
 points away from the cause (port collision). Any harness or script that can
 ever run two bernsteins concurrently must allocate a port per run.[^fix]
 
-# What a per-run port costs
+# What a per-run port exposed
 
 The engine resolves the server URL it hands an agent from
 `BERNSTEIN_SERVER_URL`, then the run's own `.sdd/runtime/server.port`, and only
@@ -60,13 +69,19 @@ curl. One manager of four spent its entire first turn on it - probing 8052 with
 placeholder in the instructions".[^hunt] By then the stalled-manager detector
 and the heartbeat escalation had both fired on it.
 
-There is no config lever that closes this. `_resolve_task_server_url` has
-exactly one call site, the prompt's auth section; the curl examples in
-`spawn_prompt.py` are literal f-strings no env var or seed key
-reaches.[^onecall] A harness allocating a port can only reduce the odds - by
-exporting `BERNSTEIN_SERVER_URL` so the auth section is unambiguous, and by
-stating the real port in the goal text - and must expect a manager to lose a
-turn to it anyway.
+The operator engine now publishes each run's URL to the spawned environment, and
+its appended authentication section renders that URL dynamically.[^operator]
+Together with a free port per case, that has completed the four-case corpus at
+`jobs=4`.[^proof]
+The upstream literals recorded above remain an engine concern. `/review-pr` once
+added a smaller copy of the same contradiction: its static manager role prompt
+repeated the auth and transport instructions and hardcoded 8052 in both
+review-specific task-create examples.[^reviewhistorical]
+
+That duplication is now removed. The manager prompt owns the review task graph,
+roles, dependencies and completion signals; the engine-appended authentication
+section is the sole authority for the run-specific server URL, token path, command
+form and completion command.[^manager]
 
 [^help]: --port INTEGER, default 8052
 [^runs]: crash forensics
@@ -74,4 +89,7 @@ turn to it anyway.
 [^resolver]: the resolver prefers the env var, then server.port, then 8052
 [^hardcoded]: the prompt's curl examples are literal 8052
 [^hunt]: a manager lost its first turn to the placeholder
-[^onecall]: the resolver has one call site; the curl examples are literals
+[^operator]: the current engine propagates the run URL to its authentication section
+[^reviewhistorical]: the review manager's former literal task-server examples
+[^manager]: the current review manager delegates dynamic connection data to the engine
+[^proof]: the jobs=4 per-run-port proof

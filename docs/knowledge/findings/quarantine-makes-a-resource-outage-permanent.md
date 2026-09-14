@@ -1,10 +1,10 @@
 ---
 type: Finding
-title: A resource outage becomes a permanent run failure, and a shadow dependency spreads it
-description: Bernstein turns a transient host shortage into an unrecoverable run - a task that cannot spawn burns its respawn budget, then its retry budget, then quarantines, and quarantine survives the resource returning. Anything listed in that task's dependents is blocked forever, so a dependency on an agent whose output is contractually ignored can end a run that was otherwise complete.
+title: A resource outage becomes a permanent run failure, and unnecessary dependencies spread it
+description: Bernstein turns a transient host shortage into an unrecoverable run - a task that cannot spawn burns its respawn budget, then its retry budget, then quarantines, and quarantine survives the resource returning. The pond#237 run showed how an in-band comparison task amplified that failure through a needless dependency; model comparisons now run out-of-band and never enter the production review graph.
 tags: [review-pr, bernstein, orchestration, reliability]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-14T19:45:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: run
     resource: /docs/evals/2609-14-pond-237/run-1-aborted/failure-lines.log
@@ -12,12 +12,12 @@ sources:
   - id: graph
     resource: /docs/evals/2609-14-pond-237/run-1-aborted/task-graph.json
     title: pond#237 task graph at the moment run 1 died
-  - id: goal
-    resource: /skills/review-pr/templates/review-goal.md
-    title: The review goal text, whose report section ignores every shadow- file
-  - id: manager
-    resource: /skills/review-pr/templates/bernstein-templates/roles/manager/system_prompt.md
-    title: The manager role template that sets depends_on
+  - id: historical
+    resource: "Git tree at 3e4a23a: review-goal.md declared two shadow roles whose files the report ignored, while manager/system_prompt.md excluded those roles from the report dependency list after the pond#237 failure"
+    title: The historical in-band shadow graph and its first dependency fix
+  - id: boundary
+    resource: "Git commits c5a0ae1 and 711f340: all shadow roles, routes, prompts and instructions were removed from /review-pr; the ensuing four-case run recovered 4/4 and each task graph contained only manager, five production lenses and report writer with five report dependencies"
+    title: The out-of-band comparison boundary and its corpus proof
   - id: tmpdir
     resource: /docs/knowledge/findings/worker-scratch-follows-tmpdir.md
     title: The measurement that corrected this concept's TMPDIR claim, 2026-09-14
@@ -46,14 +46,13 @@ entire thirteen minutes the run spent dying.[^run] Any health check reading the
 run log reports a healthy run. The task graph is the honest surface: statuses
 `failed`, `blocked_by_failed_dep`, and a `failed` count that climbs.[^graph]
 
-## A dependency on an ignored artifact is still a dependency
+## Historical failure: a dependency on an ignored artifact
 
-The pond#237 lane runs five numbered lenses plus two `-shadow` lenses, a
-second reader kept for comparison. The goal text instructs the report writer to
-ignore every file whose name begins with `shadow-`; a shadow finding cannot
-enter the report by construction.[^goal] The manager template nonetheless said
-the report "depends on every lens file", and the manager duly listed both
-shadows in `depends_on`.[^manager]
+The pond#237 lane ran five numbered lenses plus two `-shadow` lenses, a
+second reader kept for comparison. The goal text instructed the report writer to
+ignore every file whose name began with `shadow-`; a shadow finding could not
+enter the report by construction. The manager nonetheless listed both shadows in
+`depends_on`.[^historical]
 
 So when the shortage hit, the report task sat at `blocked_by_failed_dep` behind
 `lens-5-cleanliness-shadow` - an agent whose output it was forbidden to
@@ -71,29 +70,18 @@ so every edge that carries no data is pure imported risk.
 Prose in a skill cannot close either half, because both failures happen before
 any model reads anything. Both are now checks:
 
-- The invocation refuses to start when **either** the working filesystem or `/tmp`
-  is below a floor. The second is the one that bit here, because a lens that copies
-  the repository into its own `mktemp -d` and builds there spent `/tmp`.
-
-  This paragraph asserted for a week that a sandboxed worker is handed a hardcoded
-  `TMPDIR=/tmp` and never sees an exported one, so that exporting `TMPDIR` moved
-  only the parent's own scratch. **That is false**, measured 2026-09-14 and
-  recorded in [worker scratch follows TMPDIR](worker-scratch-follows-tmpdir.md):
-  the variable is on bernstein's passthrough allowlist and codex grants it as a
-  writable root, so naming it moves the workers too. Both floors are still
-  checked - they are one filesystem once the export is in force, and the second
-  check costs nothing - but the reason is redundancy, not a pin.
-
-  The general shape that survives: **a guard's comment outlives the measurement it
-  came from.** The claim was written from where files landed in one aborted run and
-  then carried into three more files as settled fact; what caught it was measuring
-  again rather than re-reading it.
+- The invocation refuses to start below its disk floor. Worker scratch follows
+  `TMPDIR`, so the harness names it beside the workspace and checks both locations;
+  the measurement and the correction to the earlier hardcoded-`/tmp` explanation
+  live in [worker scratch follows TMPDIR](worker-scratch-follows-tmpdir.md).[^tmpdir]
 - The corpus harness refuses the lane on the same floor, scaled by concurrency,
   and gained a `disk_exhausted` detector beside `lane_down` so a starved run
   scores ERROR rather than MISSED. Scoring it MISSED would file a host outage as
   a model failure in the ledger, which is the one thing the ledger must not say.
-- The manager template now names the five numbered lens tasks as the report's
-  only dependencies and forbids a `-shadow` task from ever appearing there.
+- The production workflow no longer has a shadow task to fail or depend on. Model
+  comparisons are separate Pond experiments over the same lens text, never roles,
+  routes, prompts, findings files or report inputs inside `/review-pr`. The four-case
+  proof inspected each runtime graph as well as its verdicts.[^boundary]
 
 See also [a hung model lane fails as a dead agent](a-hung-model-lane-fails-as-a-dead-agent.md),
 which is the same shape one layer up: an infrastructure failure arriving at the
@@ -101,5 +89,6 @@ grader disguised as a model result.
 
 [^run]: pond#237 orchestrator debug log, 2026-09-14. `Disk space critical: 0.3 GB free (need >= 1.0 GB)`; `Session 'batch:815236c89df9' parked after exhausting respawn budget (2 respawn(s) in 300s window)`; `Task 'Lens 5: cleanliness' exhausted 2 retries -- recorded cross-run failure in quarantine`; `Skipping quarantined task ... fail_count=3, action=skip` still firing after the resource was returned.
 [^graph]: pond#237 task graph: `manager`, `lens-2-side-effects`, `lens-3-design`, `lens-4-efficiency`, `lens-4-efficiency-shadow` all `done`; six `failed` entries across `lens-5-cleanliness` and its shadow; `report-writer` at `blocked_by_failed_dep`.
-[^goal]: review-goal.md, report section: "ignore every file whose name begins with `shadow-`. Those are a second reader kept for comparison afterwards; a finding that appears only in a `shadow-` file does not enter the report."
-[^manager]: manager/system_prompt.md, task dependencies section, before this change: "the report task reads every lens file, so it depends on all of them".
+[^historical]: the historical in-band shadow graph and its first dependency fix
+[^boundary]: the out-of-band comparison boundary and its corpus proof
+[^tmpdir]: the corrected TMPDIR measurement

@@ -4,7 +4,7 @@ title: Worker scratch follows TMPDIR, so the corpus harness names it instead of 
 description: A reviewing agent's own `mktemp -d` is charged to TMPDIR, and TMPDIR does reach a sandboxed worker - it is on bernstein's env passthrough allowlist and codex grants `$TMPDIR` as a writable root under workspace-write even outside the workspace. Inheriting it put worker scratch on whatever rootfs the host had, which capped eval concurrency at the small filesystem; the harness now sets it beside the workspace.
 tags: [review-pr, corpus, disk, concurrency]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-14T19:30:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: allowlist
     resource: "bernstein 3.19.2, adapters/env_isolation.py - TMPDIR, TMP and TEMP in _BASE_ALLOWLIST, applied by build_filtered_env"
@@ -15,6 +15,9 @@ sources:
   - id: guard
     resource: /fixtures/review-pr-cases/harness.py
     title: "harness.py - the pre-run disk guard"
+  - id: proof
+    resource: "The four-case corpus row committed in 52e5589: jobs=4, workspaces and worker scratch under ~/.cache/review-eval, all four cases completed with no ERROR or MALFORMED verdict"
+    title: The jobs=4 proof after the TMPDIR correction
 ---
 
 # Finding
@@ -35,6 +38,10 @@ filesystem, and the per-case floor was then governed by the smaller of the two: 
 10 GB floor and a 32 GB rootfs, three concurrent cases were refused on an otherwise
 empty machine. The harness now creates `<work>/tmp`, exports it, and pins
 `tempfile.tempdir` to match so its own checks read what its children read.
+That change made four-way concurrency feasible without weakening the floor. The
+subsequent `jobs=4` corpus run completed all four cases with no ERROR or MALFORMED
+verdict while `/tmp` usage stayed flat and scratch accumulated under the named
+workspace.[^proof]
 
 Two things this cost, worth recognising by shape rather than by detail:
 
@@ -55,3 +62,4 @@ starved task quarantined permanently - see
 
 [^allowlist]: bernstein env isolation allowlist
 [^probe]: codex sandbox TMPDIR probe
+[^proof]: the jobs=4 proof after the TMPDIR correction

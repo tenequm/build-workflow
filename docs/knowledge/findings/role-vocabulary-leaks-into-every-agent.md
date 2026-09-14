@@ -5,7 +5,7 @@ description: The HTTP task-create route validates a task's role against the seed
 tags: [bernstein, engine, spawn-prompt, roles, review-pr]
 status: stable
 stale_after: "2027-03-14T00:00:00Z"
-generated: { by: claude-code/opus-5, at: "2026-09-14T14:10:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: engine
     resource: "bernstein 3.19.2 as installed (site-packages): core/routes/task_crud.py:1029-1050, core/planning/plan_schema.py:22 and :153, mcp/input_validation.py:181-189, core/planning/role_resolver.py:90-110 and :155, core/planning/role_resolver.py:211-218, __init__.py:60-75, core/agents/spawn_prompt.py:99-113 and :955-957, core/orchestration/orchestrator.py:6459-6470"
@@ -14,8 +14,8 @@ sources:
     resource: "bernstein 3.19.2 bundled templates: _default_templates/roles/manager/system_prompt.md:17-28, _default_templates/skills/manager/SKILL.md:27-30, _default_templates/skills/manager/references/task-api.md"
     title: the bundled prompts that carry the list
   - id: measured
-    resource: "resolve_role_prompt called directly against the installed engine, 2026-09-14: role `analyst` under the bundled templates returns a 1142-byte body naming every built-in role; the same role under a workdir templates dir with no skills/ returns the 34-byte stub. A live case-01 run then created nine tasks under seed-declared role names and the task server accepted every one."
-    title: measured on the installed engine and on a live run
+    resource: "resolve_role_prompt called directly against the installed engine, 2026-09-14: role `analyst` under the bundled templates returns a 1142-byte body naming every built-in role; the same role under a workdir templates dir with no skills/ returns the 34-byte stub. A live case-01 run then created nine tasks under the then-current seed-declared roles and the task server accepted every one; those two shadow roles were later removed from production in c5a0ae1."
+    title: measured on the installed engine and on the historical nine-task graph
   - id: upstream
     resource: "upstream bernstein main at e95defe2a (2026-09-14), same version 3.19.2: plan_schema.py, input_validation.py, task_crud.py, role_resolver.py, spawn_prompt.py, teams/manifest.py, seed_parser.py and the whole templates/ tree are byte-identical to the pinned build"
     title: verified against upstream, so this is not a stale-fork artifact
@@ -40,7 +40,7 @@ against the keys of the run's own `role_model_policy` and rejects anything else
 with a 400 that lists the valid ones.[^engine] `KNOWN_ROLES` is never consulted
 there. A manager that creates tasks by curl - which is how a stock `bernstein
 run` plans - therefore lives under the seed's vocabulary, not the engine's. A
-seed may declare `lens-4-efficiency-shadow` and it is as valid as `backend`.
+seed may declare `custom-review-role` and it is as valid as `backend`.
 
 One name is still not ours: the engine tests the literal string `manager` in its
 prompt section rules, its specialists block and its consensus relay.[^engine]

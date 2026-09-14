@@ -1,10 +1,10 @@
 ---
 type: Finding
 title: A reviewed tree can reconfigure its own reviewer through the agent config it carries
-description: A review session's working directory is the reviewed repository's tree, and the spawned CLI reads project-local configuration from it - measured on this host, pi executes `<cwd>/.pi/mcp.json`, loads AGENTS.md and CLAUDE.md, and on a trusted host takes its system prompt from `.pi/SYSTEM.md` and executes `.pi/extensions/*.js`, while claude executes `<cwd>/.mcp.json` and the hooks in `.claude/settings.json` and `.claude/settings.local.json` and adopts the tree's CLAUDE.md, skills and agents; the invocation's PATH shim now passes `pi -ne -nc -na` and `claude --strict-mcp-config --setting-sources user`, which closes every one of those by A/B, and what remains open is the families the shim does not cover.
-tags: [review-pr, security, pi, claude, injection]
+description: A review session's working directory is the reviewed repository's tree, and the spawned CLI reads project-local configuration from it - measured on this host for pi and claude. The invocation's PATH shims close every measured pi and claude vector; Codex now suppresses user config and rule files but project-local `.codex/config.toml` isolation is not proved, while any agy role remains covered only by the public-repository/no-token fence.
+tags: [review-pr, security, pi, claude, codex, agy, injection]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-11T23:33:18Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: pimatrix
     resource: "Controlled A/B on this host, 2026-09-11, pi 0.85.1, one throwaway cwd per case, `pi -p --no-session` against a local model: `.pi/mcp.json` with an eager stdio server ran its command (a `touch` fired); AGENTS.md and CLAUDE.md were recalled verbatim; under a throwaway config with defaultProjectTrust=always, `.pi/SYSTEM.md` and `.pi/APPEND_SYSTEM.md` were recalled and `.pi/extensions/probe.js` executed at startup"
@@ -37,8 +37,8 @@ sources:
     resource: ../../../skills/review-pr/SKILL.md
     title: The fence that contains what the shim cannot
   - id: shim
-    resource: ../../../fixtures/review-pr-cases/harness.py
-    title: The PATH shim, and the flags it now passes
+    resource: "Current /skills/review-pr/SKILL.md and /fixtures/review-pr-cases/harness.py: both construct per-run PATH shims with the measured pi and claude isolation flags; the Codex shim adds --ignore-user-config, --ignore-rules, --ephemeral and feature disables, but no cited measurement proves that project-local .codex/config.toml is excluded"
+    title: The production and harness shims, including the remaining family boundary
 ---
 
 # The shape
@@ -99,17 +99,18 @@ is defeated too: with `--setting-sources user` an explicit `--add-dir` at the
 reviewed tree still yielded nothing.[^claudeswitches] `--add-dir` grants tool
 access to a directory; it does not re-enable a suppressed memory source.
 
-# Status: every measured vector is closed at the invocation
+# Status: the measured pi and claude vectors are closed at the invocation
 
 bernstein's adapters pass no isolation switch of their own[^adapter] and stock
 bernstein strips nothing from the checkout,[^stock] so the invocation closes the
 gap from outside the engine: both the skill and the eval harness prepend a PATH
-directory holding wrappers that add `pi -ne -nc -na` and
-`claude --strict-mcp-config --setting-sources user`.[^shim] Each flag earns its
-place against a measured vector, and the pi set is irreducible - no two of the
-three cover each other.[^piswitches] The earlier driver-owned strip-before-launch
-mitigation was deleted with the custom review driver; git history is where it can
-still be read.[^gone]
+directory holding wrappers. The pi wrapper disables extensions, skills, prompt
+templates, themes, project context, interactive approval and session persistence;
+the Claude wrapper uses safe mode, strict MCP config and no session persistence.[^shim]
+The core pi flags each earn their place against a measured vector - no two of
+`-ne`, `-nc` and `-na` cover each other.[^piswitches] The earlier driver-owned
+strip-before-launch mitigation was deleted with the custom review driver; git
+history is where it can still be read.[^gone]
 
 Closing the context files costs something real and was chosen anyway: the reviewer
 no longer sees the reviewed repository's own conventions, so a finding that would
@@ -118,10 +119,12 @@ review runs on the goal text, the diff and the code. The trade is accepted becau
 that file is third-party prose that steers the reviewer, and a reviewer that can be
 steered by the thing it reviews is not a reviewer.
 
-What remains open is scope, not mechanism. The shim wraps `pi` and `claude`; any
-other family bernstein can spawn - `agy` and its `.agy/` most immediately - is
-unwrapped and still reads the tree, and nothing stops a future adapter from
-resolving a CLI the shim does not name. Containment for that stays the fence:
-public repositories and the eval corpus only, with no GitHub token in reach of a
-model session,[^fence] plus operator judgment about which pull requests get
-reviewed.
+What remains open is scope, not mechanism. The isolation flags cover `pi` and
+`claude`. The current `codex` shim suppresses user config, rule files, session
+persistence and several optional features, but the available CLI contract and
+measurements do not prove that the reviewed tree's `.codex/config.toml` is excluded;
+`agy` and its `.agy/` are likewise unwrapped.[^shim] Nothing stops a future adapter
+from resolving another CLI the shim does not name.
+Containment for those families stays the fence: public repositories and the eval
+corpus only, with no GitHub token in reach of a model session,[^fence] plus operator
+judgment about which pull requests get reviewed.

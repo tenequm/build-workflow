@@ -1,10 +1,10 @@
 ---
 type: Decision
 title: A report whose json block breaks its contract is rejected, never scored as a review that found nothing
-description: /review-pr's corpus grader gained a MALFORMED verdict that outranks the content verdicts - a block omitting a required field, or filing a finding under a category outside the pipeline's five, is refused before it is graded, because the reviewer may have found the defect and written it into a field nothing reads, and calling that MISSED files a contract defect as a model failure. The row keeps what the verdict would have been, so the two are told apart without a repeat run.
+description: /review-pr's corpus grader gained a MALFORMED verdict that outranks the content verdicts - a block omitting a required field, or filing a finding under a category outside the report contract's four, is refused before it is graded, because the reviewer may have found the defect and written it into a field nothing reads, and calling that MISSED files a contract defect as a model failure. The row keeps what the verdict would have been, so the two are told apart without a repeat run.
 tags: [review-pr, corpus, evaluation, bernstein, verification]
 status: stable
-generated: { by: claude-code/opus-5, at: "2026-09-14T15:10:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: principle
     resource: /docs/knowledge/references/bernstein-orchestration-principles.md
@@ -27,7 +27,7 @@ sources:
 
 The corpus grader validates the report's json block against the contract the goal
 text states before it grades anything. A block that omits a required field, or
-files a finding under a category outside the pipeline's five, or carries an
+files a finding under a category outside the report contract's four, or carries an
 `action` outside the four, is MALFORMED. That verdict outranks RECOVERED,
 MISFILED and MISSED.[^harness]
 

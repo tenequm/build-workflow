@@ -1,11 +1,11 @@
 ---
 type: Reference
-title: Model lanes for /review-pr - the 2609-11 survey
-description: The measured model-routing landscape for review lanes as it stands after 2026-09-11 - a local-first pi lane over a local LiteLLM gateway (qwen3.8-flash-next, qwen3.8-27b-nvfp4, qwen3.6-35b-a3b-nvfp4 at 209/78/54 tok/s, no dollars and no rate limits) and a subscription quality lane (claude-sonnet-5 manager over agy gemini-3.7-flash-medium workers) - plus the history of the opencode Zen and metered Gemini experiments that preceded them and the pi scoping facts that still bite.
+title: The 2609-11 model-lane survey for /review-pr
+description: A dated survey of the local pi, subscription, opencode Zen and metered Gemini routes considered for /review-pr on 2026-09-11, not the authority for current routing. The seed owns production routing; alternative-model comparisons are out-of-band Pond experiments and never roles, prompts or report inputs in the production review.
 tags: [review-pr, models, providers, cost]
 status: stable
 stale_after: "2026-12-11T00:00:00Z"
-generated: { by: claude-code/opus-5, at: "2026-09-11T21:00:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: survey
     resource: "Session research sweep of 2026-09-11: provider docs, Artificial Analysis index, Terminal-Bench listings, provider ToS pages, and the Meta muse-spark announcement"
@@ -15,13 +15,16 @@ sources:
     title: The local gateway and its throughput
   - id: lane
     resource: ../../../skills/review-pr/templates/review-seed.yaml
-    title: The review seed, which declares the lane in force
+    title: The review seed, the sole authority for current production routing
   - id: fence
     resource: ../../../skills/review-pr/SKILL.md
     title: The fence every lane runs under
   - id: pidig
     resource: "Empirical pi redirect-and-sync runs of 2026-09-11 (pi 0.85.1, pond 0.17.2, pi-acp over acpx), plus a source read of the bernstein pi adapter at v3.19.2"
     title: The pi scoping dig
+  - id: boundary
+    resource: "Git commits c5a0ae1 and 711f340: shadow roles, model routes, role prompts and report handling were removed from /review-pr, then all four corpus cases recovered with a seven-task graph containing only manager, five production lenses and report writer"
+    title: The out-of-band model-comparison boundary and proof
   - id: zenprobe
     resource: "Keyless probe runs of 2026-09-11 against the opencode Zen free catalogue over the real acpx transport, including a pond sync into a fresh per-run store"
     title: The opencode Zen probe (history)
@@ -30,7 +33,16 @@ sources:
     title: The Zen rate card (history)
 ---
 
-# The two lanes
+# Authority and measurement boundary
+
+This reference is a dated survey, not live routing state. The current
+`review-seed.yaml` is the sole authority for which model serves each production
+role.[^lane] A model comparison is run separately against the same lens text and
+captured in Pond; it never adds a role, route, prompt, findings file, dependency or
+report input to `/review-pr`. The shadow-free graph was checked in every case of the
+four-case corpus proof.[^boundary]
+
+# The two lanes surveyed on 2026-09-11
 
 | lane | roles | models | cost | limits |
 |---|---|---|---|---|
@@ -38,9 +50,8 @@ sources:
 | subscription quality | manager | `claude-sonnet-5` via the `claude` CLI | subscription quota | account limits |
 | subscription quality | reviewer, security, qa | `gemini-3.7-flash-medium` via `agy` | subscription quota | account limits |
 
-Both lanes run under the same fence: public repositories and this repository's eval
-corpus only, and no model session is handed a GitHub token.[^fence] The seed is what
-declares which lane is in force.[^lane]
+Both candidates were evaluated under the same fence: public repositories and this
+repository's eval corpus only, with no GitHub token handed to a model session.[^fence]
 
 # The local-first lane
 
@@ -54,7 +65,7 @@ never leave the machine, which is what removes the data-export question that fen
 the free hosted routes. Iteration speed on goal text and seed is therefore bounded by
 tokens per second, not by quota or spend.
 
-# The subscription quality lane
+# The surveyed subscription quality lane
 
 A `claude-sonnet-5` manager over `agy gemini-3.7-flash-medium` workers. The manager
 decomposes the goal and drives the task server over curl, which punishes loose tool
@@ -64,24 +75,16 @@ Gemini flash's constraint is a 5-hour burst limiter, not quota exhaustion - that
 what caused the 429 storm which shaped the old runner's provider-failure detection,
 so concurrency is a dial to ramp, never a place to start high.[^survey]
 
-# pi mechanics that cost time to learn
+# Where the pi isolation findings live
 
-- Session capture is scopable: pi has three session-dir redirects with precedence
-  (`--session-dir` > `PI_CODING_AGENT_SESSION_DIR` > `sessionDir` setting), and pond's
-  `pi-coding-agent` adapter syncs exactly one redirected session into a fresh store
-  while the host's own sessions stay untouched - both directly and over the real acpx
-  transport via the third-party `pi-acp` adapter.[^pidig]
-- The config redirect is narrower than it looks. With `PI_CODING_AGENT_DIR` and the
-  session dir both pointed at fresh directories, the session still loaded every skill
-  under `~/.agents/skills/` and still executed the operator's
-  `~/.pi/agent/extensions/*.ts`. Skills are text; an extension is TypeScript running
-  in the reviewer's process. pi ships `--no-skills` and `--no-extensions`, but
-  pi-acp spawns a fixed `pi --mode rpc --no-themes` and forwards neither.[^pidig]
-- bernstein ships its own `pi` adapter, but a shallow and dated one: it targets the
-  npm-deprecated pre-rename package, builds an interactive (not headless) invocation,
-  and passes nothing beyond `--model`.[^pidig]
-- Over pi-acp the effort knob is `thought_level` (Codex's `reasoning_effort` is a
-  -32602), and pi-acp rejects pi's own `max` level, accepting only off through xhigh.
+The 2026-09-11 scoping dig established that session capture can be redirected without
+moving the operator's own sessions, while config redirects do not isolate user-level
+skills, extensions or MCP servers.[^pidig] The durable, current conclusions are kept
+in the focused findings rather than duplicated here:
+
+- [A reviewed tree can reconfigure its own reviewer](../findings/a-reviewed-tree-can-reconfigure-its-reviewer.md).
+- [Unwrapped Bernstein agents boot the user's global MCP servers](../findings/spawned-agents-inherit-user-global-mcp-servers.md).
+- [The pi lane's configuration rides the model ID](../findings/pi-lane-config-rides-the-model-id.md).
 
 # History: the opencode Zen experiments, retired 2026-09-11
 

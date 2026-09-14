@@ -1,11 +1,11 @@
 ---
 type: Finding
-title: The lead invents a file-existence acceptance test the workers were never told to satisfy
-description: In a /review-pr run the manager tells each lens worker to publish findings through the shared KB, then attaches an acceptance check like `test -s /tmp/bernstein-review-<id>/lens5.md` to the same task - so a lens that did its work and shared it correctly is failed on a file nobody asked for, retried, and charged a second full agent; observed on two cases with two different invented paths.
+title: A manager-invented acceptance test can fail work that satisfied its task
+description: Two historical /review-pr cases had managers tell lens workers to publish through one channel while testing an invented file path, so completed work failed and retried. The current goal and manager prompt require each completion signal to test the artifact named in that worker's task; the incident remains the reason that task/deliverable identity is explicit.
 tags: [review-pr, bernstein, goal-text, orchestration]
 status: stable
 stale_after: "2027-03-12T00:00:00Z"
-generated: { by: claude-code/opus-5, at: "2026-09-12T02:00:00Z" }
+generated: { by: codex-cli/gpt-5, at: "2026-09-14T20:45:00Z" }
 sources:
   - id: case01
     resource: "/tmp/review-eval-20260912T004119Z/floor/case-01/repo/.sdd/runtime/spawner.log - 8 lines of the form `FAIL: command='test -s /tmp/bernstein-review-fcab491854be/lens5.md' ...`, against 1 TRANSPORT FAILURE and 0 SUSPICIOUS clean exits; tasks.jsonl for the same run shows 25 task records covering 6 logical tasks, 14 of them failed"
@@ -15,13 +15,16 @@ sources:
     title: case-02, a different invented path
   - id: goal
     resource: /skills/review-pr/templates/review-goal.md
-    title: the goal text, which delegates the split and says nothing about acceptance checks
+    title: the current goal text, which requires checks to name the requested artifact
+  - id: manager
+    resource: /skills/review-pr/templates/bernstein-templates/roles/manager/system_prompt.md
+    title: the current manager prompt, which applies the same completion-signal rule
 ---
 
 # Finding
 
-The review goal hands the lead the five lenses and says how it splits them is its own
-business. The lead does two things with that freedom: it writes each worker a task whose
+The historical review goal handed the lead five lenses without fixing their handoff
+contract. The lead did two things with that freedom: it wrote each worker a task whose
 instructions end in `bernstein memory share lens-N-finding-1 ...`, and it attaches to the
 same task an acceptance command that tests for a FILE - `test -s
 /tmp/bernstein-review-<run-id>/lens5.md`.[^case01] The worker follows the instructions it
@@ -42,7 +45,7 @@ case-01's 25 task records cover 6 logical tasks, 14 of them failed, and the run 
 inside its merge step at the one-hour mark.[^case01] Eight of those failures are this
 one cause.
 
-The lever is the goal text, which is this skill's to change: it can state that a task's
-acceptance check has to be the artifact the lead asked that worker to produce.[^goal] That
-is a change to the doctrine file, so it is proven against the frozen corpus before it
-ships, not argued.
+The closure is the task contract, now stated in both places the manager reads: the goal
+requires an acceptance check to name the artifact requested from that worker, and the
+manager prompt requires every completion signal to test that same artifact.[^goal][^manager]
+This is review protocol, not advice about how carefully a model should improvise.
