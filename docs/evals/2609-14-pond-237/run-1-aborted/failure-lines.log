@@ -1,0 +1,96 @@
+2026-09-14 16:41:18,202 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.7 GB free, skipping spawn
+2026-09-14 16:41:18,202 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['815236c89df9']: Disk space critical: 0.7 GB free (need >= 1.0 GB)
+2026-09-14 16:41:18,508 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.7 GB free, skipping spawn
+2026-09-14 16:41:18,508 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['5bb019da3c26']: Disk space critical: 0.7 GB free (need >= 1.0 GB)
+2026-09-14 16:41:51,224 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.5 GB free, skipping spawn
+2026-09-14 16:41:51,224 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['35a1a6a2904b']: Disk space critical: 0.5 GB free (need >= 1.0 GB)
+2026-09-14 16:41:51,568 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.5 GB free, skipping spawn
+2026-09-14 16:41:51,569 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['492161a2e6a8']: Disk space critical: 0.5 GB free (need >= 1.0 GB)
+2026-09-14 16:42:54,960 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.3 GB free, skipping spawn
+2026-09-14 16:42:54,960 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['a95ef778156c']: Disk space critical: 0.3 GB free (need >= 1.0 GB)
+2026-09-14 16:42:54,961 ERROR bernstein.core.agents.spawn_supervisor: Session 'batch:815236c89df9' parked after exhausting respawn budget (2 respawn(s) in 300s window); last error: Disk space critical: 0.3 GB free (need >= 1.0 GB)
+2026-09-14 16:42:54,961 WARNING bernstein.core.agents.spawn_supervisor: lifecycle event agent.startup_exhausted: {'session_id': 'batch:815236c89df9', 'reason': 'respawn_budget_exhausted', 'last_error': 'Disk space critical: 0.3 GB free (need >= 1.0 GB)', 'attempts': 2, 'window_seconds': 300.0, 'max_respawns': 2}
+2026-09-14 16:42:55,170 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.3 GB free, skipping spawn
+2026-09-14 16:42:55,170 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['9967afbbdbb7']: Disk space critical: 0.3 GB free (need >= 1.0 GB)
+2026-09-14 16:42:55,170 ERROR bernstein.core.agents.spawn_supervisor: Session 'batch:5bb019da3c26' parked after exhausting respawn budget (2 respawn(s) in 300s window); last error: Disk space critical: 0.3 GB free (need >= 1.0 GB)
+2026-09-14 16:42:55,171 WARNING bernstein.core.agents.spawn_supervisor: lifecycle event agent.startup_exhausted: {'session_id': 'batch:5bb019da3c26', 'reason': 'respawn_budget_exhausted', 'last_error': 'Disk space critical: 0.3 GB free (need >= 1.0 GB)', 'attempts': 2, 'window_seconds': 300.0, 'max_respawns': 2}
+2026-09-14 16:42:59,084 WARNING bernstein.core.tasks.task_lifecycle: Task 'Lens 5: cleanliness' exhausted 2 retries -- recorded cross-run failure in quarantine
+2026-09-14 16:42:59,084 INFO bernstein.core.security.quarantine: quarantine: task 'Lens 5: cleanliness' now has 2 failure(s)
+2026-09-14 16:42:59,084 WARNING bernstein.core.tasks.task_lifecycle: Task 'Lens 5: cleanliness' exhausted 2 retries -- recorded cross-run failure in quarantine
+2026-09-14 16:44:09,685 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:44:09,685 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:45:58,087 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.0 GB free, skipping spawn
+2026-09-14 16:45:58,087 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['65a9c45a6205']: Disk space critical: 0.0 GB free (need >= 1.0 GB)
+2026-09-14 16:46:01,129 INFO bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=815236c89df9 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted
+2026-09-14 16:46:01,139 INFO bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=5bb019da3c26 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted
+2026-09-14 16:46:13,274 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:46:13,274 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:46:28,420 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.0 GB free, skipping spawn
+2026-09-14 16:46:28,420 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['570f96d387ad']: Disk space critical: 0.0 GB free (need >= 1.0 GB)
+2026-09-14 16:46:31,467 WARNING __main__: Task 1fb11903849e depends on 503e8f67da11 which is failed - task remains blocked
+2026-09-14 16:46:31,467 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:46:31,467 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:46:31,469 WARNING bernstein.core.tasks.task_lifecycle: Task 'Lens 1: claim vs implementation' exhausted 2 retries -- recorded cross-run failure in quarantine
+2026-09-14 16:46:54,674 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:46:54,675 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:47:12,820 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:47:12,820 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:47:30,965 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:47:30,966 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:47:36,721 WARNING bernstein.core.quality.retrospective: retrospective: 2 declared task(s) never reached a terminal outcome (open/claimed/in-progress/orphaned at shutdown) -- goal not met; counting them against run health rather than reporting HEALTHY 0/0 (issue #3010). histogram={'open': 0, 'claimed': 2, 'done': 5, 'failed': 7, 'blocked_by_failed_dep': 1}
+2026-09-14 16:47:36,721 INFO bernstein.core.quality.retrospective: Generating retrospective (trigger=shutdown-final): status_histogram={'open': 0, 'claimed': 2, 'done': 5, 'failed': 7, 'blocked_by_failed_dep': 1}
+2026-09-14 16:47:56,596 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.0 GB free, skipping spawn
+2026-09-14 16:47:56,596 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['503e8f67da11', '65a9c45a6205']: Disk space critical: 0.0 GB free (need >= 1.0 GB)
+2026-09-14 16:47:56,678 INFO bernstein.core.security.quarantine: quarantine: task 'Lens 5: cleanliness' now has 3 failure(s)
+2026-09-14 16:47:56,678 WARNING bernstein.core.tasks.task_lifecycle: Task 'Lens 5: cleanliness' exhausted 2 retries -- recorded cross-run failure in quarantine
+2026-09-14 16:47:56,678 INFO bernstein.core.security.quarantine: quarantine: task 'Lens 1: claim vs implementation' now has 2 failure(s)
+2026-09-14 16:47:56,678 WARNING bernstein.core.tasks.task_lifecycle: Task 'Lens 1: claim vs implementation' exhausted 2 retries -- recorded cross-run failure in quarantine
+2026-09-14 16:47:59,700 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 1f10f73c4f13 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:47:59,713 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 1e5680832b44 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:47:59,726 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 24c52370128e (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:47:59,737 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task c6762702fcb2 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:48:05,855 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 97b5a40cca28 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:48:05,868 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task e5db933894e5 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:48:11,947 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:48:11,947 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:48:27,082 ERROR bernstein.core.agents.spawner_core: Disk space critical: 0.0 GB free, skipping spawn
+2026-09-14 16:48:27,083 ERROR bernstein.core.tasks.task_lifecycle: Spawn failed for batch ['7901b90f7bdd', 'c68b351c7ac8']: Disk space critical: 0.0 GB free (need >= 1.0 GB)
+2026-09-14 16:48:30,146 WARNING __main__: Task 1fb11903849e depends on 503e8f67da11 which is failed - task remains blocked
+2026-09-14 16:48:30,146 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:48:30,146 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:48:30,163 INFO bernstein.core.security.quarantine: quarantine: task 'Lens 1: claim vs implementation' now has 3 failure(s)
+2026-09-14 16:48:30,163 WARNING bernstein.core.tasks.task_lifecycle: Task 'Lens 1: claim vs implementation' exhausted 2 retries -- recorded cross-run failure in quarantine
+2026-09-14 16:48:30,202 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=815236c89df9 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/815236c89df9/fail'
+2026-09-14 16:48:30,211 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=5bb019da3c26 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/5bb019da3c26/fail'
+2026-09-14 16:48:50,483 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:48:50,484 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:49:08,658 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:49:08,658 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:49:26,844 WARNING __main__: Task 1fb11903849e depends on 815236c89df9 which is failed - task remains blocked
+2026-09-14 16:49:26,844 WARNING __main__: Task 1fb11903849e depends on 5bb019da3c26 which is failed - task remains blocked
+2026-09-14 16:49:29,917 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 503e8f67da11 (title='Lens 1: claim vs implementation', fail_count=3, action=skip)
+2026-09-14 16:49:29,929 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 65a9c45a6205 (title='Lens 1: claim vs implementation', fail_count=3, action=skip)
+2026-09-14 16:49:29,942 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 62d02167d350 (title='Lens 1: claim vs implementation', fail_count=3, action=skip)
+2026-09-14 16:49:33,003 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=503e8f67da11 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/503e8f67da11/fail'
+2026-09-14 16:49:33,011 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=65a9c45a6205 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/65a9c45a6205/fail'
+2026-09-14 16:49:33,025 INFO bernstein.core.quality.retrospective: Generating retrospective (trigger=mid-run): status_histogram={'open': 0, 'claimed': 0, 'done': 5, 'failed': 18, 'blocked_by_failed_dep': 1}
+2026-09-14 16:49:35,252 INFO bernstein.core.quality.retrospective: Generating retrospective (trigger=shutdown-final): status_histogram={'open': 0, 'claimed': 0, 'done': 5, 'failed': 18, 'blocked_by_failed_dep': 1}
+2026-09-14 16:49:57,076 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=503e8f67da11 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/503e8f67da11/fail'
+2026-09-14 16:49:57,080 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=815236c89df9 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/815236c89df9/fail'
+2026-09-14 16:49:57,084 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=5bb019da3c26 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/5bb019da3c26/fail'
+2026-09-14 16:49:57,104 WARNING bernstein.core.tasks.task_lifecycle: janitor_verdict_action: task=65a9c45a6205 verdict=FAIL action=permanent_fail reason=reopen_budget_exhausted FAILED: Client error '409 Conflict' for url 'http://127.0.0.1:8052/tasks/65a9c45a6205/fail'
+2026-09-14 16:49:57,142 WARNING bernstein.core.quality.retrospective: retrospective: 9 declared task(s) never reached a terminal outcome (open/claimed/in-progress/orphaned at shutdown) -- goal not met; counting them against run health rather than reporting HEALTHY 0/0 (issue #3010). histogram={'open': 9, 'claimed': 0, 'done': 5, 'failed': 18, 'blocked_by_failed_dep': 1}
+2026-09-14 16:49:57,142 INFO bernstein.core.quality.retrospective: Generating retrospective (trigger=mid-run): status_histogram={'open': 9, 'claimed': 0, 'done': 5, 'failed': 18, 'blocked_by_failed_dep': 1}
+2026-09-14 16:50:02,201 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 2c13a45840ec (title='Lens 1: claim vs implementation', fail_count=3, action=skip)
+2026-09-14 16:50:02,214 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 41d0cb142aa5 (title='Lens 1: claim vs implementation', fail_count=3, action=skip)
+2026-09-14 16:50:02,225 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 719847595531 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:02,237 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task fc48ed779bdd (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:02,249 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task bbadd8804163 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:02,260 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task e6b12e5411b2 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:02,273 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task c21637d9b4d7 (title='Lens 1: claim vs implementation', fail_count=3, action=skip)
+2026-09-14 16:50:02,283 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task ed69672f035d (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:02,293 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task a1afe2acc166 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:10,510 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 5f7fa69fc80e (title='Lens 1: claim vs implementation', fail_count=3, action=skip)
+2026-09-14 16:50:10,526 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task a34631d1b2db (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:10,539 WARNING bernstein.core.tasks.task_lifecycle: Skipping quarantined task 0c0824f2d104 (title='Lens 5: cleanliness', fail_count=3, action=skip)
+2026-09-14 16:50:15,686 INFO bernstein.core.quality.retrospective: Generating retrospective (trigger=shutdown-final): status_histogram={'open': 0, 'claimed': 0, 'done': 5, 'failed': 30, 'blocked_by_failed_dep': 1}

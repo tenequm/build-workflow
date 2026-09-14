@@ -34,6 +34,8 @@ not assume the default `/tmp` qualifies:
 
     work=<big-filesystem>/review-<repo>-<N>
     mkdir -p "$work/tmp" && export TMPDIR="$work/tmp"
+    free=$(df -BG --output=avail "$work" | tail -1 | tr -dc '0-9')
+    [ "${free:-0}" -ge 10 ] || { echo "refusing: $work has ${free}G free, need 10G"; exit 1; }
     git clone <url> "$work/src" && cd "$work/src" && git checkout <base-sha>
     printf '.bernstein-pr.diff\n.bernstein-pr.md\n' >> .git/info/exclude
     gh pr diff <N> > .bernstein-pr.diff

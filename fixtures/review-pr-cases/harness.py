@@ -73,6 +73,10 @@ BERNSTEIN_TEMPLATES = ROOT / "skills/review-pr/templates/bernstein-templates"
 BUDGET = 3.00
 LEDGER = ROOT / "docs/review-ledger/evals.jsonl"
 VERDICTS = ("RECOVERED", "MISFILED", "MISSED", "MALFORMED", "ERROR")
+
+# Headroom one case needs: measured 6.3 GB for a single cargo build on pond#237,
+# plus the checkout, the worktrees each agent is given, and the engine's own .sdd state.
+DISK_FLOOR_GB = 10
 REPORT = "review-report.md"
 WAIT_CEILING = 3600
 JSON_BLOCK = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
@@ -676,6 +680,28 @@ def run_until_stalled(argv: list[str], repo: Path, env: dict[str, str], log: Any
             return proc.returncode, (reason or f"case timeout after {int(timeout)}s") + waited
 
 
+def disk_exhausted(repo: Path) -> str:
+    """The host running out of disk, which ends a run without ever reaching a model.
+
+    Below a floor the spawner stops starting agents outright. A task that cannot spawn
+    burns its respawn budget, then its retry budget, and lands in quarantine - which is
+    terminal, so returning the disk later recovers nothing, and anything depending on a
+    quarantined task stays blocked forever. The run then arrives here looking exactly
+    like a review that found nothing. Scoring it MISSED would file a host outage as a
+    model failure in the ledger, the same lie `lane_down` exists to prevent. Measured
+    2026-09-14 on pond#237: one lens ran the repository's cargo build into its scratch
+    directory and took the whole lane down with it. The message is only ever written to
+    the orchestrator's debug log, never to the run log.
+    """
+    debug = repo / ".sdd" / "runtime" / "orchestrator-debug.log"
+    if not debug.exists():
+        return ""
+    for line in reversed(debug.read_text(errors="replace").splitlines()):
+        if "Disk space critical" in line:
+            return line.split("ERROR")[-1].strip() or line.strip()
+    return ""
+
+
 def lane_down(repo: Path) -> str:
     """The model lane's own refusal, when no agent in the run ever reached a model.
 
@@ -733,7 +759,7 @@ def review(case: Path, work: Path, options: argparse.Namespace) -> dict[str, Any
             # orchestrator exits nonzero over its own bookkeeping (a task retried
             # to success still counts as failed) while the deliverable stands.
             exited = f"bernstein exited {returncode}; " if returncode else ""
-            refusal = lane_down(repo)
+            refusal = disk_exhausted(repo) or lane_down(repo)
             return {
                 "case": label(case),
                 "verdict": "ERROR" if refusal else "MISSED",
@@ -799,6 +825,19 @@ def main() -> int:
     work = (
         Path(options.work) if options.work else Path(tempfile.gettempdir()) / f"review-eval-{stamp}"
     )
+    # Refuse the lane rather than discover the floor mid-run. A reviewing agent may run
+    # the case repository's own build, and `disk_exhausted` explains why losing that race
+    # is unrecoverable: quarantine is terminal, so there is no partial credit to salvage.
+    # The floor is per concurrent case because that is how many builds can be in flight.
+    work.parent.mkdir(parents=True, exist_ok=True)
+    free_gb = shutil.disk_usage(work.parent).free / 1024**3
+    needed_gb = DISK_FLOOR_GB * max(1, options.jobs)
+    if free_gb < needed_gb:
+        raise SystemExit(
+            f"refusing the lane: {work.parent} has {free_gb:.1f} GB free, "
+            f"need {needed_gb:.0f} GB for {options.jobs} concurrent case(s). "
+            f"Point --work (or TMPDIR) at a roomier filesystem."
+        )
     print(f"{len(selected)} case(s), {options.jobs} at a time")
     print(f"goal:      {options.goal}")
     print(f"seed:      {options.seed}")

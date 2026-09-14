@@ -1,0 +1,198 @@
+{
+  "nodes": [
+    {
+      "id": "503e8f67da11",
+      "role": "lens-1-claim",
+      "status": "open",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "65a9c45a6205",
+      "role": "lens-1-claim",
+      "status": "open",
+      "estimated_minutes": 240
+    },
+    {
+      "id": "62d02167d350",
+      "role": "lens-1-claim",
+      "status": "open",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "a4bb7cc3a0d1",
+      "role": "manager",
+      "status": "done",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "4e3e62132288",
+      "role": "lens-2-side-effects",
+      "status": "done",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "2d28b1e0f995",
+      "role": "lens-3-design",
+      "status": "done",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "88b848fae13d",
+      "role": "lens-4-efficiency",
+      "status": "done",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "683c734bf12d",
+      "role": "lens-4-efficiency-shadow",
+      "status": "done",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "815236c89df9",
+      "role": "lens-5-cleanliness",
+      "status": "failed",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "5bb019da3c26",
+      "role": "lens-5-cleanliness-shadow",
+      "status": "failed",
+      "estimated_minutes": 120
+    },
+    {
+      "id": "35a1a6a2904b",
+      "role": "lens-5-cleanliness",
+      "status": "failed",
+      "estimated_minutes": 240
+    },
+    {
+      "id": "492161a2e6a8",
+      "role": "lens-5-cleanliness-shadow",
+      "status": "failed",
+      "estimated_minutes": 240
+    },
+    {
+      "id": "a95ef778156c",
+      "role": "lens-5-cleanliness",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "9967afbbdbb7",
+      "role": "lens-5-cleanliness-shadow",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "570f96d387ad",
+      "role": "lens-1-claim",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "1f10f73c4f13",
+      "role": "lens-5-cleanliness",
+      "status": "failed",
+      "estimated_minutes": 240
+    },
+    {
+      "id": "24c52370128e",
+      "role": "lens-5-cleanliness-shadow",
+      "status": "failed",
+      "estimated_minutes": 240
+    },
+    {
+      "id": "1e5680832b44",
+      "role": "lens-5-cleanliness",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "c6762702fcb2",
+      "role": "lens-5-cleanliness-shadow",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "7901b90f7bdd",
+      "role": "lens-1-claim",
+      "status": "failed",
+      "estimated_minutes": 240
+    },
+    {
+      "id": "c68b351c7ac8",
+      "role": "lens-1-claim",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "97b5a40cca28",
+      "role": "lens-5-cleanliness",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "e5db933894e5",
+      "role": "lens-5-cleanliness-shadow",
+      "status": "failed",
+      "estimated_minutes": 720
+    },
+    {
+      "id": "1fb11903849e",
+      "role": "report-writer",
+      "status": "blocked_by_failed_dep",
+      "estimated_minutes": 120
+    }
+  ],
+  "edges": [
+    {
+      "from": "503e8f67da11",
+      "to": "1fb11903849e",
+      "type": "depends_on",
+      "semantic_type": "blocks"
+    },
+    {
+      "from": "4e3e62132288",
+      "to": "1fb11903849e",
+      "type": "depends_on",
+      "semantic_type": "blocks"
+    },
+    {
+      "from": "2d28b1e0f995",
+      "to": "1fb11903849e",
+      "type": "depends_on",
+      "semantic_type": "blocks"
+    },
+    {
+      "from": "88b848fae13d",
+      "to": "1fb11903849e",
+      "type": "depends_on",
+      "semantic_type": "blocks"
+    },
+    {
+      "from": "683c734bf12d",
+      "to": "1fb11903849e",
+      "type": "depends_on",
+      "semantic_type": "blocks"
+    },
+    {
+      "from": "815236c89df9",
+      "to": "1fb11903849e",
+      "type": "depends_on",
+      "semantic_type": "blocks"
+    },
+    {
+      "from": "5bb019da3c26",
+      "to": "1fb11903849e",
+      "type": "depends_on",
+      "semantic_type": "blocks"
+    }
+  ],
+  "critical_path": [
+    "62d02167d350"
+  ],
+  "critical_path_minutes": 720,
+  "parallel_width": 23,
+  "bottlenecks": []
+}
