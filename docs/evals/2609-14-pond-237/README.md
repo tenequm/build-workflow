@@ -1,8 +1,8 @@
-# pond#237: three reviewers, one pull request (2026-09-14)
+# pond#237: four reviewers, one pull request (2026-09-14)
 
-A controlled comparison. One real pull request is reviewed three times - twice by
-the operator's `/polish` skill on two different frontier models, once by this
-repository's `/review-pr` orchestration on a mixed lane - and the three outputs
+A controlled comparison. One real pull request was reviewed four times - twice by
+the operator's `/polish` skill on two different frontier models, then by the old and
+cleaned production shapes of this repository's `/review-pr` orchestration. The outputs
 are graded against the only ground truth that counts: what the operator would
 actually act on.
 
@@ -37,11 +37,13 @@ that no reviewer can hold it whole; and the operator has already read it.
 | A | `/polish` v3.1.0 | `claude-opus-5` (high) | 4x `claude-opus-5` | fix mode, worktree at head | **28** + 4 dropped |
 | B | `/polish` v3.1.0 | codex `gpt-5.6-sol` (high) | 4x codex `gpt-5.6-sol` | read-only, worktree at head | **6** (+4 pre-existing) |
 | C | `/review-pr` | see the plan | 5 lenses + 2 shadows | stock bernstein, checkout at base | **27, undelivered** |
+| D | `/review-pr` v0.1.32 | codex `gpt-5.6-sol` | 5 production lenses, mixed Codex/Pi | stock bernstein, checkout at base | **9, delivered; unhealthy** |
 
 - [Baseline A: `/polish` on opus-5 high](baseline-polish-opus-5-high.md)
 - [Baseline B: `/polish` on codex gpt-5.6-sol high](baseline-polish-codex-5.6-sol-high.md)
 - [Plan: the `/review-pr` run](plan-review-pr-run.md)
 - [Reviewer C comparison and mechanism failure](comparison.md)
+- [Reviewer D rerun](reviewer-d.md) and [delivered report](reviewer-d-report.md)
 
 Both baselines ran the same skill with the same four lenses (cleanliness,
 design/reuse, efficiency, side-effect gating) against the same head commit, and
