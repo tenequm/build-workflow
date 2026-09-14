@@ -36,11 +36,12 @@ that no reviewer can hold it whole; and the operator has already read it.
 |---|---|---|---|---|---|
 | A | `/polish` v3.1.0 | `claude-opus-5` (high) | 4x `claude-opus-5` | fix mode, worktree at head | **28** + 4 dropped |
 | B | `/polish` v3.1.0 | codex `gpt-5.6-sol` (high) | 4x codex `gpt-5.6-sol` | read-only, worktree at head | **6** (+4 pre-existing) |
-| C | `/review-pr` | see the plan | 5 lenses + 6 shadows | stock bernstein, checkout at base | pending |
+| C | `/review-pr` | see the plan | 5 lenses + 2 shadows | stock bernstein, checkout at base | **27, undelivered** |
 
 - [Baseline A: `/polish` on opus-5 high](baseline-polish-opus-5-high.md)
 - [Baseline B: `/polish` on codex gpt-5.6-sol high](baseline-polish-codex-5.6-sol-high.md)
 - [Plan: the `/review-pr` run](plan-review-pr-run.md)
+- [Reviewer C comparison and mechanism failure](comparison.md)
 
 Both baselines ran the same skill with the same four lenses (cleanliness,
 design/reuse, efficiency, side-effect gating) against the same head commit, and

@@ -3,8 +3,7 @@
 A record of a decided plan, not direction to a future agent. It is written to be
 picked up cold.
 
-Status (2026-09-14): WP1, WP2 and WP4 are complete. WP3 is implemented and its
-final four-case proof is pending.
+Status (2026-09-14): all four work packages are complete.
 
 ## The problem this solves
 
@@ -135,8 +134,9 @@ removed: all four cases RECOVERED with no failed task and the seven-role/five-ed
 shape observed in every workspace. Because the later cleanup changes model-facing
 prompts, that row is supporting evidence, not the final proof.
 
-**Final proof:** `just eval` after the complete diff settles. All four cases must be
-RECOVERED with no failed task and every cleanup sweep must report zero survivors.
+**Final proof:** commit `f9c42e5` records the four-way run against clean revision
+`90929c4`. All four cases were RECOVERED, no task failed, and every cleanup sweep
+reported zero survivors.
 
 ## WP4 - four concurrent eval jobs - DONE (`a303b5f`, `52e5589`, `beedc54`)
 
