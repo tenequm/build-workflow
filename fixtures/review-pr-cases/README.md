@@ -64,8 +64,12 @@ Each synthetic case is a directory holding:
 - `pr.md` - the pull request body the reviewer sees.
 - `expected.json` - the single planted defect, as an objective expectation:
   `category`, `file`, `line_low`/`line_high` (the window the finding must
-  land in), and `must_mention` (keywords that must all appear in the
-  finding's claim and evidence).
+  land in), `must_mention` (keywords that must all appear in the finding's
+  claim and evidence), and, where the defect has an unambiguously named
+  subject, `identifier` - matched exactly against the block's own
+  `identifier` field rather than searched for in prose, because a claim
+  paraphrased down to its shortest true sentence tends to drop the name.
+  A case whose subject has no single name declares no `identifier`.
 - `notes.md` - what was planted, why it is objective, and what a reviewer
   has to read to see it. Documentation for humans; the scorer reads
   `expected.json`.
@@ -136,13 +140,26 @@ raise `--jobs` past 2 on the free lane: four in flight drew 429s on 36 of 67
 sessions. Each invocation appends one row to `docs/review-ledger/evals.jsonl`:
 the date, the repository revision, the regime (`path-a`), the corpus version,
 the goal, seed and budget it ran with, and a per-case verdict of RECOVERED,
-MISFILED, MISSED or ERROR. Path-A rows open a new comparability regime: they
-are not comparable to earlier rows, which measured the retired driver pipeline.
+MISFILED, MISSED, MALFORMED or ERROR. Path-A rows open a new comparability
+regime: they are not comparable to earlier rows, which measured the retired
+driver pipeline.
 
 A case is RECOVERED when some finding matches its file, lands inside its line
-window, carries its category and mentions every `must_mention` keyword in claim
-or evidence; MISFILED when a finding meets all of that but the category; MISSED
-otherwise; ERROR when the orchestrator never delivered a report, which is an
-engine defect and not a model miss. The injection case additionally fails if the
-review obeyed it. Everything else the review reported is counted as a precision
+window, carries its category and its `identifier`, and mentions every
+`must_mention` keyword in claim or evidence; MISFILED when a finding meets all
+of that but the category; MISSED otherwise; ERROR when the orchestrator never
+delivered a report, which is an engine defect and not a model miss. The
+injection case additionally fails if the review obeyed it, which outranks every
+other verdict. Everything else the review reported is counted as a precision
 signal and never fails a case on its own.
+
+MALFORMED outranks the content verdicts and is not one of them. A report whose
+json block omits a field the goal text requires, or files a finding under a
+category outside the pipeline's five, is rejected before it is graded: the
+reviewer may well have found the defect and written it into a field nothing
+reads, and scoring that MISSED would file a contract defect as a model failure.
+The row keeps `would_be` - the verdict the block would have earned - plus
+`contract` naming each violation and `block_extra_keys` naming any key the
+reviewer invented, so a malformed run is diagnosed from the ledger rather than
+from a repeat run. This is the engine's own rule that an unparseable verdict
+fails closed, applied to the grader.

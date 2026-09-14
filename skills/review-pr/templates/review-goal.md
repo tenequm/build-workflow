@@ -75,14 +75,15 @@ a deliberate decision as an accident. It is not evidence that the code does what
 - Every finding cites `file:line` for real lines you read, and quotes the lines as
   evidence. Evidence that merely restates the claim is not evidence, and the finding
   is dropped.
-- **Name the thing.** A finding's claim or evidence must state the identifier it is
-  about - the function, method, class, constant, config key, flag or filename - spelled
-  exactly as the code spells it. `file:line` is an address, not an identification: it
-  goes stale on the next commit, and a reader holding a different checkout cannot
-  resolve it at all. "The ceiling calculation is wrong at line 22" and "`page_count()`
-  adds a phantom page on exact multiples" are the same claim, and only the second one
-  survives being moved. Where the subject genuinely has no name - a bare expression, a
-  literal in a list - name its nearest enclosing one and say where inside it.
+- **Name the thing.** Every finding identifies its subject - the function, method,
+  class, constant, config key, flag or filename - spelled exactly as the code spells
+  it, in the `identifier` field of the json block below and in the prose claim.
+  `file:line` is an address, not an identification: it goes stale on the next commit,
+  and a reader holding a different checkout cannot resolve it at all. "The ceiling
+  calculation is wrong at line 22" and "`page_count()` adds a phantom page on exact
+  multiples" are the same claim, and only the second one survives being moved. Where
+  the subject genuinely has no name - a bare expression, a literal in a list - name its
+  nearest enclosing one and say where inside it.
 - A correctness claim needs a concrete failure scenario: the input, the path it takes,
   and what goes wrong. "This could break" with no input that breaks it is speculation -
   cut it. Where you can, state the mechanical check that settles it (a command and its
@@ -308,14 +309,18 @@ smaller than the explanation for deferring it. If nothing is found, say "Clean -
 issues found", substantiate the correctness zero, and stop.
 
 After the verdict, end the report with a fenced code block labelled `json` holding a
-machine-readable copy of the surviving findings - the prose above is for people, this
-block is for tooling, and both must agree:
+machine-readable copy of the surviving findings. The prose above is for people; this
+block is the only thing tooling reads, so a fact that appears only in the prose does not
+exist as far as anything downstream is concerned. A block short a required field is
+rejected whole - not read as a review that found less, but discarded as one that cannot
+be trusted - so fill every field on every finding even where the prose already said it:
 
 ```json
 {
   "action": "comment-only",
   "findings": [
     {"file": "src/billing.ts", "line": 55, "category": "correctness",
+     "identifier": "chargeUser",
      "claim": "chargeUser() runs before body validation",
      "evidence": "the quoted lines",
      "suggestion": "move the charge below the validation gate"}
@@ -330,7 +335,13 @@ that a document promises what the code does not do anchors at the PROMISE - the
 documentation or comment line making the false claim - never at the implementation
 that falls short of it; the implementation is quoted in `evidence`. `category`
 is exactly one of `correctness`, `convention`, `cleanliness`, `design`, `efficiency`.
-`claim` and `evidence` are the finding's own words; `suggestion` is optional. A finding
+`identifier` is the name from **Name the thing** above, spelled as the code spells it and
+with no parentheses, path or line number attached. `claim` and `evidence` are the
+finding's own words, and `claim` names the identifier too - a claim paraphrased down to
+its shortest true sentence usually drops the name, and that is the sentence a human
+reads. `file`, `line`, `category`, `identifier`, `claim` and `evidence` are all required
+on every finding; `suggestion` is the only optional key. Do not invent further keys - a
+fact worth carrying goes in `evidence`. A finding
 about the pull request text itself (its title or description, not a code line) uses
 `"scope": "meta"` and `"file": "PR:title"` or `"PR:body"` instead of a path. Findings
 under **Dropped** stay out of the block.

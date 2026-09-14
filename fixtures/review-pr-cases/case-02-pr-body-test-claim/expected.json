@@ -3,8 +3,8 @@
   "file": "pr.md",
   "line_low": 5,
   "line_high": 5,
+  "identifier": "calculate_range",
   "must_mention": [
-    "calculate_range",
     "test"
   ]
 }
