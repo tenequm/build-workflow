@@ -52,12 +52,23 @@ Two rules apply to anything added to it:
   deliberate, non-extensible exception
   ([why](docs/knowledge/decisions/cost-is-observability-never-control-flow.md)).
 - A change is proven against the frozen corpus in `fixtures/review-pr-cases/` before it
-  is believed, and the size of the proof follows what changed: an engine, seed or host
-  change re-runs the smoke case alone (`just eval case-01-off-by-one`, ~30 min, passes
-  only as RECOVERED with zero failed tasks and a clean sweep); a change to the goal text
-  runs all four (`just eval`). Each invocation appends one row to
-  `docs/review-ledger/evals.jsonl`. There is no test suite for /review-pr; that ledger is
-  the regression signal.
+  is believed, and the size of the proof follows what changed. An engine, seed or host
+  change re-runs the smoke case alone (`just eval case-01-off-by-one`, passes only as
+  RECOVERED with zero failed tasks and a clean sweep); a change to the goal text runs all
+  four (`just eval`, ~20 min). The carve-out from that second tier is a
+  **transmission-only** change - one that moves a rule between files without altering
+  what any model judges - and it proves on the smoke case alone. The test is textual, not
+  a judgement call: assemble the before and after text of every model-facing prompt and
+  require them identical modulo which file carries them. If that identity cannot be
+  demonstrated prompt by prompt, the change is not transmission-only and the four-case
+  tier applies. Each invocation appends one row to `docs/review-ledger/evals.jsonl`, and
+  that ledger is the regression signal for model judgment. It is no longer the only
+  signal: the grader's own contract lives in
+  `bernstein_operator/tests/test_review_grader.py`, which covers `score`, `violations`,
+  `anchored`, `names` and `adapt` with no model in the loop. That test is what keeps the
+  transmission tier from being a weakening - every corpus failure the project has ever
+  had was the json block disagreeing with the grader, and that class now fails in
+  milliseconds instead of costing a four-case run.
 
 A retro item closes only as a check, a template field, or a test - never as
 another skill sentence.

@@ -132,10 +132,18 @@ RECOVERED with zero failed tasks and a clean sweep. One case, not four.
 
 `harness.py:924` computes `needed_gb = DISK_FLOOR_GB * jobs` with
 `DISK_FLOOR_GB = 10` (line 79). `jobs=4` needs 40 GB and `jobs=3` needs 30 GB.
-`/home` had **26 GB free** when this plan was written, so both are refused by the
-guard before a single agent starts. Raising concurrency would cut a four-case run
-from about 20 minutes to about 13, and it is unavailable until roughly 14 GB is
-freed.
+
+**The binding filesystem is `/tmp`, not the workspace** - the guard loops over both
+because a worker is handed a hardcoded `TMPDIR=/tmp` and builds there no matter where
+the workspace lives. `/tmp` is on rootfs, which is **32 GB total**, so `jobs=3` is
+refused even on an empty box and `jobs=4` can never pass without a larger rootfs or a
+`/tmp` moved onto `/home`. This was mis-read once already: freeing 140 GB on `/home`
+on 2026-09-14 (four `cargo clean`s) took it from 26 GB to 166 GB free and changed
+nothing about this blocker, because `/home` was never the constraint.
+
+Raising concurrency would cut a four-case run from about 20 minutes to about 13. At
+`jobs=2` the guard wants 20 GB and rootfs offers 23, so the current setting already
+runs close to the line.
 
 Do not lower `DISK_FLOOR_GB` to make the number fit. That floor exists because run
 1 of the pond#237 evaluation died when `/` reached 0.3 GB free and every starved
