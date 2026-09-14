@@ -219,17 +219,25 @@ def check(plan: Plan, run_validation: bool = True) -> tuple[bool, list[str]]:
     elif signoff_status == "pass":
         lines.append(f"PASS {signoff_msg}")
 
-    # Codex takes no reasoning-effort flag: `codex exec` reads `model_reasoning_effort`
-    # from ~/.codex/config.toml (adapters/codex.py:105-125, argv measured 2026-09-02), so
-    # the effort lock lives in a per-machine file OUTSIDE the repo and another machine
-    # silently runs the whole plan at `medium`.
+    # Codex has no DEDICATED effort flag, but `codex exec` does take `-c key=value`, so
+    # `-c model_reasoning_effort=high` pins the effort per invocation (verified codex-cli
+    # 0.154.0; its session header prints the effort back). Bernstein cannot supply it -
+    # the codex adapter builds argv with no extra-args hook, CODEX_HOME is stripped by the
+    # env allowlist, and `role_model_policy.<role>.effort` parses and is then dropped
+    # unread - so a PATH shim is the only way to carry it, the way /review-pr does.
+    #
+    # /build-run builds no shim, so for THIS plan the host file really is the only lock:
+    # without it every codex step runs at the default effort, and another machine runs the
+    # whole plan at whatever its own config says. The gate therefore stays until build-run
+    # grows a shim of its own; what changes here is the reason, which was wrong.
     codex_cfg = Path.home() / ".codex" / "config.toml"
     codex_text = codex_cfg.read_text() if codex_cfg.exists() else ""
     if re.search(r'^\s*model_reasoning_effort\s*=\s*"high"', codex_text, re.M):
         lines.append(f"PASS {codex_cfg}: model_reasoning_effort = \"high\"")
     else:
-        fail(f'{codex_cfg} does not set model_reasoning_effort = "high"; codex exec takes no effort flag and '
-             f"every codex step in this plan would run at the default effort. Add the line and rerun.")
+        fail(f'{codex_cfg} does not set model_reasoning_effort = "high"; /build-run passes codex no effort '
+             f"override, so every codex step in this plan would run at the default effort. Add the line and "
+             f"rerun, or give build-run a codex shim that passes -c model_reasoning_effort=high.")
 
     # Role is the durable dispatch key: a per-step `cli:` is not in Bernstein's plan schema
     # and was measured losing to the role policy on the first retry, while the role policy
