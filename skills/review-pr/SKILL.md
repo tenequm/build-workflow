@@ -42,7 +42,7 @@ pull request checked out, and with no remote on it:
     shims=$(mktemp -d)
     command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -nc -na "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
     command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --strict-mcp-config --setting-sources user "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
-    command -v codex >/dev/null && printf '#!/usr/bin/env bash\nexec %s -c model_reasoning_effort=high "$@"\n' "$(command -v codex)" > "$shims/codex" && chmod +x "$shims/codex"
+    command -v codex >/dev/null && printf '#!/usr/bin/env bash\nexec %s -c model_reasoning_effort=high -c sandbox_workspace_write.network_access=true "$@"\n' "$(command -v codex)" > "$shims/codex" && chmod +x "$shims/codex"
     PATH="$shims:$PATH" bernstein run --seed <skill>/templates/review-seed.yaml \
       --goal "$(cat <skill>/templates/review-goal.md)" \
       --budget '$3.00' --auto-approve --quiet --wait 3000
@@ -53,6 +53,16 @@ GitHub by this skill.
 
 Notes that cost time to learn:
 
+- **Without `-c sandbox_workspace_write.network_access=true` a codex lane cannot
+  run at all.** The adapter spawns codex with `--sandbox workspace-write`, whose
+  default denies network, and every bernstein worker reaches the task server over
+  127.0.0.1 - the manager to create tasks, everyone to report completion.
+  Measured 2026-09-14: a codex manager saw `CODEX_SANDBOX_NETWORK_DISABLED`, got
+  `curl: (7) Failed to connect to 127.0.0.1` on both the documented port and the
+  real one, correctly refused to fake success, and failed the run after 530k
+  input tokens spent diagnosing it. The override grants loopback and the open
+  internet alike, which is inside this skill's fence (public repositories) and no
+  wider than codex already is here, since the shim adds no config isolation.
 - **The `codex` shim pins reasoning effort to the run, not to the host.** It is
   the one shim that is not about isolation. `codex exec` reads
   `model_reasoning_effort` from `~/.codex/config.toml` and takes no dedicated

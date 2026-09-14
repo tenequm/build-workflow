@@ -307,6 +307,19 @@ def bernstein_argv(
     ]
 
 
+def codex_effort() -> str:
+    """The reasoning effort the codex shim pins, `high` unless overridden.
+
+    `high` is the lane; REVIEW_CODEX_EFFORT=low exists for a plumbing smoke, where
+    the question is whether roles validate, the shim injects, the templates resolve
+    and a worker can reach the task server - none of which effort touches. A verdict
+    scored at `low` is not comparable to one scored at `high`: effort moves review
+    quality, which is the thing every ledger row is about. Run the cheap one to prove
+    the engine, never to claim a result.
+    """
+    return os.environ.get("REVIEW_CODEX_EFFORT", "high")
+
+
 def shim_path(work: Path) -> str:
     """A PATH prefix that stops the reviewed tree from configuring its reviewer.
 
@@ -346,6 +359,19 @@ def shim_path(work: Path) -> str:
                   neither this nor `role_model_policy.<role>.effort`, which parses
                   and is then dropped, so PATH is the only way in.)
 
+             -c sandbox_workspace_write.network_access=true
+                  Without it the lane cannot run at all. The adapter spawns codex
+                  with `--sandbox workspace-write`, whose default denies network,
+                  and every bernstein worker reaches the task server over
+                  127.0.0.1 - the manager to create tasks, everyone to report
+                  completion. Measured: a codex manager set
+                  CODEX_SANDBOX_NETWORK_DISABLED, got `curl: (7) Failed to connect
+                  to 127.0.0.1` on both the documented port and the real one,
+                  correctly refused to fake success, and failed the run having
+                  spent 530k input tokens on the diagnosis. This grants loopback
+                  and the open internet alike; the fence is public repositories,
+                  and codex is unshimmed for config isolation either way.
+
     A missing binary is skipped: the shim never decides which CLIs a host has.
     """
     shims = work / "shims"
@@ -353,7 +379,10 @@ def shim_path(work: Path) -> str:
     flags = (
         ("pi", "-ne -nc -na"),
         ("claude", "--strict-mcp-config --setting-sources user"),
-        ("codex", "-c model_reasoning_effort=high"),
+        (
+            "codex",
+            f"-c model_reasoning_effort={codex_effort()} -c sandbox_workspace_write.network_access=true",
+        ),
     )
     for name, extra in flags:
         real = shutil.which(name)
