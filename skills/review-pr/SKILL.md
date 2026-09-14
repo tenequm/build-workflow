@@ -34,8 +34,10 @@ not assume the default `/tmp` qualifies:
 
     work=<big-filesystem>/review-<repo>-<N>
     mkdir -p "$work/tmp" && export TMPDIR="$work/tmp"
-    free=$(df -BG --output=avail "$work" | tail -1 | tr -dc '0-9')
-    [ "${free:-0}" -ge 10 ] || { echo "refusing: $work has ${free}G free, need 10G"; exit 1; }
+    for fs in "$work" /tmp; do   # workers ignore TMPDIR and always scratch in /tmp
+      free=$(df -BG --output=avail "$fs" | tail -1 | tr -dc '0-9')
+      [ "${free:-0}" -ge 10 ] || { echo "refusing: $fs has ${free}G free, need 10G"; exit 1; }
+    done
     git clone <url> "$work/src" && cd "$work/src" && git checkout <base-sha>
     printf '.bernstein-pr.diff\n.bernstein-pr.md\n' >> .git/info/exclude
     gh pr diff <N> > .bernstein-pr.diff
@@ -71,10 +73,14 @@ Notes that cost time to learn:
   budget, then its retry budget, then lands in quarantine at `fail_count=3,
   action=skip`. Quarantine is terminal: freeing the disk afterwards recovers
   nothing, and any task depending on a quarantined one is stuck at
-  `blocked_by_failed_dep` forever. Exporting `TMPDIR` onto the roomy filesystem
-  is what covers it, because every scratch directory in the lane - the shims, the
-  manager's shared findings directory, and each worker's own - comes from
-  `mktemp -d`. Both limits appear only in
+  `blocked_by_failed_dep` forever. **`TMPDIR` does not reach the workers**, so
+  exporting it is not sufficient on its own: a sandboxed agent is handed a
+  hardcoded `TMPDIR=/tmp` and a lens that copies the repository into its own
+  `mktemp -d` builds there whatever the parent exported - measured in run 2,
+  where the manager's shared findings directory landed in `/tmp` while the export
+  was in force. The export still moves the parent's own scratch, including the
+  shims; `/tmp` needing its own headroom is why the guard above checks both
+  filesystems. Both limits appear only in
   `.sdd/runtime/orchestrator-debug.log`, never in the run log.
 - **Without `-c sandbox_workspace_write.network_access=true` a codex lane cannot
   run at all.** The adapter spawns codex with `--sandbox workspace-write`, whose

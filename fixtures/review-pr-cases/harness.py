@@ -829,15 +829,24 @@ def main() -> int:
     # the case repository's own build, and `disk_exhausted` explains why losing that race
     # is unrecoverable: quarantine is terminal, so there is no partial credit to salvage.
     # The floor is per concurrent case because that is how many builds can be in flight.
+    #
+    # BOTH filesystems are checked, and /tmp is the one that actually bit. A sandboxed
+    # worker is handed a hardcoded `TMPDIR=/tmp` and never sees the one exported here, so
+    # a lens that copies the repository into its own `mktemp -d` and builds there spends
+    # /tmp no matter where the workspace lives. Exporting TMPDIR still moves the parent
+    # process's own scratch; it does not move the workers', which is where the 6.3 GB of
+    # pond#237 went.
     work.parent.mkdir(parents=True, exist_ok=True)
-    free_gb = shutil.disk_usage(work.parent).free / 1024**3
     needed_gb = DISK_FLOOR_GB * max(1, options.jobs)
-    if free_gb < needed_gb:
-        raise SystemExit(
-            f"refusing the lane: {work.parent} has {free_gb:.1f} GB free, "
-            f"need {needed_gb:.0f} GB for {options.jobs} concurrent case(s). "
-            f"Point --work (or TMPDIR) at a roomier filesystem."
-        )
+    for where in {work.parent, Path(tempfile.gettempdir())}:
+        free_gb = shutil.disk_usage(where).free / 1024**3
+        if free_gb < needed_gb:
+            raise SystemExit(
+                f"refusing the lane: {where} has {free_gb:.1f} GB free, "
+                f"need {needed_gb:.0f} GB for {options.jobs} concurrent case(s). "
+                f"Workers are pinned to {tempfile.gettempdir()} regardless of TMPDIR, "
+                f"so both it and the workspace need the headroom."
+            )
     print(f"{len(selected)} case(s), {options.jobs} at a time")
     print(f"goal:      {options.goal}")
     print(f"seed:      {options.seed}")

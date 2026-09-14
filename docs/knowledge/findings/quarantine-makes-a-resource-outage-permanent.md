@@ -68,10 +68,18 @@ so every edge that carries no data is pure imported risk.
 Prose in a skill cannot close either half, because both failures happen before
 any model reads anything. Both are now checks:
 
-- The invocation refuses to start when the working filesystem is below a floor,
-  and exports `TMPDIR` alongside the checkout so every `mktemp -d` in the lane -
-  the shims, the shared findings directory, each worker's own scratch - lands on
-  the filesystem that was measured.
+- The invocation refuses to start when **either** the working filesystem or `/tmp`
+  is below a floor. Both are needed, and the second is the one that bit: a
+  sandboxed worker is handed a hardcoded `TMPDIR=/tmp` and never sees an exported
+  one, so a lens that copies the repository into its own `mktemp -d` and builds
+  there spends `/tmp` whatever the parent set. Exporting `TMPDIR` still moves the
+  parent's own scratch and is worth doing; it is not a substitute for checking the
+  filesystem the workers are pinned to.
+
+  The general shape: **an environment variable that configures a child process is
+  a control only where the child actually inherits it.** A sandbox boundary that
+  rewrites the environment turns such a setting into a comforting no-op, and what
+  catches it is measuring where files landed, not confirming the export was set.
 - The corpus harness refuses the lane on the same floor, scaled by concurrency,
   and gained a `disk_exhausted` detector beside `lane_down` so a starved run
   scores ERROR rather than MISSED. Scoring it MISSED would file a host outage as
