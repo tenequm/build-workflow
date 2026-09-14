@@ -457,16 +457,37 @@ def shim_path(work: Path) -> str:
                   and the open internet alike; the fence is public repositories,
                   and codex is unshimmed for config isolation either way.
 
+             -c sandbox_workspace_write.writable_roots=["<repo>"]
+                  Without it the report is never delivered anywhere but /tmp.
+                  `workspace-write` grants the worker's cwd subtree - its
+                  worktree - plus a fixed set of system roots that includes
+                  /tmp. It does NOT include the checkout root, which is where
+                  the goal text requires `review-report.md` to be written. A
+                  workspace under /tmp therefore passes by accident and one
+                  anywhere else fails: measured 2026-09-14 on pond#237, where
+                  a report writer on /home reported the checkout "mounted
+                  read-only", refused to fake success, and died after 1.95M
+                  input tokens - four times over, once per orchestrator retry.
+                  This is interpolated, unlike the effort above, because the
+                  path is per-run; a mistyped key fails closed with a denied
+                  write rather than silently downgrading, and `sandbox_probe`
+                  below is what turns that failure into a refusal before any
+                  model spawns.
+
     A missing binary is skipped: the shim never decides which CLIs a host has.
     """
     shims = work / "shims"
     shims.mkdir(parents=True, exist_ok=True)
+    writable = shlex.quote(f'sandbox_workspace_write.writable_roots=["{work / "repo"}"]')
     flags = (
         ("pi", "-ne -nc -na"),
         ("claude", "--strict-mcp-config --setting-sources user"),
         (
             "codex",
-            f"-c model_reasoning_effort={codex_effort()} -c sandbox_workspace_write.network_access=true",
+            (
+                f"-c model_reasoning_effort={codex_effort()} "
+                f"-c sandbox_workspace_write.network_access=true -c {writable}"
+            ),
         ),
     )
     for name, extra in flags:
@@ -724,6 +745,60 @@ def lane_down(repo: Path) -> str:
     return Counter(refusals).most_common(1)[0][0]
 
 
+def sandbox_refuses_report_path(repo: Path, shims: str) -> str:
+    """Why this lane could never deliver a report, checked before any model spawns.
+
+    The goal text requires `review-report.md` at the checkout root, and a codex
+    worker runs under `--sandbox workspace-write`, which grants its own cwd - a
+    worktree under the checkout - plus a fixed set of system roots. `/tmp` is on
+    that list and the checkout root is not, so a workspace under `/tmp` passes by
+    accident and one anywhere else is refused. That is not a model failure and
+    must never reach the ledger as one: measured 2026-09-14 on pond#237, where
+    moving the checkout to `/home` to escape a full `/tmp` made every report
+    writer die reporting the checkout "mounted read-only", four times over.
+
+    Two things can break, so both are checked and neither costs a model call:
+    the shim may not carry the grant, and the grant may not work here. The
+    second runs through `codex sandbox`, whose `-c` overrides are honoured only
+    after the subcommand - unlike `codex exec`, which honours them in the shim's
+    position ahead of it (both verified, codex-cli 0.154.0).
+    """
+    wrapper = Path(shims) / "codex"
+    if not wrapper.exists():
+        return ""
+    if f'writable_roots=["{repo}"]' not in wrapper.read_text():
+        return f"the codex shim does not grant {repo} as a writable root"
+    cwd = repo / ".sdd" / "sandbox-probe"
+    cwd.mkdir(parents=True, exist_ok=True)
+    witness = repo / ".sandbox-probe"
+    argv = [
+        "codex",
+        "sandbox",
+        "-c",
+        'sandbox_mode="workspace-write"',
+        "-c",
+        f'sandbox_workspace_write.writable_roots=["{repo}"]',
+        "--",
+        "sh",
+        "-c",
+        f"touch {shlex.quote(str(witness))}",
+    ]
+    try:
+        subprocess.run(argv, cwd=cwd, capture_output=True, timeout=120, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"the codex sandbox probe could not run: {exc}"
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+    if not witness.exists():
+        return (
+            f"codex cannot write to {repo} even when granted it; the report has "
+            f"nowhere to land. Put the workspace on a filesystem codex can be "
+            f"granted, or run it under {tempfile.gettempdir()}."
+        )
+    witness.unlink()
+    return ""
+
+
 def review(case: Path, work: Path, options: argparse.Namespace) -> dict[str, Any]:
     """Materialise one case, run stock bernstein over it, and score its report."""
     started = time.monotonic()
@@ -739,7 +814,16 @@ def review(case: Path, work: Path, options: argparse.Namespace) -> dict[str, Any
         # the absolute path there costs nothing and survives that hop. It also writes its
         # own state under <repo>/.sdd/, which is the case's scratch to keep.
         env = {**os.environ, "BERNSTEIN_SEED_PATH": str(Path(options.seed).resolve())}
-        env["PATH"] = f"{shim_path(work)}{os.pathsep}{env.get('PATH', '')}"
+        shims = shim_path(work)
+        env["PATH"] = f"{shims}{os.pathsep}{env.get('PATH', '')}"
+        undeliverable = sandbox_refuses_report_path(repo, shims)
+        if undeliverable:
+            return {
+                "case": label(case),
+                "verdict": "ERROR",
+                "error": f"refusing the case: {undeliverable}",
+                "wall_s": round(time.monotonic() - started, 1),
+            }
         log.write(f"$ (cd {repo} && {' '.join(argv)})\n")
         log.flush()
         returncode, aborted = run_until_stalled(argv, repo, env, log, options.timeout)

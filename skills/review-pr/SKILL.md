@@ -50,7 +50,19 @@ not assume the default `/tmp` qualifies:
     shims=$(mktemp -d)
     command -v pi >/dev/null && printf '#!/usr/bin/env bash\nexec %s -ne -nc -na "$@"\n' "$(command -v pi)" > "$shims/pi" && chmod +x "$shims/pi"
     command -v claude >/dev/null && printf '#!/usr/bin/env bash\nexec %s --strict-mcp-config --setting-sources user "$@"\n' "$(command -v claude)" > "$shims/claude" && chmod +x "$shims/claude"
-    command -v codex >/dev/null && printf '#!/usr/bin/env bash\nexec %s -c model_reasoning_effort=high -c sandbox_workspace_write.network_access=true "$@"\n' "$(command -v codex)" > "$shims/codex" && chmod +x "$shims/codex"
+    if command -v codex >/dev/null; then cat > "$shims/codex" <<EOF && chmod +x "$shims/codex"
+#!/usr/bin/env bash
+exec $(command -v codex) -c model_reasoning_effort=high \\
+  -c sandbox_workspace_write.network_access=true \\
+  -c 'sandbox_workspace_write.writable_roots=["$work/src"]' "\$@"
+EOF
+    fi
+    mkdir -p "$work/src/.sdd/sandbox-probe"   # probe from a SUBDIR: the root grants itself
+    (cd "$work/src/.sdd/sandbox-probe" && codex sandbox -c sandbox_mode='"workspace-write"' \
+       -c "sandbox_workspace_write.writable_roots=[\"$work/src\"]" -- \
+       sh -c 'touch ../../.sandbox-probe') ; rmdir "$work/src/.sdd/sandbox-probe"
+    [ -f "$work/src/.sandbox-probe" ] || { echo "refusing: codex cannot write to $work/src"; exit 1; }
+    rm -f "$work/src/.sandbox-probe"
     BERNSTEIN_SEED_PATH=<skill>/templates/review-seed.yaml \
       PATH="$shims:$PATH" bernstein run --seed <skill>/templates/review-seed.yaml \
       --goal "$(cat <skill>/templates/review-goal.md)" \
@@ -82,6 +94,26 @@ Notes that cost time to learn:
   shims; `/tmp` needing its own headroom is why the guard above checks both
   filesystems. Both limits appear only in
   `.sdd/runtime/orchestrator-debug.log`, never in the run log.
+- **A codex worker cannot write the report to the checkout root unless the root is
+  granted, and `/tmp` hides this.** `--sandbox workspace-write` grants the worker's
+  own cwd - its worktree, nested under the checkout - plus a fixed list of system
+  roots that includes `/tmp`. The checkout root is not on that list, and the goal
+  text requires `review-report.md` to be written exactly there. So a checkout under
+  `/tmp` succeeds by accident and a checkout anywhere else is refused: measured
+  2026-09-14 on pond#237, where moving to `/home` to escape a full `/tmp` left every
+  lens finished and the report undeliverable. The worker reported the checkout
+  "mounted read-only", correctly refused to fake success, and died - and bernstein
+  retried it three more times, at up to 1.95M input tokens an attempt. The two
+  requirements pull against each other: the disk guard above pushes the checkout off
+  `/tmp`, and doing that is what removes the default grant. Hence the
+  `writable_roots` entry in the shim, which unlike the effort value IS interpolated
+  because the path is per-run, and hence the probe beside it - a mistyped key fails
+  closed with a denied write, which without the probe surfaces only after a full lane
+  has run. The probe must run from a SUBDIRECTORY of the checkout: from the root
+  itself `workspace-write` grants the cwd and the check passes vacuously. Note the
+  probe puts its `-c` flags AFTER the subcommand - `codex sandbox` honours them only
+  there, while `codex exec` honours them in the shim's position ahead of it (both
+  verified, codex-cli 0.154.0).
 - **Without `-c sandbox_workspace_write.network_access=true` a codex lane cannot
   run at all.** The adapter spawns codex with `--sandbox workspace-write`, whose
   default denies network, and every bernstein worker reaches the task server over
