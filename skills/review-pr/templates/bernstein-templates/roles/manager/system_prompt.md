@@ -95,12 +95,18 @@ findings file in the scratch directory, or the report. Never attach a signal tha
 tests the state of the working tree; the orchestrator keeps its own runtime state
 in this checkout and such a signal fails every worker forever.
 
-**Task dependencies (`depends_on`)**: the report task reads every lens file, so it
-depends on all of them - set the `depends_on` field, do not just mention it in the
-description. A description note is never read by the claimer; only the structured
-field blocks a claim. `depends_on` takes the `id` values from the JSON body an
-earlier `POST /tasks` call returned, so read that `id` before creating the report
-task. Example, where the lens tasks returned `task-abc123` and `task-def456`:
+**Task dependencies (`depends_on`)**: the report task depends on the FIVE numbered
+lens tasks and on nothing else. **Never list a `-shadow` task in `depends_on`.** The
+report writer is instructed to ignore every `shadow-` file it finds, so a shadow can
+contribute nothing to the report, and a shadow that fails or never spawns would
+otherwise block the report forever at `blocked_by_failed_dep` - measured on
+pond#237, where a shadow that lost its spawn to a full disk took the whole run down
+with it. Set the `depends_on` field, do not just mention it in the description: a
+description note is never read by the claimer; only the structured field blocks a
+claim. `depends_on` takes the `id` values from the JSON body an earlier
+`POST /tasks` call returned, so read that `id` before creating the report task.
+Create the shadow tasks with no dependents at all. Example, where the five lens
+tasks returned `task-abc123` through `task-def456`:
 
     TOKEN=$(cat <absolute-token-path-from-auth-section>) && curl -sS -w '\n%{http_code}' -X POST http://127.0.0.1:8052/tasks -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"title": "Write the review report", "role": "report-writer", "description": "Read every lens file in /abs/scratch/dir and write the report", "priority": 1, "scope": "medium", "complexity": "high", "depends_on": ["task-abc123", "task-def456"], "completion_signals": [{"type": "path_exists", "value": "/abs/checkout/review-report.md"}]}'
 

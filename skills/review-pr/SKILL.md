@@ -28,9 +28,13 @@ are the only place `gh` runs.
 ## Invocation
 
 In a THROWAWAY checkout of the target repository with the BASE commit of the
-pull request checked out, and with no remote on it:
+pull request checked out, and with no remote on it. Put the checkout AND
+`TMPDIR` on a filesystem with tens of gigabytes free - `df -h` first, and do
+not assume the default `/tmp` qualifies:
 
-    cd <checkout>
+    work=<big-filesystem>/review-<repo>-<N>
+    mkdir -p "$work/tmp" && export TMPDIR="$work/tmp"
+    git clone <url> "$work/src" && cd "$work/src" && git checkout <base-sha>
     printf '.bernstein-pr.diff\n.bernstein-pr.md\n' >> .git/info/exclude
     gh pr diff <N> > .bernstein-pr.diff
     gh pr view <N> --json title,body --template '# {{.title}}
@@ -54,6 +58,22 @@ GitHub by this skill.
 
 Notes that cost time to learn:
 
+- **A review needs tens of gigabytes of disk, and running out of it kills the run
+  permanently rather than slowly.** The goal text lets a lens run the repository's
+  own validation command from the base branch; on a compiled-language repository
+  that command is a full build. Measured 2026-09-14 on pond#237 (Rust): one lens
+  put 6.3 GB into its `mktemp -d` scratch, on a 32 GB rootfs that `/tmp` shares
+  with the system and that already held 12 GB of `target/` from an earlier run.
+  At 0.3 GB free the spawner refuses to start agents - `Disk space critical: 0.3
+  GB free (need >= 1.0 GB)` - and a task that cannot spawn burns its respawn
+  budget, then its retry budget, then lands in quarantine at `fail_count=3,
+  action=skip`. Quarantine is terminal: freeing the disk afterwards recovers
+  nothing, and any task depending on a quarantined one is stuck at
+  `blocked_by_failed_dep` forever. Exporting `TMPDIR` onto the roomy filesystem
+  is what covers it, because every scratch directory in the lane - the shims, the
+  manager's shared findings directory, and each worker's own - comes from
+  `mktemp -d`. Both limits appear only in
+  `.sdd/runtime/orchestrator-debug.log`, never in the run log.
 - **Without `-c sandbox_workspace_write.network_access=true` a codex lane cannot
   run at all.** The adapter spawns codex with `--sandbox workspace-write`, whose
   default denies network, and every bernstein worker reaches the task server over
