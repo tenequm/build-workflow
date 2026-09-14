@@ -75,6 +75,14 @@ a deliberate decision as an accident. It is not evidence that the code does what
 - Every finding cites `file:line` for real lines you read, and quotes the lines as
   evidence. Evidence that merely restates the claim is not evidence, and the finding
   is dropped.
+- **Name the thing.** A finding's claim or evidence must state the identifier it is
+  about - the function, method, class, constant, config key, flag or filename - spelled
+  exactly as the code spells it. `file:line` is an address, not an identification: it
+  goes stale on the next commit, and a reader holding a different checkout cannot
+  resolve it at all. "The ceiling calculation is wrong at line 22" and "`page_count()`
+  adds a phantom page on exact multiples" are the same claim, and only the second one
+  survives being moved. Where the subject genuinely has no name - a bare expression, a
+  literal in a list - name its nearest enclosing one and say where inside it.
 - A correctness claim needs a concrete failure scenario: the input, the path it takes,
   and what goes wrong. "This could break" with no input that breaks it is speculation -
   cut it. Where you can, state the mechanical check that settles it (a command and its
