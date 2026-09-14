@@ -108,9 +108,22 @@ Steps 1 and 2 are **done** and committed (`aafffe3`, `9dd5038`, `0352f6f`).
    codex sandbox denying loopback - and one rule was found missing, that a finding
    must name its identifier.
 
-   Shadow exclusion is mechanically untested: both gemini shadows returned "No
-   findings" on a 22-line case, so the report writer's filter never had anything
-   to exclude. pond#237 is where that gets exercised.
+   **Shadow exclusion is now proven too** (2026-09-14, case-03): both gemini
+   shadows wrote roughly a kilobyte each, both naming the planted injection, and
+   neither reached the report. The filter had something to exclude and excluded
+   it.
+
+   **A third smoke found the last defect, and it was in the grader.** case-01
+   failed a third time while its reviewer was correct a third time: the name was
+   in the prose and in an `identifier` key the model invented, and the grader was
+   grepping the block's `claim`, which had been paraphrased down to a sentence
+   without the name. Two fixes followed, in `8f350d3` - `identifier` became a
+   required field compared exactly, and a block that breaks the contract now
+   scores MALFORMED instead of MISSED, carrying `would_be` so the two are never
+   confused again. Both reasons are in the knowledge base
+   ([the name](../../knowledge/decisions/findings-name-identifiers.md),
+   [the rejection](../../knowledge/decisions/grader-fails-closed-on-a-broken-block.md)).
+   The goal text changed again, so the four-case proof re-ran.
 4. **Run pond#237** per `skills/review-pr/SKILL.md`: throwaway checkout at the PR
    base, the two `gh` reads first, then `git remote remove origin`, then the
    templates copy, then the PATH shims, then `bernstein run`.
@@ -126,11 +139,12 @@ finding is the single most important cell**; novel findings are judged true /
 false / unfalsifiable and a false one costs more than a missed cleanliness item;
 every miss the operator would have acted on becomes a new corpus case.
 
-"Compare by substance, not by anchor" is what forced the goal text to require
-every finding to name its identifier: C reads a checkout at the base and A and B
-read the head tree, so no line number is shared and the name is the only thing
-left to match on. The reasoning, and why the corpus case was left frozen rather
-than edited, is
+"Compare by substance, not by anchor" is what forced every finding to name its
+identifier: C reads a checkout at the base and A and B read the head tree, so no
+line number is shared and the name is the only thing left to match on. C's
+findings carry it in an `identifier` field of the report's json block, which is
+what makes the four-way comparison a lookup rather than a reading exercise. The
+reasoning is
 [in the knowledge base](../../knowledge/decisions/findings-name-identifiers.md).
 
 ## Facts that cost time to learn
@@ -167,6 +181,10 @@ Do not re-derive these.
   channel that crosses is one scratch directory outside every repository,
   `mktemp -d` by the lead before any task is created and quoted verbatim in every
   worker's task text.
+- **A malformed json block is not a missed defect.** The grader rejects a block
+  short a required field rather than scoring it MISSED, and the row says what the
+  verdict would have been. When reading pond#237's output, a MALFORMED row means
+  fix the block and re-read, never "the lane missed it".
 - **The report has exactly one correct location**: the checkout the run started
   in, which from inside a worktree is `$(dirname "$(git rev-parse --git-common-dir)")`
   and is the same command in the checkout itself.
