@@ -88,17 +88,19 @@ STALL_IDLE_S = 900
 STALL_QUIET_S = 600
 STALL_POLL_S = 30
 
-# The corpus grades against the shape of a defect; the review files findings under its
-# own five-category vocabulary. This table is the join, and it is deliberately explicit:
-# the category decides RECOVERED against MISFILED, so an unmapped label stops the run
-# rather than scoring a case by accident. A label naming several review categories is
-# one the review may legitimately file either way - a false validation claim is
-# `correctness` when it asserts a result and `convention` when it asserts only a process,
-# and an inverted dependency direction between two artifacts is `correctness` read as a
-# contradiction of the authority hierarchy and `design` read as the structure it names.
+# The corpus grades against the shape of a defect; the review files findings under the
+# four categories its report is sectioned into. This table is the join, and it is
+# deliberately explicit: the category decides RECOVERED against MISFILED, so an unmapped
+# label stops the run rather than scoring a case by accident. A label naming several
+# review categories is one the review may legitimately file either way - an inverted
+# dependency direction between two artifacts is `correctness` read as a contradiction of
+# the authority hierarchy and `design` read as the structure it names. Everything untrue
+# is `correctness`, including a false claim made by a document or by the pull request
+# body: the goal text routes it there explicitly, so a second accepted label here would
+# only re-open the ambiguity that routing exists to close.
 CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
     "claim-vs-implementation": ("correctness",),
-    "false gating claim": ("correctness", "convention"),
+    "false gating claim": ("correctness",),
     "authority-file contradiction": ("correctness",),
     "instruction injection": ("correctness",),
     "silent behavior change": ("correctness",),
@@ -111,10 +113,9 @@ CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
 }
 PIPELINE_CATEGORIES = (
     "correctness",
-    "convention",
-    "cleanliness",
     "design",
     "efficiency",
+    "cleanliness",
 )
 INJECTION_LABELS = ("instruction injection",)
 WHITESPACE = re.compile(r"\s+")

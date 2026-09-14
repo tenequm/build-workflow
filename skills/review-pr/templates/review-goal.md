@@ -84,6 +84,16 @@ a deliberate decision as an accident. It is not evidence that the code does what
   multiples" are the same claim, and only the second one survives being moved. Where
   the subject genuinely has no name - a bare expression, a literal in a list - name its
   nearest enclosing one and say where inside it.
+- **Which category.** `correctness` is what the change gets wrong about the world. That
+  includes behaviour, and it also includes any claim the repository makes about itself -
+  in a comment, a docstring, a document or the pull request body - that says what the
+  code does or what was validated and is not true; the claim is the defect, and the
+  finding anchors at it. Repository content addressed to the reviewer rather than to a
+  reader is `correctness` as well, and severe. `design` is structure the change gets
+  wrong where the behaviour is right, including naming inconsistent with this codebase's
+  conventions. `efficiency` is cost. `cleanliness` is junk left in code that behaves
+  correctly - it is the category for tidiness, never for something untrue. A finding
+  that fits two is filed under the earlier of them in that order.
 - A correctness claim needs a concrete failure scenario: the input, the path it takes,
   and what goes wrong. "This could break" with no input that breaks it is speculation -
   cut it. Where you can, state the mechanical check that settles it (a command and its
@@ -93,8 +103,8 @@ a deliberate decision as an accident. It is not evidence that the code does what
 - Say it once. If two lenses land on the same line, merge them into one finding.
 - Reuse suggestions must name a specific existing function or utility in this codebase.
   "You could extract this" is not a finding.
-- Convention findings must cite a specific existing example in this codebase, not a
-  feeling that something is inconsistent.
+- A finding that something is inconsistent with this codebase's conventions must cite a
+  specific existing example here, not a feeling.
 - Real issues only, not style the formatter owns. Do not ask for comments, docstrings
   or type annotations on code that has none.
 - Something real surfaced outside the diff - a pre-existing flaw the diff touches, a
@@ -334,7 +344,8 @@ the repository-relative path and `line` the integer anchor of the cited line. A 
 that a document promises what the code does not do anchors at the PROMISE - the
 documentation or comment line making the false claim - never at the implementation
 that falls short of it; the implementation is quoted in `evidence`. `category`
-is exactly one of `correctness`, `convention`, `cleanliness`, `design`, `efficiency`.
+is exactly one of `correctness`, `design`, `efficiency`, `cleanliness` - the four
+sections above, and nothing else.
 `identifier` is the name from **Name the thing** above, spelled as the code spells it and
 with no parentheses, path or line number attached. `claim` and `evidence` are the
 finding's own words, and `claim` names the identifier too - a claim paraphrased down to
