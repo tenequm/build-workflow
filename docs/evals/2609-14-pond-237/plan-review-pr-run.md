@@ -124,6 +124,22 @@ Steps 1 and 2 are **done** and committed (`aafffe3`, `9dd5038`, `0352f6f`).
    ([the name](../../knowledge/decisions/findings-name-identifiers.md),
    [the rejection](../../knowledge/decisions/grader-fails-closed-on-a-broken-block.md)).
    The goal text changed again, so the four-case proof re-ran.
+
+   **The four-case run then found the same defect a third time, in the category
+   slot.** case-01 recovered in 335.3s with zero extra findings and no case
+   produced a MALFORMED block, so both fixes above are proven. But case-02 and
+   case-03 each found, named and blocked their planted defect and filed it as
+   `cleanliness`, which neither case accepts - and case-03's identical finding had
+   scored `correctness` one run earlier, so it was a coin flip. The goal text
+   listed five legal categories and no rule for choosing one, and the fifth,
+   `convention`, had no section in the report a reviewer could reach. `4a25b17`
+   states the routing - everything untrue is `correctness`, `cleanliness` is
+   tidiness in code that behaves correctly, ties break toward the earlier label -
+   and drops `convention` from both the goal text and the grader. All four cases
+   now accept exactly one category.
+   [The finding](../../knowledge/findings/a-category-enum-without-a-routing-rule-is-a-coin-flip.md)
+   generalises it: an enum offered without a routing rule is chosen at random, and
+   a label with no home in the output template is never chosen at all.
 4. **Run pond#237** per `skills/review-pr/SKILL.md`: throwaway checkout at the PR
    base, the two `gh` reads first, then `git remote remove origin`, then the
    templates copy, then the PATH shims, then `bernstein run`.
@@ -181,6 +197,10 @@ Do not re-derive these.
   channel that crosses is one scratch directory outside every repository,
   `mktemp -d` by the lead before any task is created and quoted verbatim in every
   worker's task text.
+- **A misfiled finding is not a missed defect either.** MISFILED means the reviewer
+  found it and put it in the wrong category. After `4a25b17` the routing is stated
+  and every case accepts exactly one label, so a MISFILED row now means the routing
+  rule failed to reach the reviewer - not that the taxonomy is ambiguous.
 - **A malformed json block is not a missed defect.** The grader rejects a block
   short a required field rather than scoring it MISSED, and the row says what the
   verdict would have been. When reading pond#237's output, a MALFORMED row means
